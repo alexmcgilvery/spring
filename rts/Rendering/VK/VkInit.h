@@ -17,7 +17,7 @@ public:
 	const auto& GetPhysDevices() const { return physicalDevices; }
 	const auto& GetBestPhysDevice() const { return physicalDevice; }
 
-	const auto& GetLogicalDevice() const { return LogicalDevice; }
+	const auto& GetLogicalDevice() const { return logicalDevice; }
 
 	std::string GetVulkanAPI() const;
 	static std::string GetVulkanAPI(uint32_t apiVersion);
@@ -36,7 +36,6 @@ public:
 	bool IsValid() const { return vkInitialized; }
 private:
 	static inline std::unique_ptr<VkCoreObjects> vkCoreObjects = nullptr;
-	static VkAllocationCallbacks* memoryAllocator = nullptr;
 
 	bool vkInitialized = false;
 

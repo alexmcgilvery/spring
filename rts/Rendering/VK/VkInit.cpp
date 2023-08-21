@@ -55,21 +55,6 @@ VkCoreObjects::VkCoreObjects()
 	physicalDevice = physicalDevices.front();
 	pdevExtensionProperties = physicalDevice.enumerateDeviceExtensionProperties();
 
-	// queues FIXME
-	std::vector<vk::QueueCreateInfo> deviceQueues{}; 
-
-	vk::DeviceCreateInfo logicalDeviceInfo{};
-	logicalDeviceInfo.sType = VK_STRUCTURE_TYPE_CREATE_DEVICE_INFO;
-	logicalDeviceInfo.queueCreateInfoCount = deviceQueues.size();
-	logicalDeviceInfo.pQueueCreateInfos = deviceQueues;
-	logicalDeviceInfo.enabledExtensionCount = 0; //FIXME
-	logicalDeviceInfo.ppEnabledExtensionNames = NULL; //FIXME
-	logicalDeviceInfo.pEnabledFeatures = NULL; //FIXME
-
-	vk::vkCreateDevice(physicalDevice, &logicalDeviceInfo, memoryAllocator, &logicalDevice);
-
-	
-
 }
 
 std::string VkCoreObjects::GetVulkanAPI(uint32_t apiVersion)
