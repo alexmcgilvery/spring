@@ -5,6 +5,7 @@
 #include <iomanip>
 
 #include <SDL.h>
+#include <SDL2/SDL_vulkan.h>
 
 #include "GlobalRendering.h"
 #include "GlobalRenderingInfo.h"
@@ -13,7 +14,6 @@
 #include "Rendering/GL/RenderBuffers.h"
 #include "Rendering/GL/myGL.h"
 #include "Rendering/GL/FBO.h"
-#include "Rendering/VK/VkInfo.h"
 #include "Rendering/UniformConstants.h"
 #include "Rendering/Fonts/glFont.h"
 #include "System/bitops.h"
@@ -334,6 +334,9 @@ CGlobalRendering::CGlobalRendering()
 	, sdlWindow{nullptr}
 	, glContext{nullptr}
 	, glTimerQueries{0}
+
+	, vulkanBackend{false}
+	, glBackend{true}
 {
 	verticalSync->WrapNotifyOnChange();
 	configHandler->NotifyOnChange(this, {
@@ -403,28 +406,42 @@ SDL_Window* CGlobalRendering::CreateSDLWindow(const char* title) const
 	//   SDL_WINDOW_FULLSCREEN_DESKTOP for "fake" fullscreen that takes the size of the desktop;
 	//   and 0 for windowed mode.
 
-	uint32_t sdlFlags  = (SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
-	         sdlFlags |= (borderless_ ? SDL_WINDOW_FULLSCREEN_DESKTOP : SDL_WINDOW_FULLSCREEN) * fullScreen_;
+	uint32_t sdlFlags  = (borderless_ ? SDL_WINDOW_FULLSCREEN_DESKTOP : SDL_WINDOW_FULLSCREEN) * fullScreen_;
 	         sdlFlags |= (SDL_WINDOW_BORDERLESS * borderless_);
 
-	for (size_t i = 0; i < (aaLvls.size()) && (newWindow == nullptr); i++) {
-		if (i > 0 && aaLvls[i] == aaLvls[i - 1])
-			break;
+	if (glBackend) {
+		sdlFlags |= (SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
 
-		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, aaLvls[i] > 0);
-		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, aaLvls[i]    );
+		for (size_t i = 0; i < (aaLvls.size()) && (newWindow == nullptr); i++) {
+			if (i > 0 && aaLvls[i] == aaLvls[i - 1])
+				break;
 
-		for (size_t j = 0; j < (zbBits.size()) && (newWindow == nullptr); j++) {
-			SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, zbBits[j]);
+			SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, aaLvls[i] > 0);
+			SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, aaLvls[i]    );
 
-			if ((newWindow = SDL_CreateWindow(title, winPosX_, winPosY_, newRes.x, newRes.y, sdlFlags)) == nullptr) {
-				LOG_L(L_WARNING, frmts[0], __func__, SDL_GetError(), aaLvls[i], zbBits[j]);
-				continue;
+			for (size_t j = 0; j < (zbBits.size()) && (newWindow == nullptr); j++) {
+				SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, zbBits[j]);
+
+				if ((newWindow = SDL_CreateWindow(title, winPosX_, winPosY_, newRes.x, newRes.y, sdlFlags)) == nullptr) {
+					LOG_L(L_WARNING, frmts[0], __func__, SDL_GetError(), aaLvls[i], zbBits[j]);
+					continue;
+				}
+
+				LOG(frmts[1], __func__, aaLvls[i], zbBits[j], wpfName = SDL_GetPixelFormatName(SDL_GetWindowPixelFormat(newWindow)));
 			}
-
-			LOG(frmts[1], __func__, aaLvls[i], zbBits[j], wpfName = SDL_GetPixelFormatName(SDL_GetWindowPixelFormat(newWindow)));
 		}
 	}
+	
+	#if defined(HAS_VULKAN) && !defined(HEADLESS)
+	if (vulkanBackend) {
+		sdlFlags |= (SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
+		SDL_Vulkan_LoadLibrary(nullptr);
+		
+		if ((newWindow = SDL_CreateWindow(title, winPosX_, winPosY_, newRes.x, newRes.y, sdlFlags)) == nullptr ){
+			LOG_L(L_WARNING, frmts[0], __func__ ,SDL_GetError());
+		};
+	}
+	#endif // #if defined(HAS_VULKAN) && !defined(HEADLESS)
 
 	if (newWindow == nullptr) {
 		auto buf = fmt::sprintf("[GR::%s] could not create SDL-window\n", __func__);
@@ -505,81 +522,88 @@ bool CGlobalRendering::CreateWindowAndContext(const char* title)
 		return false;
 	}
 
-	// should be set to "3.0" (non-core Mesa is stuck there), see below
-	const char* mesaGL = getenv("MESA_GL_VERSION_OVERRIDE");
-	const char* softGL = getenv("LIBGL_ALWAYS_SOFTWARE");
+	if (glBackend) {
+		// should be set to "3.0" (non-core Mesa is stuck there), see below
+		const char* mesaGL = getenv("MESA_GL_VERSION_OVERRIDE");
+		const char* softGL = getenv("LIBGL_ALWAYS_SOFTWARE");
 
-	// get wanted resolution and context-version
-	const int2 minCtx = (mesaGL != nullptr && std::strlen(mesaGL) >= 3)?
-		int2{                  std::max(mesaGL[0] - '0', 3),                   std::max(mesaGL[2] - '0', 0)}:
-		int2{configHandler->GetInt("GLContextMajorVersion"), configHandler->GetInt("GLContextMinorVersion")};
+		// get wanted resolution and context-version
+		const int2 minCtx = (mesaGL != nullptr && std::strlen(mesaGL) >= 3)?
+			int2{                  std::max(mesaGL[0] - '0', 3),                   std::max(mesaGL[2] - '0', 0)}:
+			int2{configHandler->GetInt("GLContextMajorVersion"), configHandler->GetInt("GLContextMinorVersion")};
 
-	// start with the standard (R8G8B8A8 + 24-bit depth + 8-bit stencil + DB) format
-	SDL_GL_SetAttribute(SDL_GL_RED_SIZE,   8);
-	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
-	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE,  8);
-	SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
-	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE,  24);
-	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
-	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+		// start with the standard (R8G8B8A8 + 24-bit depth + 8-bit stencil + DB) format
+		SDL_GL_SetAttribute(SDL_GL_RED_SIZE,   8);
+		SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
+		SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE,  8);
+		SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
+		SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE,  24);
+		SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
+		SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
-	// create GL debug-context if wanted (more verbose GL messages, but runs slower)
-	// note:
-	//   requesting a core profile explicitly is needed to get versions later than
-	//   3.0/1.30 for Mesa, other drivers return their *maximum* supported context
-	//   in compat and do not make 3.0 itself available in core (though this still
-	//   suffices for most of Spring)
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, forceCoreContext? SDL_GL_CONTEXT_PROFILE_CORE: SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
+		// create GL debug-context if wanted (more verbose GL messages, but runs slower)
+		// note:
+		//   requesting a core profile explicitly is needed to get versions later than
+		//   3.0/1.30 for Mesa, other drivers return their *maximum* supported context
+		//   in compat and do not make 3.0 itself available in core (though this still
+		//   suffices for most of Spring)
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, forceCoreContext? SDL_GL_CONTEXT_PROFILE_CORE: SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
 
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, minCtx.x);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, minCtx.y);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, minCtx.x);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, minCtx.y);
+	
 
+		if (msaaLevel > 0) {
+			if (softGL != nullptr)
+				LOG_L(L_WARNING, "MSAALevel > 0 and LIBGL_ALWAYS_SOFTWARE set, this will very likely crash!");
 
-	if (msaaLevel > 0) {
-		if (softGL != nullptr)
-			LOG_L(L_WARNING, "MSAALevel > 0 and LIBGL_ALWAYS_SOFTWARE set, this will very likely crash!");
+			make_even_number(msaaLevel);
+		}
 
-		make_even_number(msaaLevel);
+		if ((sdlWindow = CreateSDLWindow(title)) == nullptr)
+		return false;
+
+		if (configHandler->GetInt("MinimizeOnFocusLoss") == 0)
+			SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");
+
+		SetWindowAttributes(sdlWindow);
+
+		#if !defined(HEADLESS)
+			// disable desktop compositing to fix tearing
+			// (happens at 300fps, neither fullscreen nor vsync fixes it, so disable compositing)
+			// On Windows Aero often uses vsync, and so when Spring runs windowed it will run with
+			// vsync too, resulting in bad performance.
+			if (configHandler->GetBool("BlockCompositing"))
+				WindowManagerHelper::BlockCompositing(sdlWindow);
+		#endif
+
+		if ((glContext = CreateGLContext(minCtx)) == nullptr)
+			return false;
+
+		if (!CheckGLContextVersion(minCtx)) {
+			handleerror(nullptr, "minimum required OpenGL version not supported, aborting", "ERROR", MBF_OK | MBF_EXCL);
+			return false;
+		}
+
+		MakeCurrentGLContext(false);
 	}
 
-	if ((sdlWindow = CreateSDLWindow(title)) == nullptr)
-		return false;
-
-	if (configHandler->GetInt("MinimizeOnFocusLoss") == 0)
-		SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");
-
-	SetWindowAttributes(sdlWindow);
-
-#if !defined(HEADLESS)
-	// disable desktop compositing to fix tearing
-	// (happens at 300fps, neither fullscreen nor vsync fixes it, so disable compositing)
-	// On Windows Aero often uses vsync, and so when Spring runs windowed it will run with
-	// vsync too, resulting in bad performance.
-	if (configHandler->GetBool("BlockCompositing"))
-		WindowManagerHelper::BlockCompositing(sdlWindow);
-#endif
-
-	if ((glContext = CreateGLContext(minCtx)) == nullptr)
-		return false;
-
-	if (!CheckGLContextVersion(minCtx)) {
-		handleerror(nullptr, "minimum required OpenGL version not supported, aborting", "ERROR", MBF_OK | MBF_EXCL);
-		return false;
+	if (vulkanBackend) {
+		//TODO Vulkan Surface Creation
 	}
 
-	MakeCurrentContext(false);
 	SDL_DisableScreenSaver();
 	return true;
 }
 
 
-void CGlobalRendering::MakeCurrentContext(bool clear) const {
+void CGlobalRendering::MakeCurrentGLContext(bool clear) const {
 	SDL_GL_MakeCurrent(sdlWindow, clear ? nullptr : glContext);
 }
 
 
-void CGlobalRendering::DestroyWindowAndContext() {
+void CGlobalRendering::DestroyWindowAndContext() { //FIXME Vulkan Destruction
 	if (!sdlWindow)
 		return;
 
@@ -607,7 +631,7 @@ void CGlobalRendering::KillSDL() const {
 	SDL_Quit();
 }
 
-void CGlobalRendering::PostInit() {
+void CGlobalRendering::PostWindowInit() { //FIXME Vulkan init
 	#ifndef HEADLESS
 	glewExperimental = true;
 	#endif
@@ -621,12 +645,12 @@ void CGlobalRendering::PostInit() {
 	char sdlVersionStr[64] = "";
 	char glVidMemStr[64] = "unknown";
 
-	QueryVersionInfo(sdlVersionStr, glVidMemStr);
+	QueryGLVersionInfo(sdlVersionStr, glVidMemStr);
 	CheckGLExtensions();
 	SetGLSupportFlags();
 	QueryGLMaxVals();
 
-	LogVersionInfo(sdlVersionStr, glVidMemStr);
+	LogGLVersionInfo(sdlVersionStr, glVidMemStr);
 	ToggleGLDebugOutput(0, 0, 0);
 
 	UniformConstants::GetInstance().Init();
@@ -637,7 +661,7 @@ void CGlobalRendering::PostInit() {
 	UpdateTimer();
 }
 
-void CGlobalRendering::SwapBuffers(bool allowSwapBuffers, bool clearErrors)
+void CGlobalRendering::SwapBuffers(bool allowSwapBuffers, bool clearErrors) //FIXME Vulkan equivalent is presenting frame
 {
 	spring_time pre;
 	{
@@ -898,7 +922,7 @@ void CGlobalRendering::QueryGLMaxVals()
 	glslMaxVaryings /= 4;
 }
 
-void CGlobalRendering::QueryVersionInfo(char (&sdlVersionStr)[64], char (&glVidMemStr)[64])
+void CGlobalRendering::QueryGLVersionInfo(char (&sdlVersionStr)[64], char (&glVidMemStr)[64])
 {
 	auto& grInfo = globalRenderingInfo;
 
@@ -939,7 +963,7 @@ void CGlobalRendering::QueryVersionInfo(char (&sdlVersionStr)[64], char (&glVidM
 	SNPRINTF(glVidMemStr, sizeof(glVidMemStr), memFmtStr, totalMemMB, availMemMB);
 }
 
-void CGlobalRendering::LogVersionInfo(const char* sdlVersionStr, const char* glVidMemStr) const
+void CGlobalRendering::LogGLVersionInfo(const char* sdlVersionStr, const char* glVidMemStr) const
 {
 	LOG("[GR::%s]", __func__);
 	LOG("\tSDL version : %s", sdlVersionStr);
@@ -1131,8 +1155,6 @@ void CGlobalRendering::SetWindowTitle(const std::string& title)
 		spring::QueuedFunction::Enqueue<decltype(SetWindowTitleImpl), SDL_Window*, const std::string&>(SetWindowTitleImpl, sdlWindow, title);
 }
 
-
-
 void CGlobalRendering::SetWindowAttributes(SDL_Window* window)
 {
 	// Get wanted state
@@ -1177,7 +1199,7 @@ void CGlobalRendering::ConfigNotify(const std::string& key, const std::string& v
 	LOG("[GR::%s][1] key=%s val=%s", __func__, key.c_str(), value.c_str());
 	if (key == "DualScreenMode" || key == "DualScreenMiniMapOnLeft") {
 		SetDualScreenParams();
-		UpdateGLGeometry();
+		UpdateRendererGeometry();
 
 		if (game != nullptr)
 			gmeChgFrame = drawFrame + 1; //need to do on next frame since config mutex is locked inside ConfigNotify
@@ -1207,7 +1229,7 @@ void CGlobalRendering::UpdateWindow()
 		return;
 
 	SetWindowAttributes(sdlWindow);
-	MakeCurrentContext(false);
+	MakeCurrentGLContext(false);
 }
 
 void CGlobalRendering::UpdateTimer()
@@ -1504,7 +1526,7 @@ void CGlobalRendering::SaveWindowPosAndSize()
 }
 
 
-void CGlobalRendering::UpdateGLConfigs()
+void CGlobalRendering::UpdateRendererConfigs()
 {
 	LOG("[GR::%s]", __func__);
 
@@ -1604,7 +1626,7 @@ void CGlobalRendering::UpdateWindowBorders(SDL_Window* window) const
 #endif
 }
 
-void CGlobalRendering::UpdateGLGeometry()
+void CGlobalRendering::UpdateRendererGeometry()
 {
 	LOG("[GR::%s][1] winSize=<%d,%d>", __func__, winSizeX, winSizeY);
 
@@ -1614,6 +1636,17 @@ void CGlobalRendering::UpdateGLGeometry()
 	UpdateScreenMatrices();
 
 	LOG("[GR::%s][2] winSize=<%d,%d>", __func__, winSizeX, winSizeY);
+}
+
+void CGlobalRendering::InitRendererState()
+{
+	if (glBackend) {
+		InitGLState();
+	}
+
+	if (vulkanBackend) {
+		InitVkState();
+	}
 }
 
 void CGlobalRendering::InitGLState()
@@ -1652,6 +1685,14 @@ void CGlobalRendering::InitGLState()
 	// this does not accomplish much
 	// SwapBuffers(true, true);
 	LogDisplayMode(sdlWindow);
+}
+
+void CGlobalRendering::InitVkState()
+{
+	LOG("[GR::%s]", __func__);
+
+	//vkCoreObject.InitializeVulkanForSDL(sdlWindow);
+	//vkCoreObject.InitializeVulkanSwapchainForSDL();
 }
 
 void CGlobalRendering::ToggleMultisampling() const

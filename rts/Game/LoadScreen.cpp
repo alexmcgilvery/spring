@@ -162,7 +162,7 @@ void CLoadScreen::Kill()
 	CFontTexture::sync.SetThreadSafety(false);
 	CLoadLock::SetThreadSafety(false);
 	// set last time and forever
-	globalRendering->MakeCurrentContext(false);
+	globalRendering->MakeCurrentGLContext(false);
 	globalRendering->ToggleMultisampling();
 }
 

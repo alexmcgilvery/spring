@@ -42,27 +42,27 @@ public:
 	 */
 	bool CreateWindowAndContext(const char* title);
 	SDL_Window* CreateSDLWindow(const char* title) const;
-	SDL_GLContext CreateGLContext(const int2& minCtx);
 	SDL_Window* GetWindow() { return sdlWindow; }
-	SDL_GLContext GetContext() { return glContext; }
+
 
 	void DestroyWindowAndContext();
 	void KillSDL() const;
-	void PostInit();
+	void PostWindowInit();
 
 	void SwapBuffers(bool allowSwapBuffers, bool clearErrors);
 
 	void SetGLTimeStamp(uint32_t queryIdx) const;
 	uint64_t CalcGLDeltaTime(uint32_t queryIdx0, uint32_t queryIdx1) const;
 
-	void MakeCurrentContext(bool clear) const;
+	void MakeCurrentGLContext(bool clear) const;
 
+	SDL_GLContext CreateGLContext(const int2& minCtx);
+	SDL_GLContext GetGLContext() { return glContext; }
 	void CheckGLExtensions() const;
 	void SetGLSupportFlags();
-	void QueryVersionInfo(char (&sdlVersionStr)[64], char (&glVidMemStr)[64]);
+	void QueryGLVersionInfo(char (&sdlVersionStr)[64], char (&glVidMemStr)[64]);
 	void QueryGLMaxVals();
-	void LogVersionInfo(const char* sdlVersionStr, const char* glVidMemStr) const;
-	void LogDisplayMode(SDL_Window* window) const;
+	void LogGLVersionInfo(const char* sdlVersionStr, const char* glVidMemStr) const;
 
 	void GetAllDisplayBounds(SDL_Rect& r) const;
 
@@ -90,9 +90,10 @@ public:
 	void UpdatePixelGeometry();
 	void ReadWindowPosAndSize();
 	void SaveWindowPosAndSize();
-	void UpdateGLConfigs();
-	void UpdateGLGeometry();
+	void UpdateRendererConfigs();
+	void UpdateRendererGeometry();
 	void UpdateScreenMatrices();
+	void LogDisplayMode(SDL_Window* window) const;
 
 	void LoadViewport();
 	void LoadDualViewport();
@@ -109,7 +110,9 @@ public:
 	bool CheckGLMultiSampling() const;
 	bool CheckGLContextVersion(const int2& minCtx) const;
 	bool ToggleGLDebugOutput(unsigned int msgSrceIdx, unsigned int msgTypeIdx, unsigned int msgSevrIdx) const;
+	void InitRendererState();
 	void InitGLState();
+	void InitVkState();
 	void ToggleMultisampling() const;
 
 	bool CheckShaderGL4() const;
@@ -364,6 +367,12 @@ public:
 	 */
 	bool fullScreen;
 	bool borderless;
+
+	/**
+	 * @brief vulkan or opengl backend in use
+	*/
+	bool vulkanBackend;
+	bool glBackend;
 
 public:
 	SDL_Window* sdlWindow;

@@ -1,8 +1,12 @@
 #pragma once
 #if defined(HAS_VULKAN) && !defined(HEADLESS)
 
+#include "VkObjects.h"
+
 #include <vector>
 #include <memory>
+
+/**
 
 #define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
 #include <vulkan/vulkan.hpp>
@@ -35,7 +39,7 @@ public:
 
 	bool IsValid() const { return vkInitialized; }
 private:
-	static inline std::unique_ptr<VkCoreObjects> vkCoreObjects = nullptr;
+	static inline std::unique_ptr<VkCoreObjects1> vkCoreObjects = nullptr;
 
 	bool vkInitialized = false;
 
@@ -54,3 +58,51 @@ private:
 };
 
 #endif
+*/
+
+class VkCoreObjects {
+public:
+	VkCoreObjects();
+	~VkCoreObjects();
+
+	const VkDeviceSize GetCurrentDeviceVRAMSize();
+
+private:
+	// Initializers
+	void InitializeVulkanForSDL(SDL_Window* _sdl_window_ptr);
+	void InitializeVulkanSwapchainForSDL();
+
+	// Frame Update 
+	void PrepareSwapchainFrame();
+	void PresentSwapchainFrame();
+	void PrepareRenderTarget();
+	void FinalizeRenderTarget();
+
+	// Cleanup
+	void TerminateVulkanImages();
+	void TerminateVulkanSwapchainImages();
+	void TerminateVulkanGraphicsPipeline();
+	void TerminateVulkanRenderPass();
+	void TerminateVulkanSwapchainForSDL();
+	void TerminateVulkanSwapchainTaskControls();
+	void TerminateVulkanDevices();
+	void TerminateVulkanCore();
+
+private:
+	bool vkInitialized_ = false;
+
+	VulkanCore				vkCore_;
+	VulkanDevice			vkDevice_;
+	VulkanWindow			vkWindow_;
+	VulkanRenderPass		vkRenderPass_;
+	VulkanGraphicsPipeline	vkGraphicsPipeline_;
+	VulkanGraphicalSettings	vkGraphicsSettings_;
+
+	std::vector<VulkanTaskControl>				vkSwapchainCommandData_;
+	std::vector<VulkanSwapchainImageStatus>		vkSwapchainImageStatuses_;
+	std::vector<VulkanImage>					vkSwapchainImages_;
+
+	std::vector<VulkanImage>					vkImages_; // Non swapchain images
+};
+
+#endif // defined(HAS_VULKAN) && !defined(HEADLESS)

@@ -16,9 +16,10 @@ if("${SDL2_VERSION_STRING}" VERSION_LESS "2")
 	message(FATAL_ERROR "Found SDL v${SDL2_VERSION_STRING} while 2 is required!")
 endif()
 
-find_package(Vulkan)
+find_package(Vulkan REQUIRED)
 if    (Vulkan_FOUND)
 	list(APPEND engineIncludes ${Vulkan_INCLUDE_DIRS})
+	list(APPEND engineLibraries ${Vulkan_LIBRARY})
 	add_definitions(-DHAS_VULKAN)
 endif (Vulkan_FOUND)
 

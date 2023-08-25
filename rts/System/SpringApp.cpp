@@ -42,17 +42,17 @@
 #include "Game/UI/ScanCodes.h"
 #include "Game/UI/InfoConsole.h"
 #include "Game/UI/MouseHandler.h"
-#include "Lua/LuaOpenGL.h"
+#include "Lua/LuaOpenGL.h" // FIXME Vulkan pass on Lua
 #include "Lua/LuaVFSDownload.h"
 #include "Menu/LuaMenuController.h"
 #include "Menu/SelectMenu.h"
 #include "Net/GameServer.h"
 #include "Net/Protocol/NetProtocol.h" // clientNet
+#include "Rendering/Fonts/glFont.h" // FIXME Vulkan pass on fonts
 #include "Rendering/GlobalRendering.h"
-#include "Rendering/Fonts/glFont.h"
-#include "Rendering/GL/FBO.h"
+#include "Rendering/GL/FBO.h" // FIXME Vulkan pass on FBO
+#include "Rendering/GL/RenderBuffers.h" // FIXME Vulkan pass on renderbuffers
 #include "Rendering/Models/ModelsMemStorage.h"
-#include "Rendering/GL/RenderBuffers.h"
 #include "Rendering/Shaders/ShaderHandler.h"
 #include "Rendering/Textures/Bitmap.h"
 #include "Rendering/Textures/NamedTextures.h"
@@ -247,11 +247,11 @@ bool SpringApp::Init()
 		return false;
 	}
 
-	// Init OpenGL
-	globalRendering->PostInit();
-	globalRendering->UpdateGLConfigs();
-	globalRendering->UpdateGLGeometry();
-	globalRendering->InitGLState();
+	// Init Renderer
+	globalRendering->PostWindowInit();
+	globalRendering->UpdateRendererConfigs();
+	globalRendering->UpdateRendererGeometry();
+	globalRendering->InitRendererState();
 
 	CCameraHandler::InitStatic();
 	CBitmap::InitPool(configHandler->GetInt("TextureMemPoolSize"));
@@ -1042,9 +1042,9 @@ bool SpringApp::MainEventHandler(const SDL_Event& event)
 						{
 							SCOPED_ONCE_TIMER("GlobalRendering::UpdateGL");
 
-							globalRendering->UpdateGLConfigs();
-							globalRendering->UpdateGLGeometry();
-							globalRendering->InitGLState();
+							globalRendering->UpdateRendererConfigs();
+							globalRendering->UpdateRendererGeometry();
+							globalRendering->InitRendererState();
 							UpdateInterfaceGeometry();
 						}
 					}
@@ -1069,9 +1069,9 @@ bool SpringApp::MainEventHandler(const SDL_Event& event)
 						SCOPED_ONCE_TIMER("GlobalRendering::UpdateGL");
 
 						SaveWindowPosAndSize();
-						globalRendering->UpdateGLConfigs();
-						globalRendering->UpdateGLGeometry();
-						globalRendering->InitGLState();
+						globalRendering->UpdateRendererConfigs();
+						globalRendering->UpdateRendererGeometry();
+						globalRendering->InitRendererState();
 						UpdateInterfaceGeometry();
 					}
 					{
