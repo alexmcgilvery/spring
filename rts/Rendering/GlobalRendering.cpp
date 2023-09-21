@@ -352,7 +352,7 @@ void IGlobalRendering::DestroyWindow() {
 	WindowManagerHelper::SetIconSurface(sdlWindow, nullptr);
 	SetWindowInputGrabbing(false);
 
-	RendererDestroyWindow();
+	SDL_DestroyWindow(sdlWindow);
 
 	sdlWindow = nullptr;
 }

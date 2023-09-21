@@ -77,7 +77,7 @@ CR_REG_METADATA(CGLRendererCore, (
 	CR_IGNORED(glTimerQueries)
 )
 */
-
+CGLRendererCore* glRenderer;
 
 CGLRendererCore::CGLRendererCore()
 	: forceDisableGL4(configHandler->GetInt("ForceDisableGL4"))
@@ -97,18 +97,20 @@ CGLRendererCore::~CGLRendererCore()
 	if (glContext) {
 		glDeleteQueries(glTimerQueries.size(), glTimerQueries.data());
 	}
+	RendererDestroyWindow();
 }
 
 void CGLRendererCore::InitStatic()
 { 
 	alignas(CGLRendererCore) static std::byte globalRenderingMem[sizeof(CGLRendererCore)];
-	globalRendering = new (globalRenderingMem) CGLRendererCore(); 
+	glRenderer = new (globalRenderingMem) CGLRendererCore(); 
+	globalRendering = (IGlobalRendering*) glRenderer;
 }
 
 void CGLRendererCore::KillStatic()
 { 
 	globalRendering->PreKill();
-	spring::SafeDestruct(globalRendering);
+	spring::SafeDestruct(glRenderer);
 }
 
 void CGLRendererCore::RendererPreWindowInit()
@@ -318,7 +320,6 @@ SDL_Window* CGLRendererCore::RendererCreateSDLWindow(const char* title)
 void CGLRendererCore::RendererDestroyWindow()
 {
 	SDL_GL_MakeCurrent(sdlWindow, nullptr);
-	SDL_DestroyWindow(sdlWindow);
 
 	#if !defined(HEADLESS)
 	if (glContext)
