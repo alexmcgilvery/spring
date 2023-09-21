@@ -50,6 +50,7 @@
 #include "Net/Protocol/NetProtocol.h" // clientNet
 #include "Rendering/Fonts/glFont.h" // FIXME Vulkan pass on fonts
 #include "Rendering/GlobalRendering.h"
+#include "Rendering/GL/GLRendererCore.h"
 #include "Rendering/GL/FBO.h" // FIXME Vulkan pass on FBO
 #include "Rendering/GL/RenderBuffers.h" // FIXME Vulkan pass on renderbuffers
 #include "Rendering/Models/ModelsMemStorage.h"
@@ -226,7 +227,10 @@ bool SpringApp::Init()
 	SpringMath::Init();
 	LuaMemPool::InitStatic(configHandler->GetBool("UseLuaMemPools"));
 
-	CGlobalRendering::InitStatic();
+	if (true) { //TODO If GL Renderer:
+		CGLRendererCore::InitStatic(); 
+	} //TODO Else if Vulkan Renderer:
+	
 	globalRendering->SetFullScreen(FLAGS_window, FLAGS_fullscreen);
 
 	if (!InitPlatformLibs())
@@ -251,7 +255,7 @@ bool SpringApp::Init()
 	globalRendering->PostWindowInit();
 	globalRendering->UpdateRendererConfigs();
 	globalRendering->UpdateRendererGeometry();
-	globalRendering->InitRendererState();
+	globalRendering->SetRendererStartState();
 
 	CCameraHandler::InitStatic();
 	CBitmap::InitPool(configHandler->GetInt("TextureMemPoolSize"));
@@ -415,7 +419,7 @@ bool SpringApp::InitWindow(const char* title)
 	Threading::SetThreadName("gpu-driver");
 
 	// raises an error-prompt in case of failure
-	if (!globalRendering->CreateWindowAndContext(title))
+	if (!globalRendering->CreateWindow(title))
 		return false;
 
 	// Something in SDL_SetVideoMode (OpenGL drivers?) messes with the FPU control word.
@@ -1002,7 +1006,10 @@ void SpringApp::Kill(bool fromRun)
 
 	LOG("[SpringApp::%s][7]", __func__);
 
-	CGlobalRendering::KillStatic();
+	if (true) { //TODO If GL Renderer:
+		CGLRendererCore::KillStatic();
+	} //TODO Else if Vulkan Renderer:
+	
 	CBitmap::KillPool();
 	CLuaSocketRestrictions::KillStatic();
 
@@ -1044,7 +1051,7 @@ bool SpringApp::MainEventHandler(const SDL_Event& event)
 
 							globalRendering->UpdateRendererConfigs();
 							globalRendering->UpdateRendererGeometry();
-							globalRendering->InitRendererState();
+							globalRendering->SetRendererStartState();
 							UpdateInterfaceGeometry();
 						}
 					}
@@ -1071,7 +1078,7 @@ bool SpringApp::MainEventHandler(const SDL_Event& event)
 						SaveWindowPosAndSize();
 						globalRendering->UpdateRendererConfigs();
 						globalRendering->UpdateRendererGeometry();
-						globalRendering->InitRendererState();
+						globalRendering->SetRendererStartState();
 						UpdateInterfaceGeometry();
 					}
 					{

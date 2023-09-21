@@ -167,7 +167,7 @@ void CRadarTexture::Update()
 		glViewport(0, 0, texSize.x, texSize.y);
 		glClearColor(1.0f, 0.0f, 0.0f, 0.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
-		globalRendering->LoadViewport();
+		globalRendering->UpdateViewport();
 		FBO::Unbind();
 
 		glBindTexture(GL_TEXTURE_2D, texture);
@@ -215,7 +215,7 @@ void CRadarTexture::Update()
 		glVertex2f(+1.f, -1.f);
 	glEnd();
 	shader->Disable();
-	globalRendering->LoadViewport();
+	globalRendering->UpdateViewport();
 	FBO::Unbind();
 
 	// cleanup

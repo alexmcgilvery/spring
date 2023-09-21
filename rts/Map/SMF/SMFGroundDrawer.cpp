@@ -255,7 +255,7 @@ void CSMFGroundDrawer::DrawDeferredPass(const DrawPass::e& drawPass, bool alphaT
 		geomBuffer.UnBind();
 	}
 
-	globalRendering->LoadViewport();
+	globalRendering->UpdateViewport();
 
 	#if 0
 	geomBuffer.DrawDebug(geomBuffer.GetBufferTexture(GL::GeometryBuffer::ATTACHMENT_NORMTEX));

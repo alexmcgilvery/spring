@@ -305,7 +305,7 @@ namespace {
 				const auto iter = p.activeUniforms.find(uniformName);
 
 				if (iter == p.activeUniforms.end()) {
-					if (globalRendering->glDebug || globalRendering->glDebugErrors)
+					if (globalRendering->rendererDebug || globalRendering->rendererDebugErrors)
 						LOG_L(L_WARNING, "[%s] uniform \"%s\" from table \"%s\" not active in shader", __func__, uniformName, fieldName);
 					continue;
 				}
@@ -1225,7 +1225,7 @@ int LuaShaders::UniformSubroutine(lua_State* L)
 
 int LuaShaders::GetEngineUniformBufferDef(lua_State* L)
 {
-	if (!globalRendering->haveGL4)
+	if (!globalRendering->supportUniformData)
 		return 0;
 
 	const int idx = luaL_checkint(L, 1);
@@ -1238,7 +1238,7 @@ int LuaShaders::GetEngineUniformBufferDef(lua_State* L)
 
 int LuaShaders::GetEngineModelUniformDataDef(lua_State* L)
 {
-	if (!globalRendering->haveGL4)
+	if (!globalRendering->supportModelUniformData)
 		return 0;
 
 	lua_pushstring(L, ModelUniformData::GetGLSLDefinition().c_str());

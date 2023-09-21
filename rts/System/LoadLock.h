@@ -18,7 +18,7 @@ public:
 		auto& thisThreadLocksCount = locksCount[Threading::IsGameLoadThread()];
 		++thisThreadLocksCount;
 		if (thisThreadLocksCount == 1) {
-			globalRendering->MakeCurrentGLContext(false); //set
+			globalRendering->AquireThreadContext(); //set
 			globalRendering->ToggleMultisampling();
 		}
 	}
@@ -29,7 +29,7 @@ public:
 		--thisThreadLocksCount;
 
 		if (thisThreadLocksCount == 0)
-			globalRendering->MakeCurrentGLContext(true ); //clear
+			globalRendering->ReleaseThreadContext(); //clear
 
 		mtx.unlock();
 	}

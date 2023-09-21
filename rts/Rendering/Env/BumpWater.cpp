@@ -362,7 +362,7 @@ void CBumpWater::InitResources(bool loadShader)
 		glBindTexture(target, depthTexture);
 		glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		GLuint depthFormat = CGlobalRendering::DepthBitsToFormat(globalRendering->supportDepthBufferBitDepth);
+		GLuint depthFormat = IGlobalRendering::DepthBitsToFormat(globalRendering->supportDepthBufferBitDepth);
 		glTexImage2D(target, 0, depthFormat, screenTextureX, screenTextureY, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
 	}
 
@@ -388,7 +388,7 @@ void CBumpWater::InitResources(bool loadShader)
 
 	// CREATE FBOs
 	if (FBO::IsSupported()) {
-		GLuint depthRBOFormat = static_cast<GLuint>(CGlobalRendering::DepthBitsToFormat(depthBits));
+		GLuint depthRBOFormat = static_cast<GLuint>(IGlobalRendering::DepthBitsToFormat(depthBits));
 
 		if (reflection>0) {
 			reflectFBO.Bind();
@@ -579,7 +579,7 @@ void CBumpWater::UpdateWater(const CGame* game)
 	if (reflection > 0) DrawReflection(game);
 	if (reflection || refraction) {
 		FBO::Unbind();
-		globalRendering->LoadViewport();
+		globalRendering->UpdateViewport();
 	}
 	glPopAttrib();
 }
@@ -805,7 +805,7 @@ void CBumpWater::UpdateCoastmap(const bool initialize)
 	glDeleteTextures(1, &coastUpdateTexture);
 	coastmapAtlasRects.clear();
 
-	globalRendering->LoadViewport();
+	globalRendering->UpdateViewport();
 	glActiveTexture(GL_TEXTURE0);
 }
 
@@ -883,7 +883,7 @@ void CBumpWater::UpdateDynWaves(const bool initialize)
 		glPopMatrix();
 	glMatrixMode(GL_MODELVIEW);
 		glPopMatrix();
-	globalRendering->LoadViewport();
+	globalRendering->UpdateViewport();
 
 	glPopAttrib();
 	dynWavesFBO.Unbind();
@@ -984,7 +984,7 @@ void CBumpWater::DrawRefraction(const CGame* game)
 
 	camera->Update();
 
-	globalRendering->LoadViewport();
+	globalRendering->UpdateViewport();
 	const auto& sky = ISky::GetSky();
 	glClearColor(sky->fogColor.x, sky->fogColor.y, sky->fogColor.z, 0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

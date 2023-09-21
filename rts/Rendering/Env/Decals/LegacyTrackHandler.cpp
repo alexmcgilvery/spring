@@ -276,7 +276,7 @@ void LegacyTrackHandler::Draw()
 	glPolygonOffset(-10, -20);
 
 	BindTextures();
-	BindShader(sunLighting->groundAmbientColor * CGlobalRendering::SMF_INTENSITY_MULT);
+	BindShader(sunLighting->groundAmbientColor * IGlobalRendering::SMF_INTENSITY_MULT);
 
 	// draw track decals
 	AddTracks();

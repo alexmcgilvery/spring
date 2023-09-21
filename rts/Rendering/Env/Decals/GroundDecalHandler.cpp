@@ -174,7 +174,7 @@ void CGroundDecalHandler::LoadDecalShaders() {
 void CGroundDecalHandler::SunChanged() {
 	if (globalRendering->haveGLSL) {
 		decalShaders[DECAL_SHADER_GLSL]->Enable();
-		float4 ambientColor = sunLighting->groundAmbientColor * CGlobalRendering::SMF_INTENSITY_MULT;
+		float4 ambientColor = sunLighting->groundAmbientColor * IGlobalRendering::SMF_INTENSITY_MULT;
 		decalShaders[DECAL_SHADER_GLSL]->SetUniform("groundAmbientColor", ambientColor.x, ambientColor.y, ambientColor.z, 1.0f);
 		decalShaders[DECAL_SHADER_GLSL]->SetUniform("shadowDensity", sunLighting->groundShadowDensity);
 		decalShaders[DECAL_SHADER_GLSL]->Disable();

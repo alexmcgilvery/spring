@@ -134,7 +134,7 @@ void CInfoTextureCombiner::Update()
 		glTexCoord2f(1.f, 0.f); glVertex2f(+isx, -1.f);
 	glEnd();
 
-	globalRendering->LoadViewport();
+	globalRendering->UpdateViewport();
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 	FBO::Unbind();
 	shader->Disable();

@@ -585,7 +585,7 @@ static unsigned int LoadProgram(GLenum, const char*, const char*);
 bool ProgramStringIsNative(GLenum target, const char* filename)
 {
 	// clear any current GL errors so that the following check is valid
-	glClearErrors("GL", __func__, globalRendering->glDebugErrors);
+	glClearErrors("GL", __func__, globalRendering->rendererDebugErrors);
 
 	const GLuint tempProg = LoadProgram(target, filename, (target == GL_VERTEX_PROGRAM_ARB? "vertex": "fragment"));
 

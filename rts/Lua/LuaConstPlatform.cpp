@@ -94,7 +94,7 @@ bool LuaConstPlatform::PushEntries(lua_State* L)
 	LuaPushNamedBool(L, "glHaveIntel", globalRendering->haveIntel);
 
 	LuaPushNamedBool(L, "glHaveGLSL", globalRendering->haveGLSL);
-	LuaPushNamedBool(L, "glHaveGL4", globalRendering->haveGL4);
+	//LuaPushNamedBool(L, "glHaveGL4", globalRendering->haveGL4); //FIXME
 
 	LuaPushNamedNumber(L, "glSupportDepthBufferBitDepth", globalRendering->supportDepthBufferBitDepth);
 

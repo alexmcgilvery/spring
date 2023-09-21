@@ -124,7 +124,7 @@ void CMetalExtractionTexture::Update()
 	glEnd();
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	//glDisable(GL_BLEND);
-	globalRendering->LoadViewport();
+	globalRendering->UpdateViewport();
 	shader->Disable();
 	FBO::Unbind();
 }

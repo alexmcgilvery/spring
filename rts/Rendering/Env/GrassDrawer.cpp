@@ -900,7 +900,7 @@ void CGrassDrawer::CreateFarTex()
 	fboTex.AttachTexture(farTex);
 	fboTex.CheckStatus("GRASSDRAWER1");
 
-	GLenum depthFormat = static_cast<GLenum>(CGlobalRendering::DepthBitsToFormat(globalRendering->supportDepthBufferBitDepth));
+	GLenum depthFormat = static_cast<GLenum>(IGlobalRendering::DepthBitsToFormat(globalRendering->supportDepthBufferBitDepth));
 
 	FBO fbo;
 	fbo.Bind();
@@ -1004,7 +1004,7 @@ void CGrassDrawer::CreateFarTex()
 		glGenerateMipmap(GL_TEXTURE_2D);
 	}
 
-	globalRendering->LoadViewport();
+	globalRendering->UpdateViewport();
 	glMatrixMode(GL_PROJECTION);
 	glPopMatrix();
 	glMatrixMode(GL_MODELVIEW);

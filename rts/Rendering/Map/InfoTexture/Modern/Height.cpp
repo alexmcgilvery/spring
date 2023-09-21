@@ -160,7 +160,7 @@ void CHeightTexture::Update()
 		glVertex2f(1.f, 0.f);
 	glEnd();
 	shader->Disable();
-	globalRendering->LoadViewport();
+	globalRendering->UpdateViewport();
 	FBO::Unbind();
 
 	// cleanup

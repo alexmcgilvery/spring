@@ -218,7 +218,7 @@ void VBO::Resize(GLsizeiptr newSize, GLenum newUsage)
 	usage = newUsage;
 
 	if (isSupported) {
-		glClearErrors("VBO", __func__, globalRendering->glDebugErrors);
+		glClearErrors("VBO", __func__, globalRendering->rendererDebugErrors);
 		const GLenum oldBoundTarget = curBoundTarget;
 		GLint rbglsize = 0;
 		GLint wbglsize = 0;
@@ -323,7 +323,7 @@ void VBO::New(GLsizeiptr newSize, GLenum newUsage, const void* newData)
 	}
 
 	if (isSupported) {
-		glClearErrors("VBO", __func__, globalRendering->glDebugErrors);
+		glClearErrors("VBO", __func__, globalRendering->rendererDebugErrors);
 
 	#ifdef GLEW_ARB_buffer_storage
 		if (immutableStorage) {

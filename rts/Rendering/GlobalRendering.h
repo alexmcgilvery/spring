@@ -12,6 +12,8 @@
 #include "System/Misc/SpringTime.h"
 #include "System/type2.h"
 
+struct IRendererCore;
+
 struct SDL_version;
 struct SDL_Rect;
 struct SDL_Window;
@@ -23,46 +25,50 @@ typedef void* SDL_GLContext;
  * Contains globally accessible rendering related data
  * that does not remain synced.
  */
-class CGlobalRendering {
-	CR_DECLARE_STRUCT(CGlobalRendering)
+class IGlobalRendering {
+	CR_DECLARE_STRUCT(IGlobalRendering)
+protected:
+	virtual void RendererPreWindowInit() = 0;
+	virtual void RendererPostWindowInit() = 0;
+	virtual bool RendererCreateWindow(const char* title) = 0;
+	virtual SDL_Window* RendererCreateSDLWindow(const char* title) = 0;
+	virtual void RendererSetStartState() = 0;
+	virtual void RendererDestroyWindow() = 0;
+	virtual void RendererUpdateWindow() = 0;
+	virtual void RendererPresentFrame(bool allowSwapBuffers, bool clearErrors) = 0; // Present Frame
+
+	SDL_Window* CreateSDLWindow(const char* title);
 
 public:
-	CGlobalRendering();
-	~CGlobalRendering();
+	virtual void UpdateViewport() = 0;
+
+	virtual void SetTimeStamp(uint32_t queryIdx) const = 0;
+	virtual uint64_t CalculateFrameTimeDelta(uint32_t queryIdx0, uint32_t queryIdx1) const = 0;
+
+	virtual void ToggleMultisampling() const = 0;
+	virtual bool ToggleDebugOutput(unsigned int msgSrceIdx, unsigned int msgTypeIdx, unsigned int msgSevrIdx) const = 0;
+
+	virtual void AquireThreadContext() = 0;
+	virtual void ReleaseThreadContext() = 0;
+public:
+	IGlobalRendering();
+	~IGlobalRendering();
 
 	void PreKill();
-
-	static void InitStatic();
-	static void KillStatic();
 
 	/**
 	 * @return whether setting the video mode was successful
 	 *
 	 * Sets SDL video mode options/settings
 	 */
-	bool CreateWindowAndContext(const char* title);
-	SDL_Window* CreateSDLWindow(const char* title) const;
+	bool CreateWindow(const char* title);
 	SDL_Window* GetWindow() { return sdlWindow; }
 
-
-	void DestroyWindowAndContext();
+	void DestroyWindow();
 	void KillSDL() const;
 	void PostWindowInit();
 
 	void SwapBuffers(bool allowSwapBuffers, bool clearErrors);
-
-	void SetGLTimeStamp(uint32_t queryIdx) const;
-	uint64_t CalcGLDeltaTime(uint32_t queryIdx0, uint32_t queryIdx1) const;
-
-	void MakeCurrentGLContext(bool clear) const;
-
-	SDL_GLContext CreateGLContext(const int2& minCtx);
-	SDL_GLContext GetGLContext() { return glContext; }
-	void CheckGLExtensions() const;
-	void SetGLSupportFlags();
-	void QueryGLVersionInfo(char (&sdlVersionStr)[64], char (&glVidMemStr)[64]);
-	void QueryGLMaxVals();
-	void LogGLVersionInfo(const char* sdlVersionStr, const char* glVidMemStr) const;
 
 	void GetAllDisplayBounds(SDL_Rect& r) const;
 
@@ -70,6 +76,7 @@ public:
 
 	void SetWindowTitle(const std::string& title);
 	void SetWindowAttributes(SDL_Window* window);
+
 	void UpdateWindow();
 	void UpdateTimer();
 
@@ -95,9 +102,6 @@ public:
 	void UpdateScreenMatrices();
 	void LogDisplayMode(SDL_Window* window) const;
 
-	void LoadViewport();
-	void LoadDualViewport();
-
 	void UpdateWindowBorders(SDL_Window* window) const;
 
 	int2 GetMaxWinRes() const;
@@ -107,15 +111,8 @@ public:
 	void GetDisplayBounds(SDL_Rect& r, const int* di = nullptr) const;
 	void GetUsableDisplayBounds(SDL_Rect& r, const int* di = nullptr) const;
 
-	bool CheckGLMultiSampling() const;
-	bool CheckGLContextVersion(const int2& minCtx) const;
-	bool ToggleGLDebugOutput(unsigned int msgSrceIdx, unsigned int msgTypeIdx, unsigned int msgSevrIdx) const;
-	void InitRendererState();
-	void InitGLState();
-	void InitVkState();
-	void ToggleMultisampling() const;
+	void SetRendererStartState();
 
-	bool CheckShaderGL4() const;
 public:
 	//helper function
 	static int DepthBitsToFormat(int bits);
@@ -216,8 +213,6 @@ public:
 
 	int forceDisablePersistentMapping;
 	int forceDisableShaders;
-	int forceDisableGL4;
-	int forceCoreContext;
 	int forceSwapBuffers;
 
 	/**
@@ -260,9 +255,6 @@ public:
 	bool drawDebugTraceRay;
 	bool drawDebugCubeMap;
 
-	bool glDebug;
-	bool glDebugErrors;
-
 	/**
 	 * Does the user want team colored nanospray?
 	 */
@@ -293,7 +285,6 @@ public:
 	bool haveMesa;
 	bool haveIntel;
 	bool haveNvidia;
-
 
 	/**
 	 * @brief collection of some ATI bugfixes
@@ -332,6 +323,9 @@ public:
 	/**
 	 * Shader capabilities
 	 */
+	bool supportUniformData;
+	bool supportModelUniformData;
+
 	bool haveGLSL;
 	bool haveGL4;
 
@@ -369,14 +363,14 @@ public:
 	bool borderless;
 
 	/**
-	 * @brief vulkan or opengl backend in use
-	*/
-	bool vulkanBackend;
-	bool glBackend;
+	 * @brief renderer debug mode active
+	 */
+	bool rendererDebug;
+	bool rendererDebugErrors;
 
 public:
 	SDL_Window* sdlWindow;
-	SDL_GLContext glContext;
+
 public:
 	/**
 	* @brief maximum texture unit number
@@ -401,20 +395,20 @@ public:
 	//minimum window resolution in non-fullscreen mode
 	static constexpr int2 minRes = { 400, 400 };
 
+
 	static constexpr uint32_t NUM_OPENGL_TIMER_QUERIES = 8;
 	static constexpr uint32_t FRAME_REF_TIME_QUERY_IDX = 0;
 	static constexpr uint32_t FRAME_END_TIME_QUERY_IDX = NUM_OPENGL_TIMER_QUERIES - 1;
+
 private:
 	bool SetWindowMinMaximized(bool maximize) const;
-private:
-	// double-buffered; results from frame N become available on frame N+1
-	std::array<uint32_t, NUM_OPENGL_TIMER_QUERIES * 2> glTimerQueries;
+
 private:
 	static constexpr inline const char* xsKeys[2] = { "XResolutionWindowed", "XResolution" };
 	static constexpr inline const char* ysKeys[2] = { "YResolutionWindowed", "YResolution" };
 };
 
-extern CGlobalRendering* globalRendering;
+extern IGlobalRendering* globalRendering;
 
 #endif /* _GLOBAL_RENDERING_H */
 

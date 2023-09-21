@@ -1309,7 +1309,7 @@ void CMiniMap::DrawForReal(bool useNormalizedCoors, bool updateTex, bool luaCall
 	// Finish
 	// Reset of GL state
 	if (useNormalizedCoors && globalRendering->dualScreenMode)
-		globalRendering->LoadViewport();
+		globalRendering->UpdateViewport();
 
 	// disable ClipPlanes
 #if USE_CLIP_PLANES
@@ -1740,7 +1740,7 @@ bool CMiniMap::RenderCachedTexture(bool useNormalizedCoors)
 
 	if (useNormalizedCoors) {
 		if (globalRendering->dualScreenMode)
-			globalRendering->LoadViewport();
+			globalRendering->UpdateViewport();
 
 		glPopMatrix();
 	}

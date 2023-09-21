@@ -534,7 +534,7 @@ void LuaObjectDrawer::DrawDeferredPass(LuaObjType objType)
 		CALL_FUNC_NA(&eventHandler, eventFuncs[objType]);
 	}
 
-	globalRendering->LoadViewport();
+	globalRendering->UpdateViewport();
 }
 
 

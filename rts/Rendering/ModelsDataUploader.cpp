@@ -35,7 +35,7 @@
 template<typename T, typename Derived>
 void TypedStorageBufferUploader<T, Derived>::InitImpl(uint32_t bindingIdx_, uint32_t elemCount0_, uint32_t elemCountIncr_, uint8_t type, bool coherent, uint32_t numBuffers)
 {
-	if (!globalRendering->haveGL4)
+	if (!globalRendering->supportModelUniformData)
 		return;
 
 	bindingIdx = bindingIdx_;
@@ -61,7 +61,7 @@ void TypedStorageBufferUploader<T, Derived>::InitImpl(uint32_t bindingIdx_, uint
 template<typename T, typename Derived>
 void TypedStorageBufferUploader<T, Derived>::KillImpl()
 {
-	if (!globalRendering->haveGL4)
+	if (!globalRendering->supportModelUniformData)
 		return;
 
 	ssbo->UnbindBufferRange(bindingIdx);
@@ -106,7 +106,7 @@ std::size_t TypedStorageBufferUploader<T, Derived>::GetProjectileElemOffset(int3
 
 void MatrixUploader::InitDerived()
 {
-	if (!globalRendering->haveGL4)
+	if (!globalRendering->supportModelUniformData)
 		return;
 
 	const auto sbType = globalRendering->supportPersistentMapping
@@ -125,7 +125,7 @@ void MatrixUploader::InitDerived()
 
 void MatrixUploader::KillDerived()
 {
-	if (!globalRendering->haveGL4)
+	if (!globalRendering->supportModelUniformData)
 		return;
 
 	KillImpl();
@@ -133,7 +133,7 @@ void MatrixUploader::KillDerived()
 
 void MatrixUploader::UpdateDerived()
 {
-	if (!globalRendering->haveGL4)
+	if (!globalRendering->supportModelUniformData)
 		return;
 
 	SCOPED_TIMER("MatrixUploader::Update");
@@ -289,7 +289,7 @@ std::size_t MatrixUploader::GetElemOffsetImpl(const CProjectile* p) const
 
 void ModelsUniformsUploader::InitDerived()
 {
-	if (!globalRendering->haveGL4)
+	if (!globalRendering->supportModelUniformData)
 		return;
 
 	InitImpl(MATUNI_SSBO_BINDING_IDX, ELEM_COUNT0, ELEM_COUNTI, IStreamBufferConcept::Types::SB_BUFFERSUBDATA, true, 3);
@@ -297,7 +297,7 @@ void ModelsUniformsUploader::InitDerived()
 
 void ModelsUniformsUploader::KillDerived()
 {
-	if (!globalRendering->haveGL4)
+	if (!globalRendering->supportModelUniformData)
 		return;
 
 	KillImpl();
@@ -305,7 +305,7 @@ void ModelsUniformsUploader::KillDerived()
 
 void ModelsUniformsUploader::UpdateDerived()
 {
-	if (!globalRendering->haveGL4)
+	if (!globalRendering->supportModelUniformData)
 		return;
 
 	SCOPED_TIMER("ModelsUniformsUploader::Update");

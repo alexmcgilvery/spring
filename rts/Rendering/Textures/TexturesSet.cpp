@@ -24,7 +24,7 @@ TexturesSet::TexturesSet(const std::initializer_list<std::pair<uint8_t, TypedTex
 {
 	for (const auto& [relBinding, texture] : texturesList) {
 		assert(texture.id  < MAX_TEXTURE_ID);
-		assert(relBinding < CGlobalRendering::MAX_TEXTURE_UNITS);
+		assert(relBinding < IGlobalRendering::MAX_TEXTURE_UNITS);
 		auto [it, result] = textures.try_emplace(relBinding, texture);
 		assert(result);
 	}
@@ -35,7 +35,7 @@ TexturesSet::TexturesSet(const std::initializer_list<TypedTexture>& texturesList
 
 	for (const auto& texture : texturesList) {
 		assert(texture.id < MAX_TEXTURE_ID);
-		assert(relBinding < CGlobalRendering::MAX_TEXTURE_UNITS);
+		assert(relBinding < IGlobalRendering::MAX_TEXTURE_UNITS);
 		auto [it, result] = textures.try_emplace(relBinding, texture);
 		assert(result);
 
@@ -62,14 +62,14 @@ TexturesSet& TexturesSet::operator=(TexturesSet&& rhs) noexcept
 void TexturesSet::UpsertTexture(uint8_t relBinding, TypedTexture texture)
 {
 	assert(texture.id  < MAX_TEXTURE_ID);
-	assert(relBinding < CGlobalRendering::MAX_TEXTURE_UNITS);
+	assert(relBinding < IGlobalRendering::MAX_TEXTURE_UNITS);
 	textures[relBinding] = texture.id;
 	perfectHash = 0;
 }
 
 bool TexturesSet::RemoveTexture(uint8_t relBinding)
 {
-	assert(relBinding < CGlobalRendering::MAX_TEXTURE_UNITS);
+	assert(relBinding < IGlobalRendering::MAX_TEXTURE_UNITS);
 	perfectHash = 0;
 	return (textures.erase(relBinding) > 0);
 }

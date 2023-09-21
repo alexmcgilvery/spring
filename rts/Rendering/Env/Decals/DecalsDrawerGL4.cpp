@@ -657,7 +657,7 @@ void CDecalsDrawerGL4::ViewResize()
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	GLint depthFormat = static_cast<GLint>(CGlobalRendering::DepthBitsToFormat(globalRendering->supportDepthBufferBitDepth));
+	GLint depthFormat = static_cast<GLint>(IGlobalRendering::DepthBitsToFormat(globalRendering->supportDepthBufferBitDepth));
 	glTexImage2D(GL_TEXTURE_2D, 0, depthFormat, globalRendering->viewSizeX, globalRendering->viewSizeY, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
 }
 
@@ -681,9 +681,9 @@ void CDecalsDrawerGL4::SunChanged()
 	uboGroundLighting.Bind(GL_UNIFORM_BUFFER);
 	uboGroundLighting.New(uniformBlockSize, GL_STATIC_DRAW);
 		SGLSLGroundLighting* uboGroundLightingData = (SGLSLGroundLighting*)uboGroundLighting.MapBuffer(0, sizeof(SGLSLGroundLighting));
-		uboGroundLightingData->ambientColor  = sunLighting->groundAmbientColor  * CGlobalRendering::SMF_INTENSITY_MULT;
-		uboGroundLightingData->diffuseColor  = sunLighting->groundDiffuseColor  * CGlobalRendering::SMF_INTENSITY_MULT;
-		uboGroundLightingData->specularColor = sunLighting->groundSpecularColor * CGlobalRendering::SMF_INTENSITY_MULT;
+		uboGroundLightingData->ambientColor  = sunLighting->groundAmbientColor  * IGlobalRendering::SMF_INTENSITY_MULT;
+		uboGroundLightingData->diffuseColor  = sunLighting->groundDiffuseColor  * IGlobalRendering::SMF_INTENSITY_MULT;
+		uboGroundLightingData->specularColor = sunLighting->groundSpecularColor * IGlobalRendering::SMF_INTENSITY_MULT;
 		uboGroundLightingData->dir           = sky->GetLight()->GetLightDir();
 		uboGroundLightingData->fogColor      = sky->fogColor;
 		uboGroundLightingData->fogEnd        = camera->GetFarPlaneDist() * sky->fogEnd;

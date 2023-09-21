@@ -389,7 +389,7 @@ void CProjectileDrawer::ViewResize()
 	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0); //might break something else
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
 
-	GLint depthFormat = static_cast<GLint>(CGlobalRendering::DepthBitsToFormat(globalRendering->supportDepthBufferBitDepth));
+	GLint depthFormat = static_cast<GLint>(IGlobalRendering::DepthBitsToFormat(globalRendering->supportDepthBufferBitDepth));
 	glTexImage2D(GL_TEXTURE_2D, 0, depthFormat, globalRendering->viewSizeX, globalRendering->viewSizeY, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
 
 	glBindTexture(GL_TEXTURE_2D, 0);
@@ -1151,7 +1151,7 @@ void CProjectileDrawer::UpdatePerlin() {
 	}
 
 	perlinFB.Unbind();
-	globalRendering->LoadViewport();
+	globalRendering->UpdateViewport();
 
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glEnable(GL_DEPTH_TEST);

@@ -202,7 +202,7 @@ void CPathTexture::Update()
 		glViewport(0, 0, texSize.x, texSize.y);
 		glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
-		globalRendering->LoadViewport();
+		globalRendering->UpdateViewport();
 		FBO::Unbind();
 		return;
 	}

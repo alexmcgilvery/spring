@@ -1542,12 +1542,12 @@ public:
 	}
 };
 
-class DebugGLActionExecutor : public IUnsyncedActionExecutor {
+class DebugGLActionExecutor : public IUnsyncedActionExecutor { //FIXME Move From GL specific
 public:
 	DebugGLActionExecutor() : IUnsyncedActionExecutor("DebugGL", "Enable/Disable OpenGL debug-context output") {}
 
 	bool Execute(const UnsyncedAction& action) const final {
-		bool enabled = !globalRendering->glDebug;
+		bool enabled = !globalRendering->rendererDebug;
 		uint32_t msgSrceIdx = 0;
 		uint32_t msgTypeIdx = 0;
 		uint32_t msgSevrIdx = 0;
@@ -1564,8 +1564,8 @@ public:
 		if (args.size() > 3)
 			msgSevrIdx = StringToInt(args[3]);
 
-		globalRendering->glDebug = enabled;
-		globalRendering->ToggleGLDebugOutput(msgSrceIdx, msgTypeIdx, msgSevrIdx);
+		globalRendering->rendererDebug = enabled;
+		globalRendering->ToggleDebugOutput(msgSrceIdx, msgTypeIdx, msgSevrIdx);
 
 		return true;
 	}
@@ -1576,7 +1576,7 @@ public:
 	DebugGLErrorsActionExecutor() : IUnsyncedActionExecutor("DebugGLErrors", "Enable/Disable OpenGL debug-errors") {}
 
 	bool Execute(const UnsyncedAction& action) const final {
-		LogSystemStatus("GL debug-errors", globalRendering->glDebugErrors = !globalRendering->glDebugErrors);
+		LogSystemStatus("GL debug-errors", globalRendering->rendererDebugErrors = !globalRendering->rendererDebugErrors);
 		return true;
 	}
 };
@@ -2946,7 +2946,7 @@ public:
 		if (args.empty())
 			return false;
 
-		globalRendering->minViewRange = Clamp(StringToInt<float>(args), CGlobalRendering::MIN_ZNEAR_DIST, globalRendering->maxViewRange);
+		globalRendering->minViewRange = Clamp(StringToInt<float>(args), IGlobalRendering::MIN_ZNEAR_DIST, globalRendering->maxViewRange);
 		return true;
 	}
 };
@@ -2962,7 +2962,7 @@ public:
 		if (args.empty())
 			return false;
 
-		globalRendering->maxViewRange = Clamp(StringToInt<float>(args), globalRendering->minViewRange, CGlobalRendering::MAX_VIEW_RANGE);
+		globalRendering->maxViewRange = Clamp(StringToInt<float>(args), globalRendering->minViewRange, IGlobalRendering::MAX_VIEW_RANGE);
 		return true;
 	}
 };

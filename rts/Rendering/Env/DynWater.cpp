@@ -235,7 +235,7 @@ void CDynWater::InitResources(bool loadShader)
 
 	glGenFramebuffersEXT(1, &frameBuffer);
 
-	GLenum depthFormat = static_cast<GLenum>(CGlobalRendering::DepthBitsToFormat(globalRendering->supportDepthBufferBitDepth));
+	GLenum depthFormat = static_cast<GLenum>(IGlobalRendering::DepthBitsToFormat(globalRendering->supportDepthBufferBitDepth));
 
 	reflectFBO.Bind();
 	reflectFBO.AttachTexture(reflectTexture, GL_TEXTURE_2D, GL_COLOR_ATTACHMENT0_EXT);
@@ -507,7 +507,7 @@ void CDynWater::DrawRefraction(const CGame* game)
 
 	DrawRefractions(&clipPlaneEqs[0], true, true);
 
-	globalRendering->LoadViewport();
+	globalRendering->UpdateViewport();
 	glClearColor(sky->fogColor.x, sky->fogColor.y, sky->fogColor.z, 1);
 
 	sunLighting->modelDiffuseColor = oldsun;
