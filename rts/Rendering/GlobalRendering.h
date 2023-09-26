@@ -28,14 +28,86 @@ typedef void* SDL_GLContext;
 class IGlobalRendering {
 	CR_DECLARE_STRUCT(IGlobalRendering)
 protected:
+
+	/**
+	 * @brief Pre-window initialization function.
+	 *
+	 * This function is called before the window is created.
+	 * It can be used to initialize any necessary resources by the renderer required before window creation.
+	 */
 	virtual void RendererPreWindowInit() = 0;
+
+	/**
+	 * @brief Post-window initialization function.
+	 *
+	 * This function is called after the window has been created.
+	 * It can be used to perform any additional initialization or setup not critical immediately follow window creation.
+	 */
 	virtual void RendererPostWindowInit() = 0;
+
+	/**
+	 * @brief Function for creating a window with a given title.
+	 *
+	 * Renderer Implementation should do the following:
+	 * 1. Verify necessary features for graphical window are present.
+	 * 2. Call Superclass' CreateSDLWindow
+	 * 3. Set SDL_SetHint for necessary configs
+	 * 4. Call Superclass' SetWindowAttributes
+	 * 5. Do initialization that is required immediately after creating
+	 *
+	 * @param title The title of the window to create.
+	 * @return boolean result representing if window creation was successful
+	 */
 	virtual bool RendererCreateWindow(const char* title) = 0;
+
+	/**
+	 * @brief Function for creating an SDL window with a given title.
+	 *
+	 * Renderer Implementation should do the following:
+	 * 1.Prepare necessary sdl flags for window creation.
+	 * 2.Call SDL_CreateWindow with given flags
+	 *
+	 * @param title The title of the window to create.
+	 * @return A pointer to the created window.
+	 */
 	virtual SDL_Window* RendererCreateSDLWindow(const char* title) = 0;
+
+	/**
+	 * @brief Function for setting the start state of the renderer.
+	 *
+	 * This function is called to let renderer set intial state for the first frame.
+	 */
 	virtual void RendererSetStartState() = 0;
+
+	/**
+	 * @brief Function for destroying window resources.
+	 *
+	 * This function should be used to destroy renderer resources immediately prior to window destruction.
+	 */
 	virtual void RendererDestroyWindow() = 0;
+
+	/**
+	 * @brief Function for updating a window.
+	 *
+	 * This function lets the renderer know a window update is started.
+	 * This could mean a resize event or a new frame.
+	 */
 	virtual void RendererUpdateWindow() = 0;
-	virtual void RendererPresentFrame(bool allowSwapBuffers, bool clearErrors) = 0; // Present Frame
+
+	/**
+	 * @brief Function for presenting a frame.
+	 *
+	 * This function presents a frame, which includes swapping buffers and clearing any errors.
+	 * Renderer Implementation should do the following:
+	 * 1. Clear renderer errors if clearErrors is true.
+	 * 2. Call RenderBuffer impl swapbuffers function.
+	 * 3. Call Stream Buffers impl lock function.
+	 * 4. API specific frame presention.
+	 *
+	 * @param allowSwapBuffers Whether to allow the swap buffers operation.
+	 * @param clearErrors Whether to clear any errors that may have occurred during rendering.
+	 */
+	virtual void RendererPresentFrame(bool allowSwapBuffers, bool clearErrors) = 0;
 
 	SDL_Window* CreateSDLWindow(const char* title);
 
