@@ -32,6 +32,7 @@ public:
 	 * (by re-requesting affected paths without changing their ID's)
 	 */
 	virtual bool PathUpdated(unsigned int pathID) { return false; }
+	virtual void ClearPathUpdated(unsigned int pathID) {}
 
 	virtual void RemoveCacheFiles() {}
 	virtual void Update() {}
@@ -43,7 +44,7 @@ public:
 	 * @param pathID
 	 *     The path-id returned by RequestPath.
 	 */
-	virtual void DeletePath(unsigned int pathID) {}
+	virtual void DeletePath(unsigned int pathID, bool force = false) {}
 
 	/**
 	 * Returns the next waypoint of the path.
@@ -80,6 +81,9 @@ public:
 	) {
 		return -OnesVector;
 	}
+
+	virtual bool CurrentWaypointIsUnreachable(unsigned int pathID) { return false; }
+	virtual bool NextWayPointIsUnreachable(unsigned int pathID) { return false; }
 
 
 	/**
@@ -172,7 +176,6 @@ public:
 
 	virtual int2 GetNumQueuedUpdates() const { return (int2(0, 0)); }
 
-	virtual bool SupportsMultiThreadedRequests() const { return false; }
 	virtual void SavePathCacheForPathId(int pathIdToSave) {};
 };
 

@@ -23,8 +23,8 @@ void float3::ClampInBounds()
 {
 	assert(maxxpos > 0.0f); // check if initialized
 
-	x = Clamp(x, 0.0f, maxxpos);
-	z = Clamp(z, 0.0f, maxzpos);
+	x = std::clamp(x, 0.0f, maxxpos);
+	z = std::clamp(z, 0.0f, maxzpos);
 }
 
 
@@ -40,8 +40,8 @@ void float3::ClampInMap()
 {
 	assert(maxxpos > 0.0f); // check if initialized
 
-	x = Clamp(x, 0.0f, maxxpos + 1);
-	z = Clamp(z, 0.0f, maxzpos + 1);
+	x = std::clamp(x, 0.0f, maxxpos + 1);
+	z = std::clamp(z, 0.0f, maxzpos + 1);
 }
 
 
@@ -70,3 +70,16 @@ bool float3::equals(const float3& f, const float3& eps) const
 	return (epscmp(x, f.x, eps.x) && epscmp(y, f.y, eps.y) && epscmp(z, f.z, eps.z));
 }
 
+float3 float3::snapToAxis() const {
+	// https://gamedev.stackexchange.com/questions/83601/from-3d-rotation-snap-to-nearest-90-directions/183342#183342
+	float nx = std::abs(x);
+	float ny = std::abs(y);
+	float nz = std::abs(z);
+	if (nx > ny && nx > nz) {
+		return float3(Sign(x), 0, 0);
+	} else if (ny > nx && ny > nz) {
+		return float3(0, Sign(y), 0);
+	} else {
+		return float3(0, 0, Sign(z));
+	}
+}

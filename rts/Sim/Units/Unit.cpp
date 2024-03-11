@@ -130,8 +130,7 @@ CUnit::~CUnit()
 	if (activated && unitDef->targfac)
 		losHandler->IncreaseAllyTeamRadarErrorSize(allyteam);
 
-	SetMetalStorage(0);
-	SetEnergyStorage(0);
+	SetStorage(0.0f);
 
 	// not all unit deletions run through KillUnit(),
 	// but we always want to call this for ourselves
@@ -248,6 +247,8 @@ void CUnit::PreInit(const UnitLoadParams& params)
 	SetRadiusAndHeight(model);
 	UpdateMidAndAimPos();
 
+	buildeeRadius = (unitDef->buildeeBuildRadius >= 0.f) ? unitDef->buildeeBuildRadius : radius;
+
 	unitHandler.AddUnit(this);
 	quadField.MovedUnit(this);
 
@@ -263,8 +264,7 @@ void CUnit::PreInit(const UnitLoadParams& params)
 	power = unitDef->power;
 	maxHealth = unitDef->health;
 	health = beingBuilt? 0.1f: unitDef->health;
-	cost.metal = unitDef->metal;
-	cost.energy = unitDef->energy;
+	cost = unitDef->cost;
 	buildTime = unitDef->buildTime;
 	armoredMultiple = unitDef->armoredMultiple;
 	armorType = unitDef->armorType;
@@ -275,13 +275,13 @@ void CUnit::PreInit(const UnitLoadParams& params)
 
 
 	// sensor parameters
-	realLosRadius    = Clamp(int(unitDef->losRadius)    , 0, MAX_UNIT_SENSOR_RADIUS);
-	realAirLosRadius = Clamp(int(unitDef->airLosRadius) , 0, MAX_UNIT_SENSOR_RADIUS);
-	radarRadius      = Clamp(    unitDef->radarRadius   , 0, MAX_UNIT_SENSOR_RADIUS);
-	sonarRadius      = Clamp(    unitDef->sonarRadius   , 0, MAX_UNIT_SENSOR_RADIUS);
-	jammerRadius     = Clamp(    unitDef->jammerRadius  , 0, MAX_UNIT_SENSOR_RADIUS);
-	sonarJamRadius   = Clamp(    unitDef->sonarJamRadius, 0, MAX_UNIT_SENSOR_RADIUS);
-	seismicRadius    = Clamp(    unitDef->seismicRadius , 0, MAX_UNIT_SENSOR_RADIUS);
+	realLosRadius    = std::clamp(int(unitDef->losRadius)    , 0, MAX_UNIT_SENSOR_RADIUS);
+	realAirLosRadius = std::clamp(int(unitDef->airLosRadius) , 0, MAX_UNIT_SENSOR_RADIUS);
+	radarRadius      = std::clamp(    unitDef->radarRadius   , 0, MAX_UNIT_SENSOR_RADIUS);
+	sonarRadius      = std::clamp(    unitDef->sonarRadius   , 0, MAX_UNIT_SENSOR_RADIUS);
+	jammerRadius     = std::clamp(    unitDef->jammerRadius  , 0, MAX_UNIT_SENSOR_RADIUS);
+	sonarJamRadius   = std::clamp(    unitDef->sonarJamRadius, 0, MAX_UNIT_SENSOR_RADIUS);
+	seismicRadius    = std::clamp(    unitDef->seismicRadius , 0, MAX_UNIT_SENSOR_RADIUS);
 	seismicSignature = unitDef->seismicSignature;
 
 	stealth = unitDef->stealth;
@@ -300,8 +300,7 @@ void CUnit::PreInit(const UnitLoadParams& params)
 
 	useHighTrajectory = (unitDef->highTrajectoryType == 1);
 
-	harvestStorage.metal  = unitDef->harvestMetalStorage;
-	harvestStorage.energy = unitDef->harvestEnergyStorage;
+	harvestStorage = unitDef->harvestStorage;
 
 	moveType = MoveTypeFactory::GetMoveType(this, unitDef);
 	script = CUnitScriptFactory::CreateScript(this, unitDef);
@@ -421,9 +420,7 @@ void CUnit::FinishedBuilding(bool postInit)
 	if (unitDef->activateWhenBuilt)
 		Activate();
 
-	SetMetalStorage(unitDef->metalStorage);
-	SetEnergyStorage(unitDef->energyStorage);
-
+	SetStorage(unitDef->storage);
 
 	// Sets the frontdir in sync with heading.
 	UpdateDirVectors(!upright && IsOnGround(), false, 0.0f);
@@ -448,15 +445,15 @@ void CUnit::FinishedBuilding(bool postInit)
 }
 
 
-void CUnit::KillUnit(CUnit* attacker, bool selfDestruct, bool reclaimed, bool showDeathSequence)
+void CUnit::KillUnit(CUnit* attacker, bool selfDestruct, bool reclaimed)
 {
 	if (IsCrashing() && !beingBuilt)
 		return;
 
-	ForcedKillUnit(attacker, selfDestruct, reclaimed, showDeathSequence);
+	ForcedKillUnit(attacker, selfDestruct, reclaimed);
 }
 
-void CUnit::ForcedKillUnit(CUnit* attacker, bool selfDestruct, bool reclaimed, bool showDeathSequence)
+void CUnit::ForcedKillUnit(CUnit* attacker, bool selfDestruct, bool reclaimed)
 {
 	if (isDead)
 		return;
@@ -477,7 +474,7 @@ void CUnit::ForcedKillUnit(CUnit* attacker, bool selfDestruct, bool reclaimed, b
 		envResHandler.DelGenerator(this);
 
 	blockHeightChanges = false;
-	deathScriptFinished = (!showDeathSequence || reclaimed || beingBuilt);
+	deathScriptFinished = (reclaimed || beingBuilt);
 
 	if (deathScriptFinished)
 		return;
@@ -487,23 +484,24 @@ void CUnit::ForcedKillUnit(CUnit* attacker, bool selfDestruct, bool reclaimed, b
 
 	if (wd != nullptr) {
 		assert(da != nullptr);
-		CExplosionParams params = {
-			pos,
-			ZeroVector,
-			*da,
-			wd,
-			this,                                    // owner
-			nullptr,                                 // hitUnit
-			nullptr,                                 // hitFeature
-			da->craterAreaOfEffect,
-			da->damageAreaOfEffect,
-			da->edgeEffectiveness,
-			da->explosionSpeed,
-			(da->GetDefault() > 500.0f)? 1.0f: 2.0f, // gfxMod
-			false,                                   // impactOnly
-			false,                                   // ignoreOwner
-			true,                                    // damageGround
-			-1u                                      // projectileID
+		const CExplosionParams params = {
+			.pos                  = pos,
+			.dir                  = ZeroVector,
+			.damages              = *da,
+			.weaponDef            = wd,
+			.owner                = this,
+			.hitUnit              = nullptr,
+			.hitFeature           = nullptr,
+			.craterAreaOfEffect   = da->craterAreaOfEffect,
+			.damageAreaOfEffect   = da->damageAreaOfEffect,
+			.edgeEffectiveness    = da->edgeEffectiveness,
+			.explosionSpeed       = da->explosionSpeed,
+			.gfxMod               = (da->GetDefault() > 500.0f)? 1.0f: 2.0f,
+			.maxGroundDeformation = 0.0f,
+			.impactOnly           = false,
+			.ignoreOwner          = false,
+			.damageGround         = true,
+			.projectileID         = static_cast<uint32_t>(-1u)
 		};
 
 		helper->Explosion(params);
@@ -607,6 +605,7 @@ void CUnit::EnableScriptMoveType()
 		return;
 
 	prevMoveType = moveType;
+	prevMoveType->Disconnect();
 	moveType = MoveTypeFactory::GetScriptMoveType(this);
 }
 
@@ -618,6 +617,7 @@ void CUnit::DisableScriptMoveType()
 	spring::SafeDestruct(moveType);
 
 	moveType = prevMoveType;
+	moveType->Connect();
 	prevMoveType = nullptr;
 
 	// ensure unit does not try to move back to the
@@ -661,11 +661,25 @@ void CUnit::Update()
 	outOfMapTime *= (!pos.IsInBounds());
 }
 
+void CUnit::UpdateWeaponVectors()
+{
+	ZoneScoped;
+
+	if (!CanUpdateWeapons())
+		return;
+
+	for (CWeapon* w : weapons) {
+		w->UpdateWeaponErrorVector();
+		w->UpdateWeaponVectors();
+	}
+}
+
 void CUnit::UpdateWeapons()
 {
 	ZoneScoped;
+
 	if (!CanUpdateWeapons())
-		return;
+			return;
 
 	for (CWeapon* w: weapons) {
 		w->Update();
@@ -806,17 +820,13 @@ void CUnit::TransporteeKilled(const CObject* o)
 
 void CUnit::UpdateResources()
 {
-	resourcesMake.metal  = resourcesMakeI.metal  + resourcesMakeOld.metal;
-	resourcesUse.metal   = resourcesUseI.metal   + resourcesUseOld.metal;
-	resourcesMake.energy = resourcesMakeI.energy + resourcesMakeOld.energy;
-	resourcesUse.energy  = resourcesUseI.energy  + resourcesUseOld.energy;
+	resourcesMake = resourcesMakeI + resourcesMakeOld;
+	resourcesUse  = resourcesUseI  + resourcesUseOld;
 
-	resourcesMakeOld.metal  = resourcesMakeI.metal;
-	resourcesUseOld.metal   = resourcesUseI.metal;
-	resourcesMakeOld.energy = resourcesMakeI.energy;
-	resourcesUseOld.energy  = resourcesUseI.energy;
+	resourcesMakeOld = resourcesMakeI;
+	resourcesUseOld  = resourcesUseI;
 
-	resourcesMakeI.metal = resourcesUseI.metal = resourcesMakeI.energy = resourcesUseI.energy = 0.0f;
+	resourcesMakeI = resourcesUseI = 0.0f;
 }
 
 void CUnit::SetLosStatus(int at, unsigned short newStatus)
@@ -992,31 +1002,23 @@ void CUnit::SlowUpdate()
 
 
 	// FIXME: scriptMakeMetal ...?
-	AddMetal(resourcesUncondMake.metal);
-	AddEnergy(resourcesUncondMake.energy);
-	UseMetal(resourcesUncondUse.metal);
-	UseEnergy(resourcesUncondUse.energy);
+	AddResources(resourcesUncondMake);
+	UseResources(resourcesUncondUse);
+
+	if (activated && UseResources(resourcesCondUse))
+		AddResources(resourcesCondMake);
+
+	AddResources(unitDef->resourceMake * 0.5f);
 
 	if (activated) {
-		if (UseMetal(resourcesCondUse.metal))
-			AddEnergy(resourcesCondMake.energy);
-
-		if (UseEnergy(resourcesCondUse.energy))
-			AddMetal(resourcesCondMake.metal);
-
-	}
-
-	AddMetal(unitDef->metalMake * 0.5f);
-
-	if (activated) {
-		if (UseEnergy(unitDef->energyUpkeep * 0.5f)) {
+		if (UseEnergy(unitDef->upkeep.energy * 0.5f)) {
 			AddMetal(unitDef->makesMetal * 0.5f);
 
 			if (unitDef->extractsMetal > 0.0f)
 				AddMetal(metalExtract * 0.5f);
 		}
 
-		UseMetal(unitDef->metalUpkeep * 0.5f);
+		UseMetal(unitDef->upkeep.metal * 0.5f);
 
 		if (unitDef->windGenerator > 0.0f) {
 			if (envResHandler.GetCurrentWindStrength() > unitDef->windGenerator) {
@@ -1028,7 +1030,7 @@ void CUnit::SlowUpdate()
 	}
 
 	// FIXME: tidal part should be under "if (activated)"?
-	AddEnergy((unitDef->energyMake + unitDef->tidalGenerator * envResHandler.GetCurrentTidalStrength()) * 0.5f);
+	AddEnergy((unitDef->tidalGenerator * envResHandler.GetCurrentTidalStrength()) * 0.5f);
 
 
 	if (health < maxHealth) {
@@ -1182,8 +1184,8 @@ void CUnit::ApplyDamage(CUnit* attacker, const DamageArray& damages, float& base
 		// real damage
 		if (baseDamage > 0.0f) {
 			// do not log overkill damage, so nukes etc do not inflate values
-			AddUnitDamageStats(attacker, Clamp(maxHealth - health, 0.0f, baseDamage), true);
-			AddUnitDamageStats(this, Clamp(maxHealth - health, 0.0f, baseDamage), false);
+			AddUnitDamageStats(attacker, std::clamp(maxHealth - health, 0.0f, baseDamage), true);
+			AddUnitDamageStats(this, std::clamp(maxHealth - health, 0.0f, baseDamage), false);
 
 			health -= baseDamage;
 		} else {
@@ -1212,7 +1214,7 @@ void CUnit::ApplyDamage(CUnit* attacker, const DamageArray& damages, float& base
 
 		if (baseDamage > 0.0f) {
 			// clamp the dealt paralysis-damage to [0, maxParalysisDamage]
-			baseDamage = Clamp(baseDamage, 0.0f, maxParalysisDamage);
+			baseDamage = std::clamp(baseDamage, 0.0f, maxParalysisDamage);
 
 			// no attacker gains experience from a stunned target
 			experienceMod *= (1 - IsStunned());
@@ -1481,11 +1483,8 @@ bool CUnit::ChangeTeam(int newteam, ChangeType type)
 	}
 
 	if (!beingBuilt) {
-		teamHandler.Team(oldteam)->resStorage.metal  -= storage.metal;
-		teamHandler.Team(oldteam)->resStorage.energy -= storage.energy;
-
-		teamHandler.Team(newteam)->resStorage.metal  += storage.metal;
-		teamHandler.Team(newteam)->resStorage.energy += storage.energy;
+		teamHandler.Team(oldteam)->resStorage -= storage;
+		teamHandler.Team(newteam)->resStorage += storage;
 	}
 
 
@@ -1893,34 +1892,25 @@ bool CUnit::AddBuildPower(CUnit* builder, float amount)
 		if (beingBuilt) {
 			// build
 			const float step = std::min(amount / buildTime, 1.0f - buildProgress);
-			const float metalCostStep  = cost.metal  * step;
-			const float energyCostStep = cost.energy * step;
+			const auto resourceUse = cost * step;
 
-			if (builderTeam->res.metal < metalCostStep || builderTeam->res.energy < energyCostStep) {
-				// update the energy and metal required counts
-				builderTeam->resPull.metal  += metalCostStep;
-				builderTeam->resPull.energy += energyCostStep;
+			if (!builderTeam->HaveResources(resourceUse)) {
+				builderTeam->resPull += resourceUse;
 				return false;
 			}
 
 			if (!eventHandler.AllowUnitBuildStep(builder, this, step))
 				return false;
 
-			if (builder->UseMetal(metalCostStep)) {
-				// FIXME eventHandler.AllowUnitBuildStep() may have changed the storages!!! so the checks can be invalid!
-				// TODO add a builder->UseResources(SResources(cost.metalStep, cost.energyStep))
-				if (builder->UseEnergy(energyCostStep)) {
-					health += (maxHealth * step);
-					health = std::min(health, maxHealth);
-					buildProgress += step;
+			/* Note, eventHandler.AllowUnitBuildStep() may have
+			 * changed stored resources. That is fine though. */
+			if (builder->UseResources(resourceUse)) {
+				health += (maxHealth * step);
+				health = std::min(health, maxHealth);
 
-					if (buildProgress >= 1.0f) {
-						FinishedBuilding(false);
-					}
-				} else {
-					// refund already-deducted metal if *energy* cost cannot be
-					builder->UseMetal(-metalCostStep);
-				}
+				buildProgress += step;
+				if (buildProgress >= 1.0f)
+					FinishedBuilding(false);
 			}
 
 			return true;
@@ -1995,8 +1985,7 @@ bool CUnit::AddBuildPower(CUnit* builder, float amount)
 		// turn reclaimee into nanoframe (even living units)
 		if ((modInfo.reclaimUnitMethod == 0) && !beingBuilt) {
 			beingBuilt = true;
-			SetMetalStorage(0);
-			SetEnergyStorage(0);
+			SetStorage(0.0f);
 
 			// make sure neighbor extractors update
 			CExtractorBuilding* extractor = dynamic_cast<CExtractorBuilding*>(this);
@@ -2027,22 +2016,6 @@ bool CUnit::AddBuildPower(CUnit* builder, float amount)
 
 //////////////////////////////////////////////////////////////////////
 //
-
-void CUnit::SetMetalStorage(float newStorage)
-{
-	teamHandler.Team(team)->resStorage.metal -= storage.metal;
-	storage.metal = newStorage;
-	teamHandler.Team(team)->resStorage.metal += storage.metal;
-}
-
-
-void CUnit::SetEnergyStorage(float newStorage)
-{
-	teamHandler.Team(team)->resStorage.energy -= storage.energy;
-	storage.energy = newStorage;
-	teamHandler.Team(team)->resStorage.energy += storage.energy;
-}
-
 
 bool CUnit::AllowedReclaim(CUnit* builder) const
 {
@@ -2641,7 +2614,7 @@ bool CUnit::DetachUnitCore(CUnit* unit)
 
 		transportCapacityUsed -= unit->xsize / SPRING_FOOTPRINT_SCALE;
 		transportMassUsed -= unit->mass;
-		mass = Clamp(mass - unit->mass, CSolidObject::MINIMUM_MASS, CSolidObject::MAXIMUM_MASS);
+		mass = std::clamp(mass - unit->mass, CSolidObject::MINIMUM_MASS, CSolidObject::MAXIMUM_MASS);
 
 		tu = transportedUnits.back();
 		transportedUnits.pop_back();
@@ -2945,7 +2918,6 @@ CR_REG_METADATA(CUnit, (
 
 	CR_MEMBER(selfDCountdown),
 
-	CR_MEMBER_UN(myTrack),
 	CR_MEMBER_UN(myIcon),
 	CR_MEMBER_UN(drawIcon),
 

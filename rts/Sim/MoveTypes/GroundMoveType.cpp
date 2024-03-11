@@ -1,7 +1,10 @@
 /* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
 
+// #undef NDEBUG
+
 #include "GroundMoveType.h"
 #include "MoveDefHandler.h"
+#include "Components/MoveTypesComponents.h"
 #include "ExternalAI/EngineOutHandler.h"
 #include "Game/Camera.h"
 #include "Game/GameHelper.h"
@@ -12,6 +15,7 @@
 #include "Map/MapInfo.h"
 #include "Map/ReadMap.h"
 #include "MoveMath/MoveMath.h"
+#include "Sim/Ecs/Registry.h"
 #include "Sim/Features/Feature.h"
 #include "Sim/Features/FeatureHandler.h"
 #include "Sim/Misc/GeometricObjects.h"
@@ -23,6 +27,7 @@
 #include "Sim/Units/CommandAI/CommandAI.h"
 #include "Sim/Units/CommandAI/MobileCAI.h"
 #include "Sim/Units/UnitDef.h"
+#include "Sim/Units/UnitDefHandler.h"
 #include "Sim/Units/UnitHandler.h"
 #include "Sim/Weapons/WeaponDefHandler.h"
 #include "Sim/Weapons/Weapon.h"
@@ -51,6 +56,8 @@ spring::spinlock geometryLock;
 #define DEBUG_DRAWING_ENABLED false
 #endif
 
+using namespace MoveTypes;
+
 #define LOG_SECTION_GMT "GroundMoveType"
 LOG_REGISTER_SECTION_GLOBAL(LOG_SECTION_GMT)
 
@@ -72,7 +79,7 @@ LOG_REGISTER_SECTION_GLOBAL(LOG_SECTION_GMT)
 
 #define MAX_IDLING_SLOWUPDATES     16
 #define IGNORE_OBSTACLES            0
-#define WAIT_FOR_PATH               1
+#define WAIT_FOR_PATH               0
 #define MODEL_TURN_INERTIA          1
 
 #define UNIT_EVENTS_RESERVE			8
@@ -130,6 +137,8 @@ CR_REG_METADATA(CGroundMoveType, (
 	CR_MEMBER(skidRotAccel),
 
 	CR_MEMBER(resultantForces),
+	CR_MEMBER(forceFromMovingCollidees),
+	CR_MEMBER(forceFromStaticCollidees),
 
 	CR_MEMBER(pathID),
 
@@ -141,6 +150,7 @@ CR_REG_METADATA(CGroundMoveType, (
 
 	CR_MEMBER(atGoal),
 	CR_MEMBER(atEndOfPath),
+	CR_MEMBER(wantRepath),
 	CR_MEMBER(moveFailed),
 
 	CR_MEMBER(reversing),
@@ -151,6 +161,9 @@ CR_REG_METADATA(CGroundMoveType, (
 	CR_MEMBER(useRawMovement),
 	CR_MEMBER(pathingFailed),
 	CR_MEMBER(pathingArrived),
+	CR_MEMBER(positionStuck),
+	CR_MEMBER(forceStaticObjectCheck),
+	CR_MEMBER(avoidingUnits),
 	CR_MEMBER(setHeading),
 	CR_MEMBER(setHeadingDir),
 	CR_MEMBER(collidedFeatures),
@@ -275,30 +288,73 @@ static void HandleUnitCollisionsAux(
 	// positions of at most TWOPI elmos, use half as threshold
 	// (simply bail if distance between collider and collidee
 	// goal-positions exceeds PI)
-	if (!gmtCollider->IsAtGoalPos(gmtCollidee->goalPos, math::PI))
-		return;
+	// if (!gmtCollider->IsAtGoalPos(gmtCollidee->goalPos, math::PI))
+	// 	return;
 
 	switch (gmtCollidee->progressState) {
 		case AMoveType::Done: {
 			if (collidee->IsMoving() || UNIT_CMD_QUE_SIZE(collidee) != 0)
 				return;
 
-			gmtCollider->TriggerCallArrived();
+			const bool triggerArrived = gmtCollider->IsAtGoalPos(collidee->pos, gmtCollidee->GetOwnerRadius());
+			if (triggerArrived) {
+				gmtCollider->TriggerCallArrived();
+			} else {
+				// if the collidee is touching the waypoint, then also switch to the next waypoint.
+				const float3& currWaypoint = gmtCollider->GetCurrWayPoint();
+				const float collideeToCurrDistSq = currWaypoint.SqDistance2D(collidee->pos);
+				const float collideeGoalRadius = gmtCollidee->GetOwnerRadius();
+
+				if (collideeToCurrDistSq <= collideeGoalRadius*collideeGoalRadius) {
+					gmtCollider->TriggerSkipWayPoint();
+					return;
+				}
+			}
 		} break;
 
 		case AMoveType::Active: {
 			// collider and collidee are both actively moving and share the same goal position
 			// (i.e. a traffic jam) so ignore current waypoint and go directly to the next one
-			// or just make collider give up if already within footprint radius
+			// or just make collider give up if already within footprint radius.
 			if (gmtCollidee->GetCurrWayPoint() == gmtCollider->GetNextWayPoint()) {
-				gmtCollider->TriggerSkipWayPoint();
-				return;
+				// const float3& currWaypoint = gmtCollider->GetCurrWayPoint();
+				// const float3& nextWaypoint = gmtCollider->GetNextWayPoint();
+
+				// const float unitToNextDistSq = nextWaypoint.SqDistance2D(collider->pos);
+				// const float currToNextDistSq = nextWaypoint.SqDistance2D(currWaypoint);
+
+				// // Switch waypoints if the current waypoint is effectively sending us in the
+				// // wrong direction. This can happen as units push each other around. This check
+				// // is important to prevent units in a long line back-propagating the next
+				// // waypoint, which could cause units to try and cut corners, which could cause
+				// // them to be unable to path around obstacles.
+				// if (unitToNextDistSq <= currToNextDistSq) {
+					gmtCollider->TriggerSkipWayPoint();
+					return;
+				// }
 			}
 
-			if (!gmtCollider->IsAtGoalPos(collider->pos, gmtCollider->GetOwnerRadius()))
-				return;
+			const bool triggerArrived = (gmtCollider->IsAtGoalPos(collider->pos, gmtCollider->GetOwnerRadius())
+										|| gmtCollider->IsAtGoalPos(collidee->pos, gmtCollidee->GetOwnerRadius()));
+			if (triggerArrived) {
+				gmtCollider->TriggerCallArrived();
+			} else {
+				// if the collidee is touching the waypoint, then also switch to the next
+				// waypoint.
+				const float3& currWaypoint = gmtCollider->GetCurrWayPoint();
+				const float collideeToCurrDistSq = currWaypoint.SqDistance2D(collidee->pos);
+				const float collideeGoalRadius = gmtCollidee->GetOwnerRadius();
 
-			gmtCollider->TriggerCallArrived();
+				if (collideeToCurrDistSq <= collideeGoalRadius*collideeGoalRadius) {
+					gmtCollider->TriggerSkipWayPoint();
+					return;
+				}
+			}
+
+			// if (!gmtCollider->IsAtGoalPos(collider->pos, gmtCollider->GetOwnerRadius()))
+			// 	return;
+
+			// gmtCollider->TriggerCallArrived();
 		} break;
 
 		default: {
@@ -372,10 +428,27 @@ static float3 CalcSpeedVectorExclGravity(const CUnit* owner, const CGroundMoveTy
 	// is because speed.w and currentSpeed are calculated differently
 	// and that causes  a slight variation that we need to compensate
 	// for.
-	if ((hAcc == 0.f) && (math::fabs(owner->speed.w) <= 0.012f))
+	if ((hAcc == 0.f) && (math::fabs(owner->speed.w) <= 0.013f))
 		return ZeroVector;
-	else
-		return (owner->frontdir * (owner->speed.w * Sign(int(!mt->IsReversing())) + hAcc));
+	else {
+		float vel = owner->speed.w;
+		float maxSpeed = owner->moveType->GetMaxSpeed();
+		if (vel > maxSpeed) {
+			// Once a unit is travelling faster than their maximum speed, their engine power is no longer sufficient to counteract
+			// the drag from air and rolling resistance. So reduce their velocity by these forces until a return to maximum speed.
+			float rollingResistanceCoeff = owner->unitDef->rollingResistanceCoefficient;
+			vel = std::max(maxSpeed,
+				(owner->speed +
+				owner->GetDragAccelerationVec(
+					mapInfo->atmosphere.fluidDensity,
+					mapInfo->water.fluidDensity,
+					owner->unitDef->atmosphericDragCoefficient,
+					rollingResistanceCoeff
+				)).Length()
+			);
+		}
+		return (owner->frontdir * (vel * Sign(int(!mt->IsReversing())) + hAcc));
+	}
 }
 
 
@@ -426,7 +499,7 @@ CGroundMoveType::CGroundMoveType(CUnit* owner):
 
 	// SPRING_CIRCLE_DIVS is 65536, but turnRate can be at most
 	// 32767 since it is converted to (signed) shorts in places
-	turnRate = Clamp(ud->turnRate, 1.0f, SPRING_CIRCLE_DIVS * 0.5f - 1.0f);
+	turnRate = std::clamp(ud->turnRate, 1.0f, SPRING_CIRCLE_DIVS * 0.5f - 1.0f);
 	turnAccel = turnRate * mix(0.333f, 0.033f, md->speedModClass == MoveDef::Ship);
 
 	accRate = std::max(0.01f, ud->maxAcc);
@@ -442,14 +515,23 @@ CGroundMoveType::CGroundMoveType(CUnit* owner):
 	killFeatures.reserve(UNIT_EVENTS_RESERVE);
 	killUnits.reserve(UNIT_EVENTS_RESERVE);
 	moveFeatures.reserve(UNIT_EVENTS_RESERVE);
+
+	forceStaticObjectCheck = true;
+
+	Connect();
 }
 
 CGroundMoveType::~CGroundMoveType()
 {
-	if (pathID == 0)
-		return;
+	Disconnect();
 
-	pathManager->DeletePath(pathID);
+	if (nextPathId != 0) {
+		pathManager->DeletePath(nextPathId, true);
+	}
+
+	if (pathID != 0) {
+		pathManager->DeletePath(pathID, true);
+	}
 }
 
 void CGroundMoveType::PostLoad()
@@ -463,8 +545,7 @@ void CGroundMoveType::PostLoad()
 	// There isn't a path to clear (we've just loaded a saved game), so we must now clear pathID
 	// before requesting our new path; otherwise, a valid path for another unit could be deleted.
 	pathID = 0;
-	ReRequestPath(PATH_REQUEST_TIMING_IMMEDIATE|PATH_REQUEST_UPDATE_FULLPATH);
-	DelayedReRequestPath();
+	pathID = pathManager->RequestPath(owner, owner->moveDef, owner->pos, goalPos, goalRadius + extraRadius, true);
 }
 
 bool CGroundMoveType::OwnerMoved(const short oldHeading, const float3& posDif, const float3& cmpEps) {
@@ -485,7 +566,7 @@ bool CGroundMoveType::OwnerMoved(const short oldHeading, const float3& posDif, c
 		// (eg. to maneuver around an obstacle), do not consider it
 		// as "idling"
 		idling = true;
-		idling &= (currWayPoint.y != -1.0f && nextWayPoint.y != -1.0f);
+		idling &= !atGoal;
 		idling &= (std::abs(owner->heading - oldHeading) < turnRate);
 
 		return false;
@@ -524,23 +605,30 @@ void CGroundMoveType::UpdatePreCollisions()
 
 	SyncWaypoints();
 
+	// The mt section may have noticed the new path was ready and switched over to it. If so then
+	// delete the old path, which has to be done in an ST section.
+	if (deletePathId != 0) {
+		pathManager->DeletePath(deletePathId);
+		deletePathId = 0;
+	}
+
 	if (pathingArrived) {
 		Arrived(false);
 		pathingArrived = false;
 	}
 
  	switch (setHeading) {
- 		case 1:
+ 		case 1: // moving
  			ChangeHeading(setHeadingDir);
 			ChangeSpeed(maxWantedSpeed, WantReverse(waypointDir, flatFrontDir));
  			setHeading = 0;
  			break;
-		case 2:
+		case 2: // stopping
 			SetMainHeading();
 			ChangeSpeed(0.0f, false);
 			setHeading = 0;
 			break;
-		case 3:
+		case 3: // stunned
 			ChangeSpeed(0.0f, false);
 			setHeading = 0;
 			break;
@@ -626,7 +714,7 @@ bool CGroundMoveType::Update()
 	if (owner->GetTransporter() != nullptr) return false;
 	if (owner->IsSkidding()) return false;
 	if (owner->IsFalling()) return false;
-	
+
 	if (resultantForces.SqLength() > 0.f)
 		owner->Move(resultantForces, true);
 
@@ -661,6 +749,19 @@ void CGroundMoveType::UpdateOwnerAccelAndHeading()
 
 void CGroundMoveType::SlowUpdate()
 {
+
+	// bool printMoveInfo = (selectedUnitsHandler.selectedUnits.size() == 1)
+	// 	&& (selectedUnitsHandler.selectedUnits.find(owner->id) != selectedUnitsHandler.selectedUnits.end());
+	// if (printMoveInfo) {
+	// 	LOG("%s: unit selected=%d pathType=%d atEndOfPath=%d atGoal=%d currWayPoint=(%f,%f,%f) nextWayPoint=(%f,%f,%f) goal=(%f,%f,%f) pos=(%f,%f,%f)"
+	// 			, __func__
+	// 			, owner->id, owner->moveDef->pathType, int(atEndOfPath), int(atGoal)
+	// 			, float(currWayPoint.x), float(currWayPoint.y), float(currWayPoint.z)
+	// 			, float(nextWayPoint.x), float(nextWayPoint.y), float(nextWayPoint.z)
+	// 			, goalPos.x, goalPos.y, goalPos.z
+	// 			, owner->pos.x, owner->pos.y, owner->pos.z);
+	// }
+
 	if (owner->GetTransporter() != nullptr) {
 		if (progressState == Active)
 			StopEngine(false);
@@ -679,17 +780,81 @@ void CGroundMoveType::SlowUpdate()
 					LOG_L(L_DEBUG, "[%s] unit %i has pathID %i but %i ETA failures", __func__, owner->id, pathID, numIdlingUpdates);
 
 					if (numIdlingSlowUpdates < MAX_IDLING_SLOWUPDATES) {
-						ReRequestPath(PATH_REQUEST_TIMING_IMMEDIATE|PATH_REQUEST_UPDATE_FULLPATH);
+						// avoid spamming rerequest paths if the unit is making progress.
+						if (idling) {
+							// Unit may have got stuck in
+							// 1) a wreck that has spawned
+							// 2) a push-resistant unit that stopped moving
+							// 3) an amphibious unit has just emerged from water right underneath a structure.
+							// 4) a push-resistant unit/building was spawned or teleported on top of us via lua
+							// 5) a stopped unit we were inside of was newly made push-resistant via lua
+							// 6) our movedef changed into one of a different size / crushStrength via lua
+							forceStaticObjectCheck = true;
+							ReRequestPath(true);
+						}
 					} else {
 						// unit probably ended up on a non-traversable
 						// square, or got stuck in a non-moving crowd
 						Fail(false);
+						// bool printMoveInfo = (selectedUnitsHandler.selectedUnits.size() == 1)
+						// 	&& (selectedUnitsHandler.selectedUnits.find(owner->id) != selectedUnitsHandler.selectedUnits.end());
+						// if (printMoveInfo) {
+						// 	LOG("%s: failed by idling too long.", __func__);
+						// }
 					}
 				}
 			} else {
 				// case B: we want to be moving but don't have a path
 				LOG_L(L_DEBUG, "[%s] unit %i has no path", __func__, owner->id);
-				ReRequestPath(PATH_REQUEST_TIMING_IMMEDIATE|PATH_REQUEST_UPDATE_FULLPATH);
+				ReRequestPath(true);
+			}
+
+			if (wantRepath) {
+				// When repaths are requested, they are pre-emptive and are made without
+				// confirmation that it is really necessary. Give the unit a chance to
+				// make progress: for example, when it got pushed against a building, but
+				// is otherwise moving on. Pathing is expensive so we really want to keep
+				// repathing to a minimum.
+				// Resolution distance checks kept to 1/10th of an Elmo to reduce the
+				// amount of time a unit can spend making insignificant progress, every
+				// SlowUpdate.
+				float curDist = math::floorf(currWayPoint.distance2D(owner->pos) * 10.f) / 10.f;
+				if (curDist < bestLastWaypointDist) {
+					bestLastWaypointDist = curDist;
+					wantRepathFrame = gs->frameNum;
+				}
+
+				// lastWaypoint typically retries a repath and most likely won;t get closer, so
+				// in this case, don't wait around making the unit try to run inot an obstacle for
+				// longer than absolutely necessary.
+				bool timeForRepath = gs->frameNum >= wantRepathFrame + modInfo.pfRepathDelayInFrames
+									&& (gs->frameNum >= lastRepathFrame + modInfo.pfRepathMaxRateInFrames || lastWaypoint);
+
+				// can't request a new path while the unit is stuck in terrain/static objects
+				if (timeForRepath){
+					if (lastWaypoint) {
+						bestLastWaypointDist *= (1.f / SQUARE_SIZE);
+						if (bestLastWaypointDist < bestReattemptedLastWaypointDist) {
+							// Give a bad path another try, in case we can get closer.
+							lastWaypoint = false;
+							bestReattemptedLastWaypointDist = bestLastWaypointDist;
+						}
+						else {
+							bestReattemptedLastWaypointDist = std::numeric_limits<decltype(bestReattemptedLastWaypointDist)>::infinity();
+						}
+					}
+					if (!lastWaypoint) {
+						ReRequestPath(true);
+					} else {
+						// This is here to stop units from trying forever to reach an goal they can't reach.
+						Fail(false);
+						// bool printMoveInfo = (selectedUnitsHandler.selectedUnits.size() == 1)
+						// 	&& (selectedUnitsHandler.selectedUnits.find(owner->id) != selectedUnitsHandler.selectedUnits.end());
+						// if (printMoveInfo) {
+							// LOG("%s: failed to reach final waypoint", __func__);
+						// }
+					}
+				}
 			}
 		}
 
@@ -729,6 +894,7 @@ void CGroundMoveType::StartMovingRaw(const float3 moveGoalPos, float moveGoalRad
 
 	atGoal = (moveGoalPos.SqDistance2D(owner->pos) < Square(goalRadius + extraRadius));
 	atEndOfPath = false;
+	lastWaypoint = false;
 
 	useMainHeading = false;
 	useRawMovement = true;
@@ -764,11 +930,22 @@ void CGroundMoveType::StartMoving(float3 moveGoalPos, float moveGoalRadius) {
 
 	// set the new goal
 	goalPos = moveGoalPos * XZVector;
+
+	float mapx = mapDims.mapx * SQUARE_SIZE;
+	float mapz = mapDims.mapy * SQUARE_SIZE;
+
+	// Sanitize the move command.
+	if (goalPos.x < 0.f)  { goalPos.x = 0.f; }
+	if (goalPos.z < 0.f)  { goalPos.z = 0.f; }
+	if (goalPos.x > mapx) { goalPos.x = mapx; }
+	if (goalPos.z > mapz) { goalPos.z = mapz; }
+
 	goalRadius = moveGoalRadius;
 	extraRadius = deltaRadius * (1 - owner->moveDef->TestMoveSquare(nullptr, moveGoalPos, ZeroVector, true, true));
 
 	atGoal = (moveGoalPos.SqDistance2D(owner->pos) < Square(goalRadius + extraRadius));
 	atEndOfPath = false;
+	lastWaypoint = false;
 
 	useMainHeading = false;
 	useRawMovement = false;
@@ -791,7 +968,9 @@ void CGroundMoveType::StartMoving(float3 moveGoalPos, float moveGoalRadius) {
 	// units passing intermediate waypoints will TYPICALLY not cause any
 	// script->{Start,Stop}Moving calls now (even when turnInPlace=true)
 	// unless they come to a full stop first
-	ReRequestPath(PATH_REQUEST_TIMING_IMMEDIATE|PATH_REQUEST_UPDATE_FULLPATH);
+	ReRequestPath(true);
+
+	bestReattemptedLastWaypointDist = std::numeric_limits<decltype(bestReattemptedLastWaypointDist)>::infinity();
 
 	if (owner->team == gu->myTeam)
 		Channels::General->PlayRandomSample(owner->unitDef->sounds.activate, owner);
@@ -825,6 +1004,29 @@ void CGroundMoveType::UpdatePreCollisionsMt() {
 	earlyCurrWayPoint = currWayPoint;
 	earlyNextWayPoint = nextWayPoint;
 
+	// Check wether the new path is ready.
+	if (nextPathId != 0) {
+		float3 tempWaypoint = pathManager->NextWayPoint(owner, nextPathId, 0,   owner->pos, std::max(WAYPOINT_RADIUS, currentSpeed * 1.05f), true);
+
+		// a non-temp answer tells us that the new path is ready to be used.
+		if (tempWaypoint.y != (-1.f)) {
+			// if the unit has switched to a raw move since the new path was requested then don't
+			// try to redirect onto the new path.
+			if (!useRawMovement) {
+				// switch straight over to the new path
+				earlyCurrWayPoint = tempWaypoint;
+				earlyNextWayPoint = pathManager->NextWayPoint(owner, nextPathId, 0, earlyCurrWayPoint, std::max(WAYPOINT_RADIUS, currentSpeed * 1.05f), true);
+				lastWaypoint = false;
+				wantRepath = false;
+			}
+
+			// can't delete the path in an MT section
+			deletePathId = pathID;
+			pathID = nextPathId;
+			nextPathId = 0;
+		}
+	}
+
 	if (owner->GetTransporter() != nullptr) return;
 	if (owner->IsSkidding()) return;
 	if (owner->IsFalling()) return;
@@ -843,12 +1045,12 @@ void CGroundMoveType::UpdateObstacleAvoidance() {
 	const float3&  ffd = flatFrontDir;
 	auto wantReverse = WantReverse(waypointDir, ffd);
 	const float3  rawWantedDir = waypointDir * Sign(int(!wantReverse));
-	const float3& modWantedDir = GetObstacleAvoidanceDir(mix(ffd, rawWantedDir, !atGoal));
+
+	GetObstacleAvoidanceDir(mix(ffd, rawWantedDir, !atGoal));
 }
 
 bool CGroundMoveType::FollowPath(int thread)
 {
-	//LOG("%s activated (%d)", __func__, owner->team);
 	bool wantReverse = false;
 
 	if (WantToStop()) {
@@ -860,7 +1062,6 @@ bool CGroundMoveType::FollowPath(int thread)
 		// SetMainHeading();
 		// ChangeSpeed(0.0f, false);
 		setHeading = 2;
-		//LOG("%s stop", __func__);
 	} else {
 		// ASSERT_SYNCED(currWayPoint);
 		// ASSERT_SYNCED(nextWayPoint);
@@ -892,11 +1093,9 @@ bool CGroundMoveType::FollowPath(int thread)
 		const float3& opos = owner->pos;
 		const float3& ovel = owner->speed;
 		const float3&  ffd = flatFrontDir;
-		// const float3&  cwp = currWayPoint;
 		const float3&  cwp = earlyCurrWayPoint;
 
 		prevWayPointDist = currWayPointDist;
-		// currWayPointDist = currWayPoint.distance2D(opos);
 		currWayPointDist = earlyCurrWayPoint.distance2D(opos);
 
 		{
@@ -919,6 +1118,8 @@ bool CGroundMoveType::FollowPath(int thread)
 			atGoal |= (curGoalDistSq <= minGoalDistSq);
 			atGoal |= ((curGoalDistSq <= spdGoalDistSq) && !reversing && (ffd.dot(goalPos - opos) > 0.0f && ffd.dot(goalPos - (opos + ovel)) <= 0.0f));
 			atGoal |= ((curGoalDistSq <= spdGoalDistSq) &&  reversing && (ffd.dot(goalPos - opos) < 0.0f && ffd.dot(goalPos - (opos + ovel)) >= 0.0f));
+
+			atEndOfPath |= atGoal;
 
 			#ifdef PATHING_DEBUG
 			if (DEBUG_DRAWING_ENABLED) {
@@ -953,11 +1154,13 @@ bool CGroundMoveType::FollowPath(int thread)
 			numIdlingUpdates += ((numIdlingUpdates < SPRING_MAX_HEADING) *      idling );
 		}
 
+		// An updated path must be re-evaluated.
+		if (atEndOfPath && !atGoal)
+			atEndOfPath = !pathManager->PathUpdated(pathID);
+
 		// atEndOfPath never becomes true when useRawMovement, except via StopMoving
 		if (!atEndOfPath && !useRawMovement) {
-			//move to end of function because next waypoint assigned/calculated in pathing system call.
-			//SetNextWayPoint();
-			//ReRequestPath(PATH_REQUEST_TIMING_IMMEDIATE|PATH_REQUEST_UPDATE_EXISTING);
+			SetNextWayPoint(thread);
 		} else {
 			if (atGoal){
 				#ifdef PATHING_DEBUG
@@ -970,30 +1173,12 @@ bool CGroundMoveType::FollowPath(int thread)
 				}
 				#endif
 				pathingArrived = true;
-			} else {
-				#ifdef PATHING_DEBUG
-				if (DEBUG_DRAWING_ENABLED) {
-					bool printMoveInfo = (selectedUnitsHandler.selectedUnits.size() == 1)
-						&& (selectedUnitsHandler.selectedUnits.find(owner->id) != selectedUnitsHandler.selectedUnits.end());
-					if (printMoveInfo) {
-						LOG("%s request new path since not at goal", __func__);
-					}
-				}
-				#endif
-				ReRequestPath(PATH_REQUEST_TIMING_DELAYED|PATH_REQUEST_UPDATE_FULLPATH);
 			}
 		}
 
 		// set direction to waypoint AFTER requesting it; should not be a null-vector
 		// do not compare y-components since these usually differ and only x&z matter
-		float3 waypointVec;
-		// float3 wpProjDists;
-
-		if (!epscmp(cwp.x, opos.x, float3::cmp_eps()) || !epscmp(cwp.z, opos.z, float3::cmp_eps())) {
-			waypointVec = (cwp - opos) * XZVector;
-			waypointDir = waypointVec / waypointVec.Length();
-			// wpProjDists = {math::fabs(waypointVec.dot(ffd)), 1.0f, math::fabs(waypointDir.dot(ffd))};
-		}
+		SetWaypointDir(cwp, opos);
 
 		//ASSERT_SYNCED(waypointVec);
 		//ASSERT_SYNCED(waypointDir);
@@ -1012,19 +1197,13 @@ bool CGroundMoveType::FollowPath(int thread)
 		// ChangeSpeed(maxWantedSpeed, wantReverse);
 		setHeading = 1;
 		setHeadingDir = GetHeadingFromVector(modWantedDir.x, modWantedDir.z);
-		
+
 
 		#ifdef PATHING_DEBUG
 		if (DEBUG_DRAWING_ENABLED) {
 			bool printMoveInfo = (selectedUnitsHandler.selectedUnits.size() == 1)
 				&& (selectedUnitsHandler.selectedUnits.find(owner->id) != selectedUnitsHandler.selectedUnits.end());
 			if (printMoveInfo) {
-
-				LOG("%s waypointVec (%f,%f,%f)", __func__
-					, static_cast<float>(waypointVec.x)
-					, static_cast<float>(waypointVec.y)
-					, static_cast<float>(waypointVec.z));
-
 				LOG("%s waypointDir (%f,%f,%f)", __func__
 					, static_cast<float>(waypointDir.x)
 					, static_cast<float>(waypointDir.y)
@@ -1042,14 +1221,18 @@ bool CGroundMoveType::FollowPath(int thread)
 			}
 		}
 		#endif
-
-		if (!atEndOfPath && !useRawMovement) {
-			SetNextWayPoint(thread);
-		}
 	}
 
 	//pathManager->UpdatePath(owner, pathID);
 	return wantReverse;
+}
+
+void CGroundMoveType::SetWaypointDir(const float3& cwp, const float3 &opos) {
+	if (!epscmp(cwp.x, opos.x, float3::cmp_eps()) || !epscmp(cwp.z, opos.z, float3::cmp_eps())) {
+		float3 waypointVec = (cwp - opos) * XZVector;
+		waypointDir = waypointVec / waypointVec.Length();
+		// wpProjDists = {math::fabs(waypointVec.dot(ffd)), 1.0f, math::fabs(waypointDir.dot(ffd))};
+	}
 }
 
 void CGroundMoveType::ChangeSpeed(float newWantedSpeed, bool wantReverse, bool fpsMode)
@@ -1099,6 +1282,8 @@ void CGroundMoveType::ChangeSpeed(float newWantedSpeed, bool wantReverse, bool f
 
 			const bool startBraking = (UNIT_CMD_QUE_SIZE(owner) <= 1 && curGoalDistSq <= minGoalDistSq && !fpsMode);
 
+			float maxSpeedToMakeTurn = std::numeric_limits<float>::infinity();
+
 			if (!fpsMode && turnDeltaHeading != 0) {
 				// only auto-adjust speed for turns when not in FPS mode
 				const float reqTurnAngle = math::fabs(180.0f * short(owner->heading - wantedHeading) / SPRING_MAX_HEADING);
@@ -1108,12 +1293,12 @@ void CGroundMoveType::ChangeSpeed(float newWantedSpeed, bool wantReverse, bool f
 				      float turnModSpeed = turnMaxSpeed;
 
 				if (reqTurnAngle != 0.0f)
-					turnModSpeed *= Clamp(maxTurnAngle / reqTurnAngle, 0.1f, 1.0f);
+					turnModSpeed *= std::clamp(maxTurnAngle / reqTurnAngle, 0.1f, 1.0f);
 
 				if (waypointDir.SqLength() > 0.1f) {
 					if (!ud->turnInPlace) {
 						// never let speed drop below TIPSL, but limit TIPSL itself to turnMaxSpeed
-						targetSpeed = Clamp(turnModSpeed, std::min(ud->turnInPlaceSpeedLimit, turnMaxSpeed), turnMaxSpeed);
+						targetSpeed = std::clamp(turnModSpeed, std::min(ud->turnInPlaceSpeedLimit, turnMaxSpeed), turnMaxSpeed);
 					} else {
 						targetSpeed = mix(targetSpeed, turnModSpeed, reqTurnAngle > ud->turnInPlaceAngleLimit);
 					}
@@ -1128,6 +1313,30 @@ void CGroundMoveType::ChangeSpeed(float newWantedSpeed, bool wantReverse, bool f
 
 					targetSpeed = std::min(targetSpeed, (currWayPointDist * math::PI) / framesToTurn);
 				}
+			}
+
+			// When a waypoint is moved, it is because of a collision with a building. This can
+			// result in the unit having to loop back around, but we need to make sure it doesn't
+			// go too fast looping back around that it crashes right back into the same building
+			// and trigger a looping behaviour.
+			if (limitSpeedForTurning > 0) {
+				const int dirSign = Sign(int(!reversing));
+				short idealHeading = GetHeadingFromVector(waypointDir.x, waypointDir.z);
+				short offset = idealHeading - owner->heading;
+
+				const float absTurnSpeed = std::max(0.0001f, math::fabs(turnRate));
+				const float framesToTurn = std::max(0.0001f, math::fabs(offset / absTurnSpeed));
+
+				maxSpeedToMakeTurn = std::max(0.01f, (currWayPointDist / framesToTurn) * (.95f));
+
+				// bool printMoveInfo = (selectedUnitsHandler.selectedUnits.size() == 1)
+				// 	&& (selectedUnitsHandler.selectedUnits.find(owner->id) != selectedUnitsHandler.selectedUnits.end());
+				// if (printMoveInfo) {
+				// 	LOG("%s: dirSign %d, waypointDir=(%f,%f,%f), idealHeading=%d, offset=%d, absTurnSpeed=%f, framesToTurn=%f, maxSpeedToMakeTurn=%f"
+				// 			, __func__
+				// 			, dirSign, waypointDir.x, waypointDir.y, waypointDir.z, idealHeading, offset
+				// 			, absTurnSpeed, framesToTurn, maxSpeedToMakeTurn);
+				// }
 			}
 
 			// now apply the terrain and command restrictions
@@ -1148,6 +1357,7 @@ void CGroundMoveType::ChangeSpeed(float newWantedSpeed, bool wantReverse, bool f
 			targetSpeed *= (1 - startBraking);
 			targetSpeed *= ((1 - WantToStop()) || fpsMode);
 			targetSpeed = std::min(targetSpeed, wantedSpeed);
+			targetSpeed = std::min(targetSpeed, maxSpeedToMakeTurn);
 		} else {
 			targetSpeed = 0.0f;
 		}
@@ -1166,6 +1376,7 @@ void CGroundMoveType::ChangeSpeed(float newWantedSpeed, bool wantReverse, bool f
 
 /*
  * Changes the heading of the owner.
+ * Also updates world position of aim points, and orientation if walking over terrain slopes.
  * FIXME near-duplicate of HoverAirMoveType::UpdateHeading
  */
 void CGroundMoveType::ChangeHeading(short newHeading) {
@@ -1173,12 +1384,6 @@ void CGroundMoveType::ChangeHeading(short newHeading) {
 		return;
 	if (owner->GetTransporter() != nullptr)
 		return;
-
-	// if (newHeading == owner->heading) {
-	// 	wantedHeading = newHeading;
-	// 	// turnSpeed = Clamp(turnSpeed * (1 - owner->IsInAir()), -turnRate, turnRate); // this is the side effect from GetDeltaHeading() that needs to be applied here.
-	// 	return;
-	// }
 
 	#if (MODEL_TURN_INERTIA == 0)
 	const short rawDeltaHeading = pathController.GetDeltaHeading(pathID, wantedHeading, owner->heading, turnRate);
@@ -1195,8 +1400,6 @@ void CGroundMoveType::ChangeHeading(short newHeading) {
 
 	flatFrontDir = (owner->frontdir * XZVector).Normalize();
 }
-
-
 
 
 bool CGroundMoveType::CanApplyImpulse(const float3& impulse)
@@ -1216,7 +1419,7 @@ bool CGroundMoveType::CanApplyImpulse(const float3& impulse)
 	skidRotAccel = 0.0f;
 
 	float3 newSpeed = owner->speed + impulse;
-	float3 skidDir = owner->frontdir;
+	float3 skidDir = mix(float3(owner->frontdir), owner->frontdir * -1, reversing);
 
 	// NOTE:
 	//   we no longer delay the skidding-state until owner has "accumulated" an
@@ -1259,7 +1462,15 @@ void CGroundMoveType::UpdateSkid()
 	const float groundHeight = GetGroundHeight(pos);
 	const float negAltitude = groundHeight - pos.y;
 
-	owner->SetVelocity(spd + owner->GetDragAccelerationVec(float4(mapInfo->atmosphere.fluidDensity, mapInfo->water.fluidDensity, 1.0f, 0.01f)));
+	owner->SetVelocity(
+		spd +
+		owner->GetDragAccelerationVec(
+			mapInfo->atmosphere.fluidDensity,
+			mapInfo->water.fluidDensity,
+			owner->unitDef->atmosphericDragCoefficient,
+			owner->unitDef->groundFrictionCoefficient
+		)
+	);
 
 	if (owner->IsFlying()) {
 		const float collImpactSpeed = pos.IsInBounds()?
@@ -1390,7 +1601,15 @@ void CGroundMoveType::UpdateControlledDrop()
 	const float   alt = GetGroundHeight(pos) - pos.y;
 
 	owner->SetVelocity(spd + acc);
-	owner->SetVelocity(spd + owner->GetDragAccelerationVec(float4(mapInfo->atmosphere.fluidDensity, mapInfo->water.fluidDensity, 1.0f, 0.1f)));
+	owner->SetVelocity(
+		spd +
+		owner->GetDragAccelerationVec(
+			mapInfo->atmosphere.fluidDensity,
+			mapInfo->water.fluidDensity,
+			owner->unitDef->atmosphericDragCoefficient,
+			owner->unitDef->groundFrictionCoefficient * 10
+		)
+	);
 	owner->SetSpeed(spd);
 	owner->Move(spd, true);
 
@@ -1568,14 +1787,21 @@ float3 CGroundMoveType::GetObstacleAvoidanceDir(const float3& desiredDir) {
 
 	// obstacle-avoidance only needs to run if the unit wants to move
 	if (WantToStop())
-		return flatFrontDir;
+		return lastAvoidanceDir = flatFrontDir;
 
 	// Speed-optimizer. Reduces the times this system is run.
-	if ((gs->frameNum + owner->id) % modInfo.groundUnitCollisionAvoidanceUpdateRate)
+	if ((gs->frameNum + owner->id) % modInfo.groundUnitCollisionAvoidanceUpdateRate) {
+		if (!avoidingUnits)
+			lastAvoidanceDir = desiredDir;
+
 		return lastAvoidanceDir;
+	}
 
 	float3 avoidanceVec = ZeroVector;
 	float3 avoidanceDir = desiredDir;
+
+	if (avoidingUnits)
+		avoidingUnits = false;
 
 	lastAvoidanceDir = desiredDir;
 
@@ -1678,7 +1904,7 @@ float3 CGroundMoveType::GetObstacleAvoidanceDir(const float3& desiredDir) {
 		// for mobile units, avoidance-response is modulated by angle
 		// between avoidee's and avoider's frontdir such that maximal
 		// avoidance occurs when they are anti-parallel
-		const float avoidanceCosAngle = Clamp(avoider->frontdir.dot(avoidee->frontdir), -1.0f, 1.0f);
+		const float avoidanceCosAngle = std::clamp(avoider->frontdir.dot(avoidee->frontdir), -1.0f, 1.0f);
 		const float avoidanceResponse = (1.0f - avoidanceCosAngle * int(avoideeMobile)) + 0.1f;
 		const float avoidanceFallOff  = (1.0f - std::min(1.0f, avoideeDist / (5.0f * avoidanceRadiusSum)));
 
@@ -1695,8 +1921,10 @@ float3 CGroundMoveType::GetObstacleAvoidanceDir(const float3& desiredDir) {
 
 		avoidanceDir = avoider->rightdir * AVOIDER_DIR_WEIGHT * avoiderTurnSign;
 		avoidanceVec += (avoidanceDir * avoidanceResponse * avoidanceFallOff * avoideeMassScale);
-	}
 
+		if (!avoidingUnits)
+			avoidingUnits = true;
+	}
 
 	// use a weighted combination of the desired- and the avoidance-directions
 	// also linearly smooth it using the vector calculated the previous frame
@@ -1769,6 +1997,7 @@ float CGroundMoveType::Distance2D(CSolidObject* object1, CSolidObject* object2, 
 // Creates a path to the goal.
 unsigned int CGroundMoveType::GetNewPath()
 {
+	assert(!ThreadPool::inMultiThreadedSection);
 	unsigned int newPathID = 0;
 
 	#ifdef PATHING_DEBUG
@@ -1803,274 +2032,224 @@ unsigned int CGroundMoveType::GetNewPath()
 	if ((newPathID = pathManager->RequestPath(owner, owner->moveDef, owner->pos, goalPos, goalRadius + extraRadius, true)) != 0) {
 		atGoal = false;
 		atEndOfPath = false;
+		lastWaypoint = false;
 
-		earlyCurrWayPoint = pathManager->NextWayPoint(owner, newPathID, 0,        owner->pos, std::max(WAYPOINT_RADIUS, currentSpeed * 1.05f), true);
-		earlyNextWayPoint = pathManager->NextWayPoint(owner, newPathID, 0, earlyCurrWayPoint, std::max(WAYPOINT_RADIUS, currentSpeed * 1.05f), true);
+		currWayPoint = pathManager->NextWayPoint(owner, newPathID, 0,   owner->pos, std::max(WAYPOINT_RADIUS, currentSpeed * 1.05f), true);
+		nextWayPoint = pathManager->NextWayPoint(owner, newPathID, 0, currWayPoint, std::max(WAYPOINT_RADIUS, currentSpeed * 1.05f), true);
 
 		pathController.SetRealGoalPosition(newPathID, goalPos);
-		pathController.SetTempGoalPosition(newPathID, earlyCurrWayPoint);
+		pathController.SetTempGoalPosition(newPathID, currWayPoint);
 	} else {
-		moveFailed = true;
-		//Fail(false);
+		// moveFailed = true;
+		Fail(false);
 	}
 
 	return newPathID;
 }
 
-void CGroundMoveType::ReRequestPath(PathRequestType requestType) {
-	#ifdef PATHING_DEBUG
-	if (DEBUG_DRAWING_ENABLED) {
-		bool printMoveInfo = (selectedUnitsHandler.selectedUnits.size() == 1)
-			&& (selectedUnitsHandler.selectedUnits.find(owner->id) != selectedUnitsHandler.selectedUnits.end());
-		if (printMoveInfo) {
-			LOG("%s want <- request (%d <- %d)", __func__, wantRepath, requestType);
-		}
-	}
-	#endif
-
-	if (wantRepath == PATH_REQUEST_NONE){
-		wantRepath = requestType;
+void CGroundMoveType::ReRequestPath(bool forceRequest) {
+	if (forceRequest) {
+		assert(!ThreadPool::inMultiThreadedSection);
+		// StopEngine(false);
+		StartEngine(false);
+		wantRepath = false;
+		lastRepathFrame = gs->frameNum;
 		return;
 	}
 
-	int requestPriority = (requestType & PATH_REQUEST_TIMING_BITMASK);
-	int currentPriority = (wantRepath & PATH_REQUEST_TIMING_BITMASK);
-
-	if (requestPriority > currentPriority){
-		wantRepath = requestType;
-		return;
+	if (!wantRepath) {
+		wantRepath = true;
+		wantRepathFrame = gs->frameNum;
+		bestLastWaypointDist = std::numeric_limits<float>::infinity();
 	}
-	if (requestPriority < currentPriority)
-		return;
-
-	int requestScope = (requestType & PATH_REQUEST_UPDATE_BITMASK);
-	int currentScope = (wantRepath & PATH_REQUEST_UPDATE_BITMASK);
-
-	if (requestScope > currentScope)
-		wantRepath = requestType;
-
-	#ifdef PATHING_DEBUG
-	if (DEBUG_DRAWING_ENABLED) {
-		bool printMoveInfo = (selectedUnitsHandler.selectedUnits.size() == 1)
-			&& (selectedUnitsHandler.selectedUnits.find(owner->id) != selectedUnitsHandler.selectedUnits.end());
-		if (printMoveInfo) {
-			LOG("%s fin: want <- request (%d <- %d)", __func__, wantRepath, requestType);
-		}
-	}
-	#endif
 }
-
-void CGroundMoveType::DoReRequestPath() {
-	//LOG("%s activated", __func__);
-	StopEngine(false);
-	StartEngine(false);
-}
-
 
 bool CGroundMoveType::CanSetNextWayPoint(int thread) {
-	assert(!useRawMovement);
-
-	//LOG("%s activated", __func__);
+	ZoneScoped;
 
 	if (pathID == 0)
 		return false;
 	if (!pathController.AllowSetTempGoalPosition(pathID, nextWayPoint))
 		return false;
+	if (atEndOfPath)
+		return false;
 
-	#ifdef PATHING_DEBUG
+	const float3& pos = owner->pos;
+		  float3& cwp = earlyCurrWayPoint;
+		  float3& nwp = earlyNextWayPoint;
+
+	// QTPFS ONLY PATH
+	if (pathManager->PathUpdated(pathID)) {
+		// path changed while we were following it (eg. due
+		// to terrain deformation) in between two waypoints
+		// but still has the same ID; in this case (which is
+		// specific to QTPFS) we don't go through GetNewPath
+		//
+		cwp = pathManager->NextWayPoint(owner, pathID, 0, pos, std::max(WAYPOINT_RADIUS, currentSpeed * 1.05f), true);
+		nwp = pathManager->NextWayPoint(owner, pathID, 0, cwp, std::max(WAYPOINT_RADIUS, currentSpeed * 1.05f), true);
+
+		currWayPointDist = cwp.distance2D(pos);
+		SetWaypointDir(cwp, pos);
+		wantRepath = false;
+	
+		pathManager->ClearPathUpdated(pathID);
+	}
+
+	if (earlyCurrWayPoint.y == -1.0f || earlyNextWayPoint.y == -1.0f)
+		return true;
+
 	if (DEBUG_DRAWING_ENABLED) {
-		bool printMoveInfo = (selectedUnitsHandler.selectedUnits.size() == 1)
-			&& (selectedUnitsHandler.selectedUnits.find(owner->id) != selectedUnitsHandler.selectedUnits.end());
-		if (printMoveInfo) {
-			LOG("%s currWayPoint.y = %f, nextWayPoint.y = %f", __func__
-				, static_cast<float>(currWayPoint.y), static_cast<float>(nextWayPoint.y));
+		if (selectedUnitsHandler.selectedUnits.find(owner->id) != selectedUnitsHandler.selectedUnits.end()) {
+			// plot the vectors to {curr, next}WayPoint
+
+			geometryLock.lock();
+			const int cwpFigGroupID = geometricObjects->AddLine(pos + (UpVector * 20.0f), cwp + (UpVector * (pos.y + 20.0f)), 8.0f, 1, 4);
+			const int nwpFigGroupID = geometricObjects->AddLine(pos + (UpVector * 20.0f), nwp + (UpVector * (pos.y + 20.0f)), 8.0f, 1, 4);
+
+			geometricObjects->SetColor(cwpFigGroupID, 1, 0.3f, 0.3f, 0.6f);
+			geometricObjects->SetColor(nwpFigGroupID, 1, 0.3f, 0.3f, 0.6f);
+			geometryLock.unlock();
 		}
 	}
-	#endif
 
-	if (earlyCurrWayPoint.y != -1.0f && earlyNextWayPoint.y != -1.0f) {
-		const float3& pos = owner->pos;
-		      float3& cwp = earlyCurrWayPoint;
-		      float3& nwp = earlyNextWayPoint;
+	float cwpDistSq = cwp.SqDistance2D(pos);
+	// -1 to avoid units checking for corners to rotate slightly and fail to escape when at max
+	// distance for allowSkip. The slide/corner checks are done upto 8 elmos.
+	const bool allowSkip = (cwpDistSq < Square(SQUARE_SIZE - 1));
+	if (!allowSkip) {
+		const bool skipRequested = (earlyCurrWayPoint.y == -2.0f || earlyNextWayPoint.y == -2.0f);
+		if (!skipRequested) {
+			// perform a turn-radius check: if the waypoint lies outside
+			// our turning circle, do not skip since we can steer toward
+			// this waypoint and pass it without slowing down
+			// note that the DIAMETER of the turning circle is calculated
+			// to prevent sine-like "snaking" trajectories; units capable
+			// of instant turns *and* high speeds also need special care
+			const int dirSign = Sign(int(!reversing));
 
-		// QTPFS ONLY PATH
-		if (pathManager->PathUpdated(pathID)) { // MT Safe????
-			// path changed while we were following it (eg. due
-			// to terrain deformation) in between two waypoints
-			// but still has the same ID; in this case (which is
-			// specific to QTPFS) we don't go through GetNewPath
-			//
-			cwp = pathManager->NextWayPoint(owner, pathID, 0, pos, std::max(WAYPOINT_RADIUS, currentSpeed * 1.05f), true);
-			nwp = pathManager->NextWayPoint(owner, pathID, 0, cwp, std::max(WAYPOINT_RADIUS, currentSpeed * 1.05f), true);
-		}
+			const float absTurnSpeed = turnRate;
+			const float framesToTurn = SPRING_CIRCLE_DIVS / absTurnSpeed;
 
-		if (DEBUG_DRAWING_ENABLED) {
-			if (selectedUnitsHandler.selectedUnits.find(owner->id) != selectedUnitsHandler.selectedUnits.end()) {
-				// plot the vectors to {curr, next}WayPoint
+			const float turnRadius = std::max((currentSpeed * framesToTurn) * math::INVPI2, currentSpeed * 1.05f) * 2.f;
+			const float waypointDot = std::clamp(waypointDir.dot(flatFrontDir * dirSign), -1.0f, 1.0f);
 
-				geometryLock.lock();
-				const int cwpFigGroupID = geometricObjects->AddLine(pos + (UpVector * 20.0f), cwp + (UpVector * (pos.y + 20.0f)), 8.0f, 1, 4);
-				const int nwpFigGroupID = geometricObjects->AddLine(pos + (UpVector * 20.0f), nwp + (UpVector * (pos.y + 20.0f)), 8.0f, 1, 4);
+			#if 1
 
-				geometricObjects->SetColor(cwpFigGroupID, 1, 0.3f, 0.3f, 0.6f);
-				geometricObjects->SetColor(nwpFigGroupID, 1, 0.3f, 0.3f, 0.6f);
-				geometryLock.unlock();
-			}
-		}
+			// #ifdef PATHING_DEBUG
+			// if (DEBUG_DRAWING_ENABLED)
+			// {
+			// 	bool printMoveInfo = (selectedUnitsHandler.selectedUnits.size() == 1)
+			// 		&& (selectedUnitsHandler.selectedUnits.find(owner->id) != selectedUnitsHandler.selectedUnits.end());
+			// 	if (printMoveInfo) {
+			// 		LOG("%s absTurnSpeed %f, cwpDistSq=%f, skip=%d", __func__, absTurnSpeed, cwpDistSq, int(allowSkip));
+			// 		LOG("%s turnradius %f = max(%f*%f*%f=%f, %f)", __func__
+			// 				, turnRadius, currentSpeed, framesToTurn, math::INVPI2
+			// 				, (currentSpeed * framesToTurn) * math::INVPI2
+			// 				, currentSpeed * 1.05f);
+			// 		LOG("%s currWayPointDist %f, turn radius = %f", __func__, currWayPointDist, turnRadius);
+			// 	}
+			// }
+			// #endif
 
-		// perform a turn-radius check: if the waypoint lies outside
-		// our turning circle, do not skip since we can steer toward
-		// this waypoint and pass it without slowing down
-		// note that the DIAMETER of the turning circle is calculated
-		// to prevent sine-like "snaking" trajectories; units capable
-		// of instant turns *and* high speeds also need special care
-		const int dirSign = Sign(int(!reversing));
+			// wp outside turning circle
+			if (currWayPointDist > turnRadius)
+				return false;
 
-		#if (MODEL_TURN_INERTIA == 0)
-		const float absTurnSpeed = turnRate;
-		#else
-		// base ftt on current turning speed
-		const float absTurnSpeed = std::max(0.0001f, math::fabs(turnSpeed));
-		#endif
-		const float framesToTurn = SPRING_CIRCLE_DIVS / absTurnSpeed;
+			// #ifdef PATHING_DEBUG
+			// if (DEBUG_DRAWING_ENABLED)
+			// {
+			// 	bool printMoveInfo = (selectedUnitsHandler.selectedUnits.size() == 1)
+			// 		&& (selectedUnitsHandler.selectedUnits.find(owner->id) != selectedUnitsHandler.selectedUnits.end());
+			// 	if (printMoveInfo) {
+			// 		LOG("%s currWayPointDist %f, max=%f, wayDot=%f", __func__
+			// 				, currWayPointDist
+			// 				, std::max(SQUARE_SIZE * 1.0f, currentSpeed * 1.05f)
+			// 				, waypointDot);
+			// 	}
+			// }
+			// #endif
 
-		const float turnRadius = std::max((currentSpeed * framesToTurn) * math::INVPI2, currentSpeed * 1.05f);
-		const float waypointDot = Clamp(waypointDir.dot(flatFrontDir * dirSign), -1.0f, 1.0f);
+			// wp inside but ~straight ahead and not reached within one tick
+			if (currWayPointDist > std::max(SQUARE_SIZE * 1.0f, currentSpeed * 1.05f) && waypointDot >= 0.995f)
+				return false;
 
-		#if 1
+			#else
 
-		#ifdef PATHING_DEBUG
-		if (DEBUG_DRAWING_ENABLED) {
-			bool printMoveInfo = (selectedUnitsHandler.selectedUnits.size() == 1)
-				&& (selectedUnitsHandler.selectedUnits.find(owner->id) != selectedUnitsHandler.selectedUnits.end());
-			if (printMoveInfo) {
-				LOG("%s turnSpeed %f", __func__, turnSpeed);
-				LOG("%s turnradius %f = max(%f*%f*%f=%f, %f)", __func__
-						, turnRadius, currentSpeed, framesToTurn, math::INVPI2
-						, (currentSpeed * framesToTurn) * math::INVPI2
-						, currentSpeed * 1.05f);
-				LOG("%s currWayPointDist %f, turn radius*2 = %f", __func__, currWayPointDist, (turnRadius * 2.0f));
-			}
-		}
-		#endif
+			if ((currWayPointDist > std::max(turnRadius * 2.0f, 1.0f * SQUARE_SIZE)) && (waypointDot >= 0.0f))
+				return false;
 
-		// wp outside turning circle
-		if (currWayPointDist > (turnRadius * 2.0f))
-			return false;
+			if ((currWayPointDist > std::max(turnRadius * 1.0f, 1.0f * SQUARE_SIZE)) && (waypointDot <  0.0f))
+				return false;
 
-		#ifdef PATHING_DEBUG
-		if (DEBUG_DRAWING_ENABLED) {
-			bool printMoveInfo = (selectedUnitsHandler.selectedUnits.size() == 1)
-				&& (selectedUnitsHandler.selectedUnits.find(owner->id) != selectedUnitsHandler.selectedUnits.end());
-			if (printMoveInfo) {
-				LOG("%s currWayPointDist %f, max=%f, wayDot=%f", __func__
-						, currWayPointDist
-						, std::max(SQUARE_SIZE * 1.0f, currentSpeed * 1.05f)
-						, waypointDot);
-			}
-		}
-		#endif
-
-		// wp inside but ~straight ahead and not reached within one tick
-		if (currWayPointDist > std::max(SQUARE_SIZE * 1.0f, currentSpeed * 1.05f) && waypointDot >= 0.995f)
-			return false;
-
-		#else
-
-		if ((currWayPointDist > std::max(turnRadius * 2.0f, 1.0f * SQUARE_SIZE)) && (waypointDot >= 0.0f))
-			return false;
-
-		if ((currWayPointDist > std::max(turnRadius * 1.0f, 1.0f * SQUARE_SIZE)) && (waypointDot <  0.0f))
-			return false;
-
-		if (math::acosf(waypointDot) < ((turnRate / SPRING_CIRCLE_DIVS) * math::TWOPI))
-			return false;
-		#endif
-
-		{
-			const float cwpDistSq = (cwp - pos).SqLength();
-			const float searchRadius = std::max(WAYPOINT_RADIUS, currentSpeed * 1.05f);
-
-			// path manager returns the first point beyond searchRadius, so add a little extra
-			// to the cut off limit to allow for that. 
-			const float radiusLimit = searchRadius + WAYPOINT_RADIUS*2;
-
-			// If the pathfinder determined that the path could be accessed in
-			// a straight line, it may have given a single distant goal waypoint.
-			// Limit how far to search for obstacles here, a square search doesn't
-			// make sense over anything, but a small distance here.
-			const float3 targetPos = (cwpDistSq <= Square(radiusLimit)) ? cwp : pos + (cwp - pos).SafeNormalize() * radiusLimit;
-
-			// check the rectangle between pos and cwp for obstacles
-			// if still further than SS elmos from waypoint, disallow skipping
-			// note: can somehow cause units to move in circles near obstacles
-			// (mantis3718) if rectangle is too generous in size
-			const bool rangeTest = owner->moveDef->TestMoveSquareRange(owner, float3::min(targetPos, pos), float3::max(targetPos, pos), owner->speed, true, true, true, nullptr, nullptr, thread);
-			const bool allowSkip = (cwpDistSq <= Square(SQUARE_SIZE));
-
-			#ifdef PATHING_DEBUG
-			if (DEBUG_DRAWING_ENABLED) {
-				bool printMoveInfo = (selectedUnitsHandler.selectedUnits.size() == 1)
-					&& (selectedUnitsHandler.selectedUnits.find(owner->id) != selectedUnitsHandler.selectedUnits.end());
-				if (printMoveInfo) {
-					LOG("%s allowSkip %d, rangeTest=%d", __func__
-							, (int)allowSkip
-							, (int)rangeTest);
-				}
-			}
+			if (math::acosf(waypointDot) < ((turnRate / SPRING_CIRCLE_DIVS) * math::TWOPI))
+				return false;
 			#endif
 
-			// CanSetNextWayPoint may return true if (allowSkip || rangeTest)
-			if (!allowSkip && !rangeTest)
+		}
+
+		// Check if the unit has overshot the current waypoint and on route to the next waypoint.
+		// const float3& p0 = earlyCurrWayPoint, v0 = float3(p0.x - pos.x, 0.0f, p0.z - pos.z);
+		// const float3& p1 = earlyNextWayPoint, v1 = float3(p1.x - pos.x, 0.0f, p1.z - pos.z);
+		// bool unitIsBetweenWaypoints = (v0.dot(v1) <= -0.f);
+
+		// The last waypoint on a bad path will never pass a range check so don't try.
+		//bool doRangeCheck = !pathManager->NextWayPointIsUnreachable(pathID);
+						// && !unitIsBetweenWaypoints;
+		//if (doRangeCheck) {
+			const float searchRadius = std::max(WAYPOINT_RADIUS, currentSpeed * 1.05f);
+			const float3 targetPos = nwp;
+
+			// check the between pos and cwp for obstacles
+			// if still further than SS elmos from waypoint, disallow skipping
+			const bool rangeTest = owner->moveDef->DoRawSearch(owner, pos, targetPos, owner->speed, true, true, false, nullptr, nullptr, thread);
+
+			// {
+			// bool printMoveInfo = (selectedUnitsHandler.selectedUnits.size() == 1)
+			// 	&& (selectedUnitsHandler.selectedUnits.find(owner->id) != selectedUnitsHandler.selectedUnits.end());
+			// if (printMoveInfo)
+			// 	LOG("%s: test move square (%f,%f)->(%f,%f) = %f (range=%d skip=%d)", __func__
+			// 			, pos.x, pos.z, targetPos.x, targetPos.z, math::sqrtf(cwpDistSq)
+			// 			, int(rangeTest), int(allowSkip));
+			// }
+
+			if (!rangeTest)
 				return false;
-		}
+		//}
+	}
 
-		{
-			// const float curGoalDistSq = (currWayPoint - goalPos).SqLength2D();
-			const float curGoalDistSq = (earlyCurrWayPoint - goalPos).SqLength2D();
-			const float minGoalDistSq = (UNIT_HAS_MOVE_CMD(owner))?
-				Square((goalRadius + extraRadius) * (numIdlingSlowUpdates + 1)):
-				Square((goalRadius + extraRadius)                             );
+	{
+		const float curGoalDistSq = (earlyCurrWayPoint - goalPos).SqLength2D();
+		const float minGoalDistSq = (UNIT_HAS_MOVE_CMD(owner)) ?
+			Square((goalRadius + extraRadius) * (numIdlingSlowUpdates + 1)):
+			Square((goalRadius + extraRadius)                             );
 
-			// trigger Arrived on the next Update (only if we have non-temporary waypoints)
-			// note:
-			//   coldet can (very rarely) interfere with this, causing it to remain false
-			//   a unit would then keep moving along its final waypoint-direction forever
-			//   if atGoal, so we require waypointDir to always be updated in FollowPath
-			//   (checking curr == next is not perfect, becomes true a waypoint too early)
-			//
-			// atEndOfPath |= (currWayPoint == nextWayPoint);
-			atEndOfPath |= (curGoalDistSq <= minGoalDistSq);
-		}
+		// trigger Arrived on the next Update (only if we have non-temporary waypoints)
+		// note:
+		//   coldet can (very rarely) interfere with this, causing it to remain false
+		//   a unit would then keep moving along its final waypoint-direction forever
+		//   if atGoal, so we require waypointDir to always be updated in FollowPath
+		//   (checking curr == next is not perfect, becomes true a waypoint too early)
+		//
+		// atEndOfPath |= (currWayPoint == nextWayPoint);
+		atEndOfPath |= (curGoalDistSq <= minGoalDistSq);
 
-		#ifdef PATHING_DEBUG
-		if (DEBUG_DRAWING_ENABLED) {
-			bool printMoveInfo = (selectedUnitsHandler.selectedUnits.size() == 1)
-				&& (selectedUnitsHandler.selectedUnits.find(owner->id) != selectedUnitsHandler.selectedUnits.end());
-			if (printMoveInfo) {
-				LOG("%s atEndOfPath %d", __func__, (int)atEndOfPath);
+		if (!atEndOfPath) {
+			lastWaypoint |= (earlyCurrWayPoint.same(earlyNextWayPoint)
+						&& pathManager->CurrentWaypointIsUnreachable(pathID)
+						&& (cwpDistSq <= minGoalDistSq));
+			if (lastWaypoint) {
+				// incomplete path and last valid waypoint has been reached.
+				pathingFailed = true;
+				return false;
 			}
 		}
-		#endif
-
-		if (atEndOfPath) {
-			earlyCurrWayPoint = goalPos;
-			earlyNextWayPoint = goalPos;
-			// currWayPoint = goalPos;
-			// nextWayPoint = goalPos;
-			return false;
-		}
 	}
 
-	#ifdef PATHING_DEBUG
-	if (DEBUG_DRAWING_ENABLED) {
-		bool printMoveInfo = (selectedUnitsHandler.selectedUnits.size() == 1)
-			&& (selectedUnitsHandler.selectedUnits.find(owner->id) != selectedUnitsHandler.selectedUnits.end());
-		if (printMoveInfo) {
-			LOG("%s result is true", __func__);
-		}
+	if (atEndOfPath) {
+		earlyCurrWayPoint = goalPos;
+		earlyNextWayPoint = goalPos;
+		return false;
 	}
-	#endif
 
 	return true;
 }
@@ -2078,7 +2257,6 @@ bool CGroundMoveType::CanSetNextWayPoint(int thread) {
 void CGroundMoveType::SetNextWayPoint(int thread)
 {
 	assert(!useRawMovement);
-	//LOG("%s activated", __func__);
 
 	if (CanSetNextWayPoint(thread)) {
 		#ifdef PATHING_DEBUG
@@ -2086,23 +2264,25 @@ void CGroundMoveType::SetNextWayPoint(int thread)
 			bool printMoveInfo = (selectedUnitsHandler.selectedUnits.size() == 1)
 				&& (selectedUnitsHandler.selectedUnits.find(owner->id) != selectedUnitsHandler.selectedUnits.end());
 			if (printMoveInfo) {
-				LOG("%s setting next waypoint", __func__);
+				LOG("%s setting next waypoint (%d:%d)", __func__, owner->id, owner->moveDef->pathType);
 			}
 		}
 		#endif
-		ReRequestPath(PATH_REQUEST_TIMING_IMMEDIATE|PATH_REQUEST_UPDATE_EXISTING);
-		return;
-		//DoSetNextWaypoint();
+		// Not sure this actually does anything.
+		pathController.SetTempGoalPosition(pathID, earlyNextWayPoint);
 
-		// --------- in new function --------
-		// pathController.SetTempGoalPosition(pathID, nextWayPoint);
+		int32_t update = 1;
+		while (update-- > 0) {
+			earlyCurrWayPoint = earlyNextWayPoint;
+			earlyNextWayPoint = pathManager->NextWayPoint(owner, pathID, 0, earlyCurrWayPoint, std::max(WAYPOINT_RADIUS, currentSpeed * 1.05f), true);
+			update += (earlyCurrWayPoint.y == (-1.f) && earlyNextWayPoint.y != (-1.f));
+		}
 
-		// // NOTE:
-		// //   pathfinder implementation should ensure waypoints are not equal
-		// //   waypoint consumption radius has to at least equal current speed
-		// currWayPoint = nextWayPoint;
-		// nextWayPoint = pathManager->NextWayPoint(owner, pathID, 0, currWayPoint, std::max(WAYPOINT_RADIUS, currentSpeed * 1.05f), true);
-		// -----------------------------------
+		if (limitSpeedForTurning > 0)
+			--limitSpeedForTurning;
+
+		// Prevent delay repaths because the waypoints have been updated.
+		wantRepath = false;
 	}
 
 	if (earlyNextWayPoint.x == -1.0f && earlyNextWayPoint.z == -1.0f) {
@@ -2120,8 +2300,6 @@ void CGroundMoveType::SetNextWayPoint(int thread)
 		return;
 	}
 
-	// const auto CWP_BLOCK_MASK = CMoveMath::SquareIsBlocked(*owner->moveDef, currWayPoint, owner);
-	// const auto NWP_BLOCK_MASK = CMoveMath::SquareIsBlocked(*owner->moveDef, nextWayPoint, owner);
 	const auto CWP_BLOCK_MASK = CMoveMath::SquareIsBlocked(*owner->moveDef, earlyCurrWayPoint, owner);
 	const auto NWP_BLOCK_MASK = CMoveMath::SquareIsBlocked(*owner->moveDef, earlyNextWayPoint, owner);
 
@@ -2141,7 +2319,8 @@ void CGroundMoveType::SetNextWayPoint(int thread)
 	// this can happen if we crushed a non-blocking feature
 	// and it spawned another feature which we cannot crush
 	// (eg.) --> repath
-	ReRequestPath(PATH_REQUEST_TIMING_DELAYED|PATH_REQUEST_UPDATE_FULLPATH);
+
+	ReRequestPath(false);
 	#ifdef PATHING_DEBUG
 	if (DEBUG_DRAWING_ENABLED) {
 		bool printMoveInfo = (selectedUnitsHandler.selectedUnits.size() == 1)
@@ -2152,39 +2331,6 @@ void CGroundMoveType::SetNextWayPoint(int thread)
 	}
 	#endif
 }
-
-
-void CGroundMoveType::DoSetNextWaypoint() {
-	pathController.SetTempGoalPosition(pathID, nextWayPoint);
-
-	// NOTE:
-	//   pathfinder implementation should ensure waypoints are not equal
-	//   waypoint consumption radius has to at least equal current speed
-	//currWayPoint = nextWayPoint;
-	//nextWayPoint = pathManager->NextWayPoint(owner, pathID, 0, currWayPoint, std::max(WAYPOINT_RADIUS, currentSpeed * 1.05f), true);
-	earlyCurrWayPoint = nextWayPoint;
-	earlyNextWayPoint = pathManager->NextWayPoint(owner, pathID, 0, earlyCurrWayPoint, std::max(WAYPOINT_RADIUS, currentSpeed * 1.05f), true);
-
-	#ifdef PATHING_DEBUG
-	if (DEBUG_DRAWING_ENABLED) {
-		bool printMoveInfo = (selectedUnitsHandler.selectedUnits.size() == 1)
-			&& (selectedUnitsHandler.selectedUnits.find(owner->id) != selectedUnitsHandler.selectedUnits.end());
-		if (printMoveInfo) {
-			LOG("%s currWayPoint (%f,%f,%f)", __func__
-				, static_cast<float>(earlyCurrWayPoint.x)
-				, static_cast<float>(earlyCurrWayPoint.y)
-				, static_cast<float>(earlyCurrWayPoint.z));
-
-			LOG("%s nextWayPoint (%f,%f,%f)", __func__
-				, static_cast<float>(earlyNextWayPoint.x)
-				, static_cast<float>(earlyNextWayPoint.y)
-				, static_cast<float>(earlyNextWayPoint.z));
-		}
-	}
-	#endif
-}
-
-
 
 /*
 Gives the position this unit will end up at with full braking
@@ -2201,30 +2347,49 @@ float3 CGroundMoveType::Here() const
 	return (pos2D + dir2D);
 }
 
-
-
-
-
-
 void CGroundMoveType::StartEngine(bool callScript) {
 	if (pathID == 0)
 		pathID = GetNewPath();
+	else {
+		if (nextPathId != 0) {
+			pathManager->DeletePath(nextPathId);
+		}
+		nextPathId = GetNewPath();
+
+		// This can happen if the current path has not been resolved yet and the pathing system has
+		// decided to optimize by updating the existing search request.
+		if (nextPathId == pathID) {
+			nextPathId = 0;
+		}
+	}
 
 	if (pathID != 0) {
-		// This is now handled by UnitHandler
-		//pathManager->UpdatePath(owner, pathID);
+		// pathManager->UpdatePath(owner, pathID);
 
 		if (callScript) {
 			// makes no sense to call this unless we have a new path
 			owner->script->StartMoving(reversing);
 		}
+
+		// Due to how push resistant units work, they can trap units when they stop moving.
+		// Have units check they are not trapped when beginning to move is any push resistant units
+		// are used by the game.
+		if (!forceStaticObjectCheck)
+			forceStaticObjectCheck = (unitDefHandler->NumPushResistantUnitDefs() > 0);
 	}
 }
 
 void CGroundMoveType::StopEngine(bool callScript, bool hardStop) {
-	if (pathID != 0) {
-		pathManager->DeletePath(pathID);
-		pathID = 0;
+	assert(!ThreadPool::inMultiThreadedSection);
+	if (pathID != 0 || nextPathId != 0) {
+		if (pathID != 0) {
+			pathManager->DeletePath(pathID);
+			pathID = 0;
+		}
+		if (nextPathId != 0) {
+			pathManager->DeletePath(nextPathId);
+			nextPathId = 0;
+		}
 
 		if (callScript)
 			owner->script->StopMoving();
@@ -2234,9 +2399,8 @@ void CGroundMoveType::StopEngine(bool callScript, bool hardStop) {
 
 	currentSpeed *= (1 - hardStop);
 	wantedSpeed = 0.0f;
-
-	// Just in case a pathing request is pending.
-	wantRepath = PATH_REQUEST_NONE;
+	limitSpeedForTurning = 0;
+	bestReattemptedLastWaypointDist = std::numeric_limits<decltype(bestReattemptedLastWaypointDist)>::infinity();
 }
 
 /* Called when the unit arrives at its goal. */
@@ -2270,6 +2434,7 @@ No more trials will be done before a new goal is given.
 */
 void CGroundMoveType::Fail(bool callScript)
 {
+	assert(!ThreadPool::inMultiThreadedSection);
 	LOG_L(L_DEBUG, "[%s] unit %i failed", __func__, owner->id);
 
 	StopEngine(callScript);
@@ -2292,38 +2457,67 @@ void CGroundMoveType::HandleObjectCollisions()
 
 	// handle collisions for even-numbered objects on even-numbered frames and vv.
 	// (temporal resolution is still high enough to not compromise accuracy much?)
-	// if ((collider->id & 1) == (gs->frameNum & 1)) {
-	if (!collider->beingBuilt) {
-		const UnitDef* colliderUD = collider->unitDef;
-		const MoveDef* colliderMD = collider->moveDef;
+	if (collider->beingBuilt)
+		return;
 
-		resultantForces *= 0.f;
+	const UnitDef* colliderUD = collider->unitDef;
+	const MoveDef* colliderMD = collider->moveDef;
 
-		// NOTE:
-		//   use the collider's MoveDef footprint as radius since it is
-		//   always mobile (its UnitDef footprint size may be different)
-		const float colliderFootPrintRadius = colliderMD->CalcFootPrintMaxInteriorRadius(); // ~= CalcFootPrintMinExteriorRadius(0.75f)
-		const float colliderAxisStretchFact = colliderMD->CalcFootPrintAxisStretchFactor();
+	resultantForces *= 0.f;
+	forceFromMovingCollidees *= 0.f;
+	forceFromStaticCollidees *= 0.f;
 
-		HandleUnitCollisions(collider, {collider->speed.w, colliderFootPrintRadius, colliderAxisStretchFact}, colliderUD, colliderMD, curThread);
-		HandleFeatureCollisions(collider, {collider->speed.w, colliderFootPrintRadius, colliderAxisStretchFact}, colliderUD, colliderMD, curThread);
+	// NOTE:
+	//   use the collider's MoveDef footprint as radius since it is
+	//   always mobile (its UnitDef footprint size may be different)
+	const float colliderFootPrintRadius = colliderMD->CalcFootPrintMaxInteriorRadius(); // ~= CalcFootPrintMinExteriorRadius(0.75f)
+	const float colliderAxisStretchFact = colliderMD->CalcFootPrintAxisStretchFactor();
 
-		// TODO: possible cause of units getting stuck on edge of factories?
-		// blocked square collision (very performance hungry, process only every 2nd game frame)
-		// dangerous: reduces effective square-size from 8 to 4, but many ground units can move
-		// at speeds greater than half the effective square-size per frame so this risks getting
-		// stuck on impassable squares
-		const bool squareChange = (CGround::GetSquare(owner->pos + owner->speed) != CGround::GetSquare(owner->pos));
-		const bool checkAllowed = ((collider->id & 1) == (gs->frameNum & 1));
-		
-		if (squareChange || checkAllowed) {
-			const bool requestPath = HandleStaticObjectCollision(owner, owner, owner->moveDef,  colliderFootPrintRadius, 0.0f,  ZeroVector, (!atEndOfPath && !atGoal), false, true, curThread);
-			if (requestPath)
-				ReRequestPath(PATH_REQUEST_TIMING_DELAYED|PATH_REQUEST_UPDATE_FULLPATH);
+	HandleUnitCollisions(collider, {collider->speed.w, colliderFootPrintRadius, colliderAxisStretchFact}, colliderUD, colliderMD, curThread);
+	HandleFeatureCollisions(collider, {collider->speed.w, colliderFootPrintRadius, colliderAxisStretchFact}, colliderUD, colliderMD, curThread);
+
+	// blocked square collision (very performance hungry, process only every 2nd game frame)
+	// dangerous: reduces effective square-size from 8 to 4, but many ground units can move
+	// at speeds greater than half the effective square-size per frame so this risks getting
+	// stuck on impassable squares
+	const bool squareChange = (CGround::GetSquare(owner->pos + owner->speed) != CGround::GetSquare(owner->pos));
+	const bool checkAllowed = ((collider->id & 1) == (gs->frameNum & 1));
+
+	if ((squareChange || checkAllowed) && owner->IsMoving()) {
+		const bool requestPath = HandleStaticObjectCollision(owner, owner, owner->moveDef,  colliderFootPrintRadius, 0.0f,  ZeroVector, (!atEndOfPath && !atGoal), false, true, curThread);
+		if (requestPath) {
+			ReRequestPath(false);
 		}
+	}
 
-		bool sanitizeForces = (resultantForces.SqLength() > maxSpeed*maxSpeed*modInfo.maxCollisionPushMultiplier);
-		if (sanitizeForces)
+	if (forceStaticObjectCheck) {
+		positionStuck |= !colliderMD->TestMoveSquare(collider, owner->pos, owner->speed, true, false, true, nullptr, nullptr, curThread);
+		positionStuck |= !colliderMD->TestMoveSquare(collider, owner->pos, owner->speed, false, true, false, nullptr, nullptr, curThread);
+		forceStaticObjectCheck = false;
+	}
+
+	// auto canAssignForce = [colliderMD, collider, curThread](const float3& force) {
+	// 	if (force.same(ZeroVector))
+	// 		return false;
+
+	// 	float3 pos = collider->pos + force;
+	// 	return colliderMD->TestMoveSquare(collider, pos, force, true, false, true, nullptr, nullptr, curThread)
+	// 			&& colliderMD->TestMoveSquare(collider, pos, force, false, true, false, nullptr, nullptr, curThread);
+	// };
+
+	// Try to apply all collision forces, but if that will collide with static parts of the map,
+	// then only apply forces from static objects/terrain. This prevent units from pushing each
+	// other into buildings far enough that the pathing systems can't get them out again.
+	float3 tryForce = forceFromStaticCollidees + forceFromMovingCollidees;
+	float maxPushForceSq = maxSpeed*maxSpeed*modInfo.maxCollisionPushMultiplier;
+	if (tryForce.SqLength() > maxPushForceSq)
+		(tryForce.Normalize()) *= maxSpeed;
+
+	UpdatePos(owner, tryForce, resultantForces, curThread);
+
+	if (resultantForces.same(ZeroVector) && positionStuck){
+		resultantForces = forceFromStaticCollidees;
+		if (resultantForces.SqLength() > maxPushForceSq)
 			(resultantForces.Normalize()) *= maxSpeed;
 	}
 }
@@ -2343,7 +2537,9 @@ bool CGroundMoveType::HandleStaticObjectCollision(
 	// while being built, units that overlap their factory yardmap should not be moved at all
 	assert(!collider->beingBuilt);
 
-	if (checkTerrain && (!collider->IsMoving() || collider->IsInAir()))
+	// Even units standing still can be pushed into terrain and so need to be able to be pushed
+	// back out.
+	if (checkTerrain && (/*!collider->IsMoving() ||*/ collider->IsInAir()))
 		return false;
 
 	// for factories, check if collidee's position is behind us (which means we are likely exiting)
@@ -2373,6 +2569,9 @@ bool CGroundMoveType::HandleStaticObjectCollision(
 	const float3& vel = collider->speed;
 	const float3& rgt = collider->rightdir;
 
+	// RHS magic constant is the radius of a square (sqrt(2*(SQUARE_SIZE>>1)*(SQUARE_SIZE>>1)))
+	constexpr float squareRadius = 5.656854249492381f;
+
 	float3 strafeVec;
 	float3 bounceVec;
 	float3 summedVec;
@@ -2381,12 +2580,24 @@ bool CGroundMoveType::HandleStaticObjectCollision(
 		float3 sqrSumPosition; // .y is always 0
 		float2 sqrPenDistance; // .x = sum, .y = count
 
+		float intersectDistance = 0.f;
+		float intersectSqrCount = 0.f;
+		float3 intersectSqrSumPosition;
+
 		const float3 rightDir2D = (rgt * XZVector).SafeNormalize();
 		const float3 speedDir2D = (vel * XZVector).SafeNormalize();
 
 
 		const int xmid = (pos.x + vel.x) / SQUARE_SIZE;
 		const int zmid = (pos.z + vel.z) / SQUARE_SIZE;
+
+		const int xsquare = (pos.x / SQUARE_SIZE);
+		const int zsquare = (pos.z / SQUARE_SIZE);
+
+		const int realMinX = xsquare + (-colliderMD->xsizeh);
+		const int realMinZ = zsquare + (-colliderMD->zsizeh);
+		const int realMaxX = xsquare +   colliderMD->xsizeh ;
+		const int realMaxZ = zsquare +   colliderMD->zsizeh ;
 
 		// mantis{3614,4217}
 		//   we cannot nicely bounce off terrain when checking only the center square
@@ -2395,6 +2606,7 @@ bool CGroundMoveType::HandleStaticObjectCollision(
 		//   lateral (non-obstructing) bounces
 		const int xsh = colliderMD->xsizeh * (checkYardMap || (checkTerrain && colliderMD->allowTerrainCollisions));
 		const int zsh = colliderMD->zsizeh * (checkYardMap || (checkTerrain && colliderMD->allowTerrainCollisions));
+		const int intersectSize = colliderMD->xsize;
 
 		const int xmin = std::min(-1, -xsh), xmax = std::max(1, xsh);
 		const int zmin = std::min(-1, -zsh), zmax = std::max(1, zsh);
@@ -2424,23 +2636,33 @@ bool CGroundMoveType::HandleStaticObjectCollision(
 				const int xabs = xmid + x;
 				const int zabs = zmid + z;
 
-				if ( checkTerrain &&  (CMoveMath::GetPosSpeedMod(*colliderMD, xabs, zabs, speedDir2D) > 0.01f))
+				if ( checkTerrain &&  (CMoveMath::GetPosSpeedMod(*colliderMD, xabs, zabs) > 0.f))
 					continue;
-				if (!checkTerrain && ((CMoveMath::SquareIsBlocked(*colliderMD, xabs, zabs, collider) & CMoveMath::BLOCK_STRUCTURE) == 0))
+				if ( checkYardMap && ((CMoveMath::SquareIsBlocked(*colliderMD, xabs, zabs, collider) & CMoveMath::BLOCK_STRUCTURE) == 0))
 					continue;
 
 				const float3 squarePos = float3(xabs * SQUARE_SIZE + (SQUARE_SIZE >> 1), pos.y, zabs * SQUARE_SIZE + (SQUARE_SIZE >> 1));
 				const float3 squareVec = pos - squarePos;
 
-				// ignore squares behind us (relative to velocity vector)
-				if (squareVec.dot(vel) > 0.0f)
-					continue;
 
-				// RHS magic constant is the radius of a square (sqrt(2*(SQUARE_SIZE>>1)*(SQUARE_SIZE>>1)))
-				const float  squareColRadiusSum = colliderRadius + 5.656854249492381f;
+				const float  squareColRadiusSum = colliderRadius + squareRadius;
 				const float   squareSepDistance = squareVec.Length2D() + 0.1f;
 				const float   squarePenDistance = std::min(squareSepDistance - squareColRadiusSum, 0.0f);
 				// const float  squareColSlideSign = -Sign(squarePos.dot(rightDir2D) - pos.dot(rightDir2D));
+
+				if (x >= realMinX && x <= realMaxX && z >= realMinZ && z <= realMaxZ){
+					if (intersectSize > 1) {
+						intersectDistance = std::min(intersectDistance, squarePenDistance);
+						intersectSqrSumPosition += (squarePos * XZVector);
+						intersectSqrCount++;
+					}
+					if (checkYardMap && !positionStuck)
+						positionStuck = true;
+				}
+
+				// ignore squares behind us (relative to velocity vector)
+				if (squareVec.dot(vel) > 0.0f)
+					continue;
 
 				// this tends to cancel out too much on average
 				// strafeVec += (rightDir2D * sqColSlideSign);
@@ -2451,7 +2673,17 @@ bool CGroundMoveType::HandleStaticObjectCollision(
 			}
 		}
 
-		if (sqrPenDistance.y > 0.0f) {
+		// This pushes units directly away from static objects so they don't intersect.
+		if (intersectSqrCount > 0.f) {
+			intersectSqrSumPosition *= (1.0f / intersectSqrCount);
+			const float pushSpeed = std::min(-intersectDistance, maxSpeed);
+			const float3 pushOutVec = ((pos - intersectSqrSumPosition) * XZVector).SafeNormalize() * pushSpeed;
+
+			forceFromStaticCollidees += pushOutVec;
+		}
+
+		// This directs units to left/right around the static object.
+		if (sqrPenDistance.y > 0.0f /*&& -deepestPenDistance <= squareRadius*2*/) {
 			sqrSumPosition *= (1.0f / sqrPenDistance.y);
 			sqrPenDistance *= (1.0f / sqrPenDistance.y);
 
@@ -2472,18 +2704,30 @@ bool CGroundMoveType::HandleStaticObjectCollision(
 			summedVec = strafeVec + bounceVec;
 
 			// if checkTerrain is true, test only the center square
-			if (colliderMD->TestMoveSquare(collider, pos + summedVec, vel, checkTerrain, checkYardMap, checkTerrain, nullptr, nullptr, curThread)) {
-				resultantForces += summedVec;
+			//if (colliderMD->TestMoveSquare(collider, pos + summedVec, vel, checkTerrain, checkYardMap, checkTerrain, nullptr, nullptr, curThread)) {
+				forceFromStaticCollidees += summedVec;
 
+				// float3 waypointMove(summedVec.x, 0.f, summedVec.z);
 				// minimal hack to make FollowPath work at all turn-rates
 				// since waypointDir will undergo a (large) discontinuity
-				earlyCurrWayPoint += summedVec;
-				earlyNextWayPoint += summedVec;
-			} else {
-				// never move fully back to oldPos when dealing with yardmaps
-				resultantForces += ((oldPos - pos) + summedVec * 0.25f * checkYardMap);
-				// TODO: possible cause of units getting stuck on yardmaps?
-			}
+				// earlyCurrWayPoint += waypointMove;
+				// earlyNextWayPoint += waypointMove;
+
+				// Disabled, due to excessive redirecting of waypoints away from the intended path
+				// because units get stuck for multiple frames, and the offset accumalates over several
+				// frames. It's better for the unit to adjust speed if neccessary for turn rate to allow
+				// the unit to get back on path faster, instead of ping-ponging over the same building
+				// several times.
+
+				limitSpeedForTurning = 2;
+
+				// LOG("%s: moving waypoint1 (%f,%f,%f)->(%f,%f,%f)", __func__
+				// 	, earlyCurrWayPoint.x, earlyCurrWayPoint.y, earlyCurrWayPoint.z
+				// 	, earlyNextWayPoint.x, earlyNextWayPoint.y, earlyNextWayPoint.z);
+			// } else {
+			// 	// never move fully back to oldPos when dealing with yardmaps
+			// 	forceFromStaticCollidees += ((oldPos - pos) + summedVec * 0.25f * checkYardMap);
+			// }
 		}
 
 		// note:
@@ -2506,20 +2750,27 @@ bool CGroundMoveType::HandleStaticObjectCollision(
 		bounceVec = (separationVector /  sepDistance) * bounceScale;
 		summedVec = strafeVec + bounceVec;
 
-		if (colliderMD->TestMoveSquare(collider, pos + summedVec, vel, true, true, true, nullptr, nullptr, curThread)) {
-			resultantForces += summedVec;
-			earlyCurrWayPoint += summedVec;
-			earlyNextWayPoint += summedVec;
-		} else {
+		// if (colliderMD->TestMoveSquare(collider, pos + summedVec, vel, true, true, true, nullptr, nullptr, curThread)) {
+			forceFromStaticCollidees += summedVec;
+
+			// summedVec.y = 0.f;
+			// earlyCurrWayPoint += summedVec;
+			// earlyNextWayPoint += summedVec;
+
+			limitSpeedForTurning = 2;
+
+			// LOG("%s: moving waypoint2 (%f,%f,%f)->(%f,%f,%f)", __func__
+			// 		, earlyCurrWayPoint.x, earlyCurrWayPoint.y, earlyCurrWayPoint.z
+			// 		, earlyNextWayPoint.x, earlyNextWayPoint.y, earlyNextWayPoint.z);
+		// } else {
 			// move back to previous-frame position
 			// ChangeSpeed calculates speedMod without checking squares for *structure* blockage
 			// (so that a unit can free itself if it ends up within the footprint of a structure)
 			// this means deltaSpeed will be non-zero if stuck on an impassable square and hence
 			// the new speedvector which is constructed from deltaSpeed --> we would simply keep
 			// moving forward through obstacles if not counteracted by this
-			resultantForces += ((oldPos - pos) + summedVec * 0.25f * (collider->frontdir.dot(separationVector) < 0.25f));
-			// TODO: possible cause of units getting stuck on yardmaps?
-		}
+		// 	forceFromStaticCollidees += ((oldPos - pos) + summedVec * 0.25f * (collider->frontdir.dot(separationVector) < 0.25f));
+		// }
 
 		// same here
 		return (canRequestPath && (penDistance < 0.0f));
@@ -2646,61 +2897,61 @@ void CGroundMoveType::HandleUnitCollisions(
 			const bool allowNewPath = (!atEndOfPath && !atGoal);
 			const bool checkYardMap = ((pushCollider || pushCollidee) || collideeUD->IsFactoryUnit());
 
-			if (HandleStaticObjectCollision(collider, collidee, colliderMD,  colliderParams.y, collideeParams.y,  separationVect, allowNewPath, checkYardMap, false, curThread))
-				ReRequestPath(PATH_REQUEST_TIMING_DELAYED|PATH_REQUEST_UPDATE_FULLPATH);
+			if (HandleStaticObjectCollision(collider, collidee, colliderMD,  colliderParams.y, collideeParams.y,  separationVect, allowNewPath, checkYardMap, false, curThread)) {
+				ReRequestPath(false);
+			}
 
 			continue;
 		}
 
-
-		const float colliderRelRadius = colliderParams.y / (colliderParams.y + collideeParams.y);
-		const float collideeRelRadius = collideeParams.y / (colliderParams.y + collideeParams.y);
-		const float collisionRadiusSum = allowUCO?
-			(colliderParams.y * colliderRelRadius + collideeParams.y * collideeRelRadius):
-			(colliderParams.y                     + collideeParams.y                    );
-
-		const float  sepDistance = separationVect.Length() + 0.1f;
-		const float  penDistance = std::max(collisionRadiusSum - sepDistance, 1.0f);
-		const float  sepResponse = std::min(SQUARE_SIZE * 2.0f, penDistance * 0.5f);
-
-		const float3 sepDirection   = separationVect / sepDistance;
-		const float3 colResponseVec = sepDirection * XZVector * sepResponse;
-
-		const float
-			m1 = collider->mass,
-			m2 = collidee->mass,
-			v1 = std::max(1.0f, colliderParams.x),
-			v2 = std::max(1.0f, collideeParams.x),
-			c1 = 1.0f + (1.0f - math::fabs(collider->frontdir.dot(-sepDirection))) * 5.0f,
-			c2 = 1.0f + (1.0f - math::fabs(collidee->frontdir.dot( sepDirection))) * 5.0f,
-			// weighted momenta
-			s1 = m1 * v1 * c1,
-			s2 = m2 * v2 * c2,
-			// relative momenta
- 			r1 = s1 / (s1 + s2 + 1.0f),
- 			r2 = s2 / (s1 + s2 + 1.0f);
-
-		// far from a realistic treatment, but works
-		const float colliderMassScale = Clamp(1.0f - r1, 0.01f, 0.99f) * (allowUCO? (1.0f / colliderRelRadius): 1.0f);
-		// const float collideeMassScale = Clamp(1.0f - r2, 0.01f, 0.99f) * (allowUCO? (1.0f / collideeRelRadius): 1.0f);
-
-		// try to prevent both parties from being pushed onto non-traversable
-		// squares (without resetting their position which stops them dead in
-		// their tracks and undoes previous legitimate pushes made this frame)
-		//
-		// if pushCollider and pushCollidee are both false (eg. if each party
-		// is pushResistant), treat the collision as regular and push both to
-		// avoid deadlocks
-		const float colliderSlideSign = Sign( separationVect.dot(collider->rightdir));
-
-		const float3 colliderPushVec  =  colResponseVec * colliderMassScale; // * int(!ignoreCollidee);
-		const float3 colliderSlideVec = collider->rightdir * colliderSlideSign * (1.0f / penDistance) * r2;
-		const float3 colliderMoveVec  = colliderPushVec + colliderSlideVec;
-
 		const bool moveCollider = ((pushCollider || !pushCollidee) && colliderMobile);
+		if (moveCollider) {
+			const float colliderRelRadius = colliderParams.y / (colliderParams.y + collideeParams.y);
+			const float collideeRelRadius = collideeParams.y / (colliderParams.y + collideeParams.y);
+			const float collisionRadiusSum = allowUCO?
+				(colliderParams.y * colliderRelRadius + collideeParams.y * collideeRelRadius):
+				(colliderParams.y                     + collideeParams.y                    );
 
-		if (moveCollider && colliderMD->TestMoveSquare(collider, collider->pos + colliderMoveVec, colliderMoveVec, true, true, false, nullptr, nullptr, curThread))
-			resultantForces += colliderMoveVec;
+			const float  sepDistance = separationVect.Length() + 0.1f;
+			const float  penDistance = std::max(collisionRadiusSum - sepDistance, 1.0f);
+			const float  sepResponse = std::min(SQUARE_SIZE * 2.0f, penDistance * 0.5f);
+
+			const float3 sepDirection   = separationVect / sepDistance;
+			const float3 colResponseVec = sepDirection * XZVector * sepResponse;
+
+			const float
+				m1 = collider->mass,
+				m2 = collidee->mass,
+				v1 = std::max(1.0f, colliderParams.x),
+				v2 = std::max(1.0f, collideeParams.x),
+				c1 = 1.0f + (1.0f - math::fabs(collider->frontdir.dot(-sepDirection))) * 5.0f,
+				c2 = 1.0f + (1.0f - math::fabs(collidee->frontdir.dot( sepDirection))) * 5.0f,
+				// weighted momenta
+				s1 = m1 * v1 * c1,
+				s2 = m2 * v2 * c2,
+				// relative momenta
+				r1 = s1 / (s1 + s2 + 1.0f),
+				r2 = s2 / (s1 + s2 + 1.0f);
+
+			// far from a realistic treatment, but works
+			const float colliderMassScale = std::clamp(1.0f - r1, 0.01f, 0.99f) * (allowUCO? (1.0f / colliderRelRadius): 1.0f);
+			// const float collideeMassScale = std::clamp(1.0f - r2, 0.01f, 0.99f) * (allowUCO? (1.0f / collideeRelRadius): 1.0f);
+
+			// try to prevent both parties from being pushed onto non-traversable
+			// squares (without resetting their position which stops them dead in
+			// their tracks and undoes previous legitimate pushes made this frame)
+			//
+			// if pushCollider and pushCollidee are both false (eg. if each party
+			// is pushResistant), treat the collision as regular and push both to
+			// avoid deadlocks
+			const float colliderSlideSign = Sign( separationVect.dot(collider->rightdir));
+
+			const float3 colliderPushVec  =  colResponseVec * colliderMassScale; // * int(!ignoreCollidee);
+			const float3 colliderSlideVec = collider->rightdir * colliderSlideSign * (1.0f / penDistance) * r2;
+			const float3 colliderMoveVec  = colliderPushVec + colliderSlideVec;
+
+			forceFromMovingCollidees += colliderMoveVec;
+		}
 	}
 }
 
@@ -2743,8 +2994,9 @@ void CGroundMoveType::HandleFeatureCollisions(
 		collidedFeatures.push_back(collidee);
 
 		if (!collidee->IsMoving()) {
-			if (HandleStaticObjectCollision(collider, collidee, colliderMD,  colliderParams.y, collideeParams.y,  separationVect, (!atEndOfPath && !atGoal), true, false, curThread))
-				ReRequestPath(PATH_REQUEST_TIMING_DELAYED|PATH_REQUEST_UPDATE_FULLPATH);
+			if (HandleStaticObjectCollision(collider, collidee, colliderMD,  colliderParams.y, collideeParams.y,  separationVect, (!atEndOfPath && !atGoal), true, false, curThread)) {
+				ReRequestPath(false);
+			}
 
 			continue;
 		}
@@ -2771,10 +3023,10 @@ void CGroundMoveType::HandleFeatureCollisions(
  			r1 = s1 / (s1 + s2 + 1.0f),
  			r2 = s2 / (s1 + s2 + 1.0f);
 
-		const float colliderMassScale = Clamp(1.0f - r1, 0.01f, 0.99f);
-		const float collideeMassScale = Clamp(1.0f - r2, 0.01f, 0.99f);
+		const float colliderMassScale = std::clamp(1.0f - r1, 0.01f, 0.99f);
+		const float collideeMassScale = std::clamp(1.0f - r2, 0.01f, 0.99f);
 
-		resultantForces += colResponseVec * colliderMassScale;
+		forceFromMovingCollidees += colResponseVec * colliderMassScale;
 		moveFeatures.push_back(std::make_tuple(collidee, -colResponseVec * collideeMassScale));
 	}
 }
@@ -2786,7 +3038,14 @@ void CGroundMoveType::LeaveTransport()
 	oldPos = owner->pos + UpVector * 0.001f;
 }
 
+void CGroundMoveType::Connect() {
+	Sim::registry.emplace_or_replace<GroundMoveType>(owner->entityReference, owner->id);
+	// LOG("%s: loading %s as %d", __func__, owner->unitDef->name.c_str(), entt::to_integral(owner->entityReference));
+}
 
+void CGroundMoveType::Disconnect() {
+	Sim::registry.remove<GroundMoveType>(owner->entityReference);
+}
 
 void CGroundMoveType::KeepPointingTo(CUnit* unit, float distance, bool aggressive) { KeepPointingTo(unit->pos, distance, aggressive); }
 void CGroundMoveType::KeepPointingTo(float3 pos, float distance, bool aggressive) {
@@ -2919,9 +3178,11 @@ const float3& CGroundMoveType::GetGroundNormal(const float3& p) const
 
 float CGroundMoveType::GetGroundHeight(const float3& p) const
 {
+	MoveDef *md = owner->moveDef;
+
 	// in [minHeight, maxHeight]
 	const float gh = CGround::GetHeightReal(p.x, p.z);
-	const float wh = -waterline * (gh <= 0.0f);
+	const float wh = -md->waterline * (gh <= 0.0f);
 
 	// in [-waterline, maxHeight], note that waterline
 	// can be much deeper than ground in shallow water
@@ -2940,7 +3201,8 @@ void CGroundMoveType::AdjustPosToWaterLine()
 
 	if (modInfo.allowGroundUnitGravity) {
 		if (owner->FloatOnWater()) {
-			owner->Move(UpVector * (std::max(CGround::GetHeightReal(owner->pos.x, owner->pos.z),   -waterline) - owner->pos.y), true);
+			MoveDef *md = owner->moveDef;
+			owner->Move(UpVector * (std::max(CGround::GetHeightReal(owner->pos.x, owner->pos.z), -md->waterline) - owner->pos.y), true);
 		} else {
 			owner->Move(UpVector * (std::max(CGround::GetHeightReal(owner->pos.x, owner->pos.z), owner->pos.y) - owner->pos.y), true);
 		}
@@ -2979,9 +3241,186 @@ bool CGroundMoveType::UpdateDirectControl()
 }
 
 
+void CGroundMoveType::UpdatePos(const CUnit* unit, const float3& moveDir, float3& resultantMove, int thread) const {
+	const float3 prevPos = unit->pos;
+	const float3 newPos = unit->pos + moveDir;
+	resultantMove = moveDir;
+
+	// The series of tests done here will benefit from using the same cached results.
+	MoveDef* md = unit->moveDef;
+	int tempNum = gs->GetMtTempNum(thread);
+
+	MoveTypes::CheckCollisionQuery virtualObject(unit);
+	MoveDefs::CollisionQueryStateTrack queryState;
+	const bool isSubmersible = (md->isSubmarine ||
+							   (md->followGround && md->depth > md->height));
+	if (!isSubmersible)
+		virtualObject.DisableHeightChecks();
+
+	auto toMapSquare = [](float3 pos) {
+		return int2({int(pos.x / SQUARE_SIZE), int(pos.z / SQUARE_SIZE)});
+	};
+
+	auto toSquareId = [](int2 square) {
+		return (square.y * mapDims.mapx) + square.x;
+	};
+
+	auto isSquareOpen = [this, md, unit, &tempNum, thread, &toMapSquare, &virtualObject, &queryState, &isSubmersible](float3 pos) {
+		int2 checkSquare = toMapSquare(pos);
+		if ( checkSquare.x < 0
+			|| checkSquare.y < 0
+			|| checkSquare.x >= mapDims.mapx
+			|| checkSquare.y >= mapDims.mapy) {
+				return false;
+			}
+		
+		if (isSubmersible){
+			md->UpdateCheckCollisionQuery(virtualObject, queryState, checkSquare);
+			if (queryState.refreshCollisionCache)
+				tempNum = gs->GetMtTempNum(thread);
+		}
+
+		// separate calls because terrain is only checked for in the centre square, while
+		// static objects are checked for in the whole footprint.
+		bool result = ( pathController.IgnoreTerrain(*md, pos) ||
+				 unit->moveDef->TestMoveSquare(unit, pos, (pos - unit->pos), true, false, true, nullptr, nullptr, thread)
+			   )
+				&& unit->moveDef->TestMovePositionForObjects(&virtualObject, pos, tempNum, thread);
+
+		return result;
+	};
+
+	auto toPosition = [](int2 square) {
+		return float3({float(square.x * SQUARE_SIZE + 1), 0.f, float(square.y * SQUARE_SIZE + 1)});
+	};
+
+	const int2 prevSquare = toMapSquare(prevPos);
+	const int2 newSquare = toMapSquare(newPos);
+	const int newPosStartSquare = toSquareId(newSquare);
+	if (!positionStuck && toSquareId(prevSquare) == newPosStartSquare) { return; }
+
+	bool isSquareBlocked = !isSquareOpen(newPos);
+	if (!isSquareBlocked) {
+		const int2 fullDiffSquare = newSquare - prevSquare;
+		if (fullDiffSquare.x != 0 && fullDiffSquare.y != 0) {
+
+			const int2 diffSquare{1 - (2 * (fullDiffSquare.x < 0)), 1 - (2 * (fullDiffSquare.y < 0))};
+
+			// We have a diagonal move. Make sure the unit cannot press through a corner.
+			const int2 checkSqrX({newSquare.x - diffSquare.x, newSquare.y});
+			const int2 checkSqrY({newSquare.x, newSquare.y - diffSquare.y});
+
+			isSquareBlocked = !isSquareOpen(toPosition(checkSqrX)) && !isSquareOpen(toPosition(checkSqrY));
+			if (isSquareBlocked)
+				resultantMove = ZeroVector;
+		}
+	}
+	else {
+	// NOTE:
+	//   does not check for structure blockage, coldet handles that
+	//   entering of impassable terrain is *also* handled by coldet
+	//
+	//   the loop below tries to evade "corner" squares that would
+	//   block us from initiating motion and is needed for when we
+	//   are not *currently* moving but want to get underway to our
+	//   first waypoint (HSOC coldet won't help then)
+	//
+	//   allowing movement through blocked squares when pathID != 0
+	//   relies on assumption that PFS will not search if start-sqr
+	//   is blocked, so too fragile
+	//
+	// TODO: look to move as much of this to MT to improve perf.
+
+		bool updatePos = false;
+		const float speed = moveDir.Length2D();
+
+		auto tryToMove =
+				[this, &isSquareOpen, &prevPos, &newPosStartSquare, &resultantMove]
+				(const float3& newPos, float3 posOffset, float maxDisplacement = 0.f)
+			{
+			// units are moved in relation to their previous position.
+			float3 offsetFromPrev = (newPos + posOffset) - prevPos;
+			if ((maxDisplacement > 0.f) && offsetFromPrev.SqLength2D() > (maxDisplacement*maxDisplacement)) {
+				offsetFromPrev.SafeNormalize2D() *= maxDisplacement;
+			}
+			float3 posToTest = prevPos + offsetFromPrev;
+			int curSquare = int(posToTest.z / SQUARE_SIZE)*mapDims.mapx + int(posToTest.x / SQUARE_SIZE);
+			if (curSquare != newPosStartSquare) {
+				bool updatePos = isSquareOpen(posToTest);
+				if (updatePos) {
+					resultantMove = offsetFromPrev;
+					return true;
+				}
+			}
+			return false;
+		};
+
+		for (int n = 1; n <= SQUARE_SIZE; n++) {
+			updatePos = tryToMove(newPos, unit->rightdir * n);
+			if (updatePos) { break; }
+			updatePos = tryToMove(newPos, unit->rightdir * -n);
+			if (updatePos) { break; }
+		}
+
+		if (!updatePos)
+			resultantMove = ZeroVector;
+		else {
+			const float3 openPos = prevPos + resultantMove;
+			const int2 openSquare = toMapSquare(openPos);
+			const int2 fullDiffSquare = openSquare - prevSquare;
+			if (fullDiffSquare.x != 0 && fullDiffSquare.y != 0) {
+				// axis-aligned slide to avoid clipping around corners and potentially into traps.
+				const unsigned int facing = GetFacingFromHeading(unit->heading);
+				constexpr float3 vecs[2] =
+					{ { 0.f, 0.f, 1.f}
+					, { 1.f, 0.f, 0.f}
+				};
+				const float3 aaSlideAxis = vecs[(facing - 1) % 2];
+
+				const float displacement = (facing % 2 == 0) ? resultantMove.x : resultantMove.z;
+				const float side = 1.f - (2.f * (displacement < 0.f));
+				const float3 offset = aaSlideAxis * std::min(displacement*side, speed) * side;
+				const float3 posToTest = prevPos + offset;
+
+				updatePos = isSquareOpen(posToTest);
+
+			// 	{bool printMoveInfo = (selectedUnitsHandler.selectedUnits.size() == 1)
+			// 		&& (selectedUnitsHandler.selectedUnits.find(owner->id) != selectedUnitsHandler.selectedUnits.end());
+			// {	bool printMoveInfo = (unit->id == 19432);
+			// 	if (printMoveInfo) {
+			// 		LOG("%s: unit %d: facing(%f,%f,%f) [%d:%d] right(%f,%f,%f) disp=%f"
+			// 				, __func__, owner->id
+			// 				, float(unit->frontdir.x), float(unit->frontdir.y), float(unit->frontdir.z), int(unit->heading), facing
+			// 				, aaSlideAxis.x, aaSlideAxis.y, aaSlideAxis.z
+			// 				, displacement);
+			// 		LOG("%s: unit %d: resultantVec=(%f,%f,%f) prevPos=(%f,%f,%f) offset=(%f,%f,%f) posToTest=(%f,%f,%f) result=%d"
+			// 				, __func__, owner->id
+			// 				, resultantMove.x, resultantMove.y, resultantMove.z
+			// 				, prevPos.x, prevPos.y, prevPos.z
+			// 				, offset.x, offset.y, offset.z
+			// 				, posToTest.x, posToTest.y, posToTest.z
+			// 				, int(updatePos));
+			// 	}}
+
+				if (updatePos) {
+					resultantMove = offset;
+				} else {
+					resultantMove = ZeroVector;
+				}
+			} else if (resultantMove.SqLength2D() > speed*speed) {
+				updatePos = tryToMove(prevPos, resultantMove, speed);
+				if (!updatePos)
+					resultantMove = ZeroVector;
+			}
+		}
+	}
+}
+
+
 void CGroundMoveType::UpdateOwnerPos(const float3& oldSpeedVector, const float3& newSpeedVector) {
 	const float oldSpeed = oldSpeedVector.dot(flatFrontDir);
 	const float newSpeed = newSpeedVector.dot(flatFrontDir);
+	const float3 moveRequest = newSpeedVector;
 
 	// if being built, the nanoframe might not be exactly on
 	// the ground and would jitter from gravity acting on it
@@ -2990,40 +3429,36 @@ void CGroundMoveType::UpdateOwnerPos(const float3& oldSpeedVector, const float3&
 	if (owner->beingBuilt)
 		return;
 
-	if (!newSpeedVector.same(ZeroVector)) {
-		// use the simplest possible Euler integration
+	if (!oldSpeedVector.same(newSpeedVector)) {
 		owner->SetVelocityAndSpeed(newSpeedVector);
-		owner->Move(owner->speed, true);
+	}
 
-		// NOTE:
-		//   does not check for structure blockage, coldet handles that
-		//   entering of impassable terrain is *also* handled by coldet
-		//
-		//   the loop below tries to evade "corner" squares that would
-		//   block us from initiating motion and is needed for when we
-		//   are not *currently* moving but want to get underway to our
-		//   first waypoint (HSOC coldet won't help then)
-		//
- 		//   allowing movement through blocked squares when pathID != 0
- 		//   relies on assumption that PFS will not search if start-sqr
- 		//   is blocked, so too fragile
-		//
-		if (!pathController.IgnoreTerrain(*owner->moveDef, owner->pos) && !owner->moveDef->TestMoveSquare(owner, owner->pos, owner->speed, true, false, true)) {
-			bool updatePos = false;
+	if (!moveRequest.same(ZeroVector)) {
+		float3 resultantVel;
+		bool limitDisplacment = true;
+		float maxDisplacementSq = -1.f;
 
-			for (unsigned int n = 1; n <= SQUARE_SIZE; n++) {
-				if (!updatePos && (updatePos = owner->moveDef->TestMoveSquare(owner, owner->pos + owner->rightdir * n, owner->speed, true, false, true))) {
-					owner->Move(owner->pos + owner->rightdir * n, false);
-					break;
-				}
-				if (!updatePos && (updatePos = owner->moveDef->TestMoveSquare(owner, owner->pos - owner->rightdir * n, owner->speed, true, false, true))) {
-					owner->Move(owner->pos - owner->rightdir * n, false);
-					break;
-				}
+		UpdatePos(owner, moveRequest, resultantVel, 0);
+
+		bool isMoveColliding = !resultantVel.same(moveRequest);
+		if (isMoveColliding) {
+			// Sometimes now regular collisions won't happen due to this code preventing that.
+			// so units need to be able to get themselves out of stuck situations. So adding
+			// a rerequest path check here.
+			ReRequestPath(false);
+		}
+
+		bool isThereAnOpenSquare = !resultantVel.same(ZeroVector);
+		if (isThereAnOpenSquare){
+			owner->Move(resultantVel, true);
+			if (positionStuck) {
+				positionStuck = false;
 			}
-
-			if (!updatePos)
-				owner->Move((owner->pos - newSpeedVector), false);
+		} else if (positionStuck) {
+			// Unit is stuck an the an open square could not be found. Just allow the unit to move
+			// so that it gets unstuck eventually. Hopefully this won't look silly in practice, but
+			// it is better than a unit being permanently stuck on something.
+			owner->Move(moveRequest, true);
 		}
 
 		// NOTE:
@@ -3048,6 +3483,25 @@ bool CGroundMoveType::UpdateOwnerSpeed(float oldSpeedAbs, float newSpeedAbs, flo
 		owner->script->StartMoving(newSpeedRawLTZ);
 	if ( oldSpeedAbsGTZ && !newSpeedAbsGTZ)
 		owner->script->StopMoving();
+
+	// Push resistant units need special handling, when they start/stop.
+	// Not much point while they are on the move because their squares get recognised as moving,
+	// not structure, and are ignored by collision and pathing.
+	bool changeInMotion = IsPushResistant() && oldSpeedAbsGTZ != newSpeedAbsGTZ;
+	if (changeInMotion){
+		if (newSpeedAbsGTZ)
+			owner->UnBlock();
+		else
+			owner->Block();
+
+		// this has to be done manually because units don't trigger it with block commands
+		const int bx = owner->mapPos.x, sx = owner->xsize;
+		const int bz = owner->mapPos.y, sz = owner->zsize;
+		const int xminSqr = bx, xmaxSqr = bx + sx;
+		const int zminSqr = bz, zmaxSqr = bz + sz;
+
+		pathManager->TerrainChange(xminSqr, zminSqr, xmaxSqr, zmaxSqr, TERRAINCHANGE_OBJECT_INSERTED);
+	}
 
 	currentSpeed = newSpeedAbs;
 	deltaSpeed   = 0.0f;
@@ -3082,7 +3536,7 @@ bool CGroundMoveType::WantReverse(const float3& wpDir, const float3& ffDir) cons
 	const float goalFwdETA = (goalDist / maxSpeed);                              // in frames (simplistic)
 	const float goalRevETA = (goalDist / maxReverseSpeed);                       // in frames (simplistic)
 
-	const float waypointAngle = Clamp(wpDir.dot(owner->frontdir), -1.0f, 0.0f);  // clamp to prevent NaN's; [-1, 0]
+	const float waypointAngle = std::clamp(wpDir.dot(owner->frontdir), -1.0f, 0.0f);  // clamp to prevent NaN's; [-1, 0]
 	const float turnAngleDeg  = math::acosf(waypointAngle) * math::RAD_TO_DEG;   // in degrees; [90.0, 180.0]
 	const float fwdTurnAngle  = (turnAngleDeg / 360.0f) * SPRING_CIRCLE_DIVS;    // in "headings"
 	const float revTurnAngle  = SPRING_MAX_HEADING - fwdTurnAngle;               // 180 deg - angle

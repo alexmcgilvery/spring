@@ -19,6 +19,7 @@
 #include "Net/GameServer.h"
 #include "Rendering/Textures/ColorMap.h"
 #include "Rendering/Units/UnitDrawer.h"
+#include "Sim/Ecs/Helper.h"
 #include "Sim/Features/FeatureHandler.h"
 #include "Sim/Units/UnitHandler.h"
 #include "Sim/Misc/BuildingMaskMap.h"
@@ -265,6 +266,8 @@ void CCregLoadSaveHandler::SaveGame(const std::string& path)
 
 
 		{
+			Sim::SaveComponents(oss);
+
 			creg::COutputStreamSerializer os;
 
 			// save lua state first as lua unit scripts depend on it
@@ -303,7 +306,7 @@ void CCregLoadSaveHandler::SaveGame(const std::string& path)
 				return;
 			}
 
-			std::string data = std::move(oss.str());
+			std::string data = oss.str();
 			std::function<void(gzFile, std::string&&)> func = [](gzFile file, std::string&& data) {
 				gzwrite(file, data.c_str(), data.size());
 				gzflush(file, Z_FINISH);
@@ -369,6 +372,8 @@ void CCregLoadSaveHandler::LoadGame()
 #ifdef USING_CREG
 	ENTER_SYNCED_CODE();
 	{
+		Sim::LoadComponents(iss);
+
 		creg::CInputStreamSerializer inputStream;
 
 		// load lua state first, as lua unit scripts depend on it

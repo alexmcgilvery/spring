@@ -16,7 +16,7 @@
 #include "System/Cpp11Compat.hpp"
 #include "Rendering/GL/VertexArrayTypes.h"
 
-struct fast_hash : public spring::unary_function<int, size_t>
+struct fast_hash
 {
 	size_t operator()(const int a) const
 	{
@@ -104,8 +104,20 @@ namespace Shader {
 		CompiledShaderObjectUniquePtr CompileShaderObject();
 	};
 
+	struct IProgramObject;
+	struct ShaderEnabledToken {
+		ShaderEnabledToken(IProgramObject* prog_);
 
+		ShaderEnabledToken(ShaderEnabledToken&& rhs) noexcept { *this = std::move(rhs); }
+		ShaderEnabledToken& operator=(ShaderEnabledToken&& rhs) noexcept { std::swap(prog, rhs.prog); return *this; }
 
+		ShaderEnabledToken(const ShaderEnabledToken&) = delete;
+		ShaderEnabledToken& operator=(const ShaderEnabledToken& rhs) = delete;
+
+		~ShaderEnabledToken();
+	private:
+		IProgramObject* prog = nullptr;
+	};
 
 	struct IProgramObject {
 	public:
@@ -130,6 +142,9 @@ namespace Shader {
 
 		void SetLogReporting(bool b, bool shObjects = true);
 
+		ShaderEnabledToken EnableScoped() {
+			return ShaderEnabledToken(this);
+		}
 		virtual void Enable();
 		virtual void Disable();
 		virtual void EnableRaw() {}
@@ -282,8 +297,8 @@ namespace Shader {
 		ShaderFlags shaderFlags;
 
 	public:
-		//using UniformStates = std::unordered_map<std::size_t, UniformState, fast_hash>; //nicer for debug
-		using UniformStates = spring::unsynced_map<std::size_t, UniformState, fast_hash>;
+		//using UniformStates = std::unordered_map<std::uint32_t, UniformState, fast_hash>; //nicer for debug
+		using UniformStates = spring::unsynced_map<std::uint32_t, UniformState, fast_hash>;
 		UniformStates uniformStates;
 		spring::unsynced_map<int, LuaMatTexture> luaTextures;
 		spring::unsynced_map<std::string, int> attribLocations;

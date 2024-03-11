@@ -27,6 +27,7 @@ class LuaUnsyncedRead {
 
 		static int GetDrawFrame(lua_State* L);
 		static int GetFrameTimeOffset(lua_State* L);
+		static int GetGameSecondsInterpolated(lua_State* L);
 		static int GetLastUpdateSeconds(lua_State* L);
 		static int GetVideoCapturingMode(lua_State* L);
 
@@ -34,6 +35,7 @@ class LuaUnsyncedRead {
 		static int GetViewGeometry(lua_State* L);
 		static int GetDualViewGeometry(lua_State* L);
 		static int GetWindowGeometry(lua_State* L);
+		static int GetWindowDisplayMode(lua_State* L);
 		static int GetScreenGeometry(lua_State* L);
 		static int GetMiniMapGeometry(lua_State* L);
 		static int GetMiniMapDualScreen(lua_State* L);
@@ -199,19 +201,20 @@ class LuaUnsyncedRead {
 		static int GetConfigString(lua_State* L);
 		static int GetLogSections(lua_State* L);
 
-		static int GetAllDecals(lua_State* L);
-		static int GetDecalPos(lua_State* L);
-		static int GetDecalSize(lua_State* L);
-		static int GetDecalRotation(lua_State* L);
-		static int GetDecalTexture(lua_State* L);
-		static int GetDecalAlpha(lua_State* L);
-		static int GetDecalType(lua_State* L);
-		static int GetDecalOwner(lua_State* L);
+		static int GetAllGroundDecals(lua_State* L);
+		static int GetGroundDecalMiddlePos(lua_State* L);
+		static int GetGroundDecalQuadPos(lua_State* L);
+		static int GetGroundDecalSizeAndHeight(lua_State* L);
+		static int GetGroundDecalRotation(lua_State* L);
+		static int GetGroundDecalTexture(lua_State* L);
+		static int GetGroundDecalTextures(lua_State* L);
+		static int GetGroundDecalAlpha(lua_State* L);
+		static int GetGroundDecalNormal(lua_State* L);
+		static int GetGroundDecalCreationFrame(lua_State* L);
+		static int GetGroundDecalType(lua_State* L);
+		static int GetGroundDecalOwner(lua_State* L);
 
 		static int UnitIconGetDraw(lua_State* L);
-
-		static int MakeGLDBQuery(lua_State* L);
-		static int GetGLDBQuery(lua_State* L);
 
 		static int GetSyncedGCInfo(lua_State* L);
 };

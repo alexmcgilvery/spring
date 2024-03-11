@@ -129,7 +129,7 @@ namespace Platform
 		if (!origCWD.empty())
 			return origCWD;
 
-		origCWD = std::move(FileSystemAbstraction::GetCwd());
+		origCWD = FileSystemAbstraction::GetCwd();
 		FileSystemAbstraction::EnsurePathSepAtEnd(origCWD);
 		return origCWD;
 	}
@@ -247,7 +247,7 @@ namespace Platform
 		// this will only be used if moduleFilePath stays empty
 		const char* error = nullptr;
 
-	#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__)
+	#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
 		#ifdef __APPLE__
 		#define SHARED_LIBRARY_EXTENSION "dylib"
 		#else
@@ -381,6 +381,8 @@ namespace Platform
 		return "Linux";
 		#elif defined(__FreeBSD__)
 		return "FreeBSD";
+		#elif defined(__OpenBSD__)
+		return "OpenBSD";
 		#elif defined(__APPLE__)
 		return "MacOS";
 		#else

@@ -121,8 +121,8 @@ static void GetDecoyResources(const CUnit* unit,
 	if (ud == nullptr)
 		return;
 
-	mMake += ud->metalMake;
-	eMake += ud->energyMake;
+	mMake += ud->resourceMake.metal;
+	eMake += ud->resourceMake.energy;
 	eMake += (ud->tidalGenerator * envResHandler.GetCurrentTidalStrength() * (ud->tidalGenerator > 0.0f));
 
 	bool active = ud->activateWhenBuilt;
@@ -137,7 +137,7 @@ static void GetDecoyResources(const CUnit* unit,
 				mMake += unit->metalExtract * (ud->extractsMetal / rd->extractsMetal);
 			}
 		}
-		mUse += ud->metalUpkeep;
+		mUse += ud->upkeep.metal;
 
 		if (ud->windGenerator > 0.0f) {
 			if (envResHandler.GetCurrentWindStrength() > ud->windGenerator) {
@@ -146,7 +146,7 @@ static void GetDecoyResources(const CUnit* unit,
 				eMake += envResHandler.GetCurrentWindStrength();
 			}
 		}
-		eUse += ud->energyUpkeep;
+		eUse += ud->upkeep.energy;
 	}
 }
 
@@ -278,7 +278,7 @@ std::string CTooltipConsole::MakeGroundString(const float3& pos)
 
 	const int px = pos.x / 16;
 	const int pz = pos.z / 16;
-	const int typeMapIdx = Clamp(pz * mapDims.hmapx + px, 0, mapDims.hmapx * mapDims.hmapy - 1);
+	const int typeMapIdx = std::clamp(pz * mapDims.hmapx + px, 0, mapDims.hmapx * mapDims.hmapy - 1);
 	const unsigned char* typeMap = readMap->GetTypeMapSynced();
 	const CMapInfo::TerrainType* tt = &mapInfo->terrainTypes[typeMap[typeMapIdx]];
 
@@ -348,7 +348,7 @@ void SUnitStats::AddUnit(const CUnit* unit, bool enemy)
 		health           += unit->health * healthScale;
 		maxHealth        += unit->maxHealth * healthScale;
 		experience        = (experience * (count - 1) + unit->experience) / count;
-		cost             += decoyDef->metal + (decoyDef->energy / 60.0f);
+		cost             += decoyDef->cost.metal + (decoyDef->cost.energy / 60.0f);
 		maxRange          = std::max(maxRange, decoyDef->maxWeaponRange);
 		metalMake        += metalMake_;
 		metalUse         += metalUse_;

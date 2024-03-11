@@ -875,7 +875,7 @@ public:
 			clientNet->Send(CBaseNetProtocol::Get().SendAIStateChanged(gu->myPlayerNum, skirmishAIId, SKIRMAISTATE_RELOADING));
 		}
 
-		LOG("Skirmish AI controlling team %i is beeing %sed ...", teamToKillId, actionName.c_str());
+		LOG("Skirmish AI controlling team %i is being %sed ...", teamToKillId, actionName.c_str());
 
 		return true;
 	}
@@ -966,7 +966,7 @@ public:
 			return WrongSyntax();
 		}
 		if (skirmishAIHandler.GetLocalSkirmishAIInCreation(teamToControlId) != nullptr) {
-			LOG_L(L_WARNING, "Team to control: there is already an AI beeing created for team: %i", teamToControlId);
+			LOG_L(L_WARNING, "Team to control: there is already an AI being created for team: %i", teamToControlId);
 			return WrongSyntax();
 		}
 
@@ -1233,7 +1233,9 @@ public:
 class GroupActionExecutor : public IUnsyncedActionExecutor {
 public:
 	GroupActionExecutor() : IUnsyncedActionExecutor("Group", "Manage control groups", false, {
-			{"<n>", "Select group <n>"},
+			{"<n>", "Select group <n>, also focuses on second call (deprecated)"},
+			{"select <n>", "Select group <n>"},
+			{"focus <n>", "Focus camera on group <n>"},
 			{"set <n>", "Set current selected units as group <n>"},
 			{"add <n>", "Add current selected units to group <n>"},
 			{"unset", "Deassign control group for currently selected units"},
@@ -1375,15 +1377,31 @@ public:
 	TrackActionExecutor() : IUnsyncedActionExecutor("Track",
 			"Start/stop following the selected unit(s) with the camera", false, {
 			{"", "Toggles tracking"},
-			{"<on|off>", "Set tracking <on|off>"},
+			{"<on|off>", "Set tracking <on|off> <unitID unitID ...>"},
 			}) {}
 
 	bool Execute(const UnsyncedAction& action) const final {
+		auto args = CSimpleParser::Tokenize(action.GetArgs());
 		bool enableTracking = unitTracker.Enabled();
-		InverseOrSetBool(enableTracking, action.GetArgs());
+		std::vector<int> unitIDs = {};
+
+		switch (args.size())
+		{
+			case 0:
+				InverseOrSetBool(enableTracking, ""); break;
+			case 1:
+				InverseOrSetBool(enableTracking, args.at(0)); break;
+			default: {
+				InverseOrSetBool(enableTracking, args.at(0));
+				if (enableTracking) {
+					for (size_t i = 1; i < args.size(); ++i)
+						unitIDs.emplace_back(StringToInt(args.at(i)));
+				}
+			} break;
+		}
 
 		if (enableTracking)
-			unitTracker.Track();
+			unitTracker.Track(std::move(unitIDs));
 		else
 			unitTracker.Disable();
 
@@ -1707,7 +1725,7 @@ public:
 			speedCtrl = (speedCtrl == 0) ? 1 : 0;
 		} else {
 			// set value
-			speedCtrl = Clamp(StringToInt(action.GetArgs()), 0, 1);
+			speedCtrl = std::clamp(StringToInt(action.GetArgs()), 0, 1);
 		}
 
 		// constrain to bounds
@@ -1730,7 +1748,7 @@ public:
 		const std::string& args = action.GetArgs();
 
 		if (!args.empty()) {
-			LOG("Lua garbage collection rate: %s", strs[game->luaGCControl = Clamp(StringToInt(args), 0, 1)]);
+			LOG("Lua garbage collection rate: %s", strs[game->luaGCControl = std::clamp(StringToInt(args), 0, 1)]);
 		} else {
 			LOG("Lua garbage collection rate: %s", strs[game->luaGCControl = 1 - game->luaGCControl]);
 		}
@@ -2946,7 +2964,7 @@ public:
 		if (args.empty())
 			return false;
 
-		globalRendering->minViewRange = Clamp(StringToInt<float>(args), IGlobalRendering::MIN_ZNEAR_DIST, globalRendering->maxViewRange);
+		globalRendering->minViewRange = std::clamp(StringToInt<float>(args), IGlobalRendering::MIN_ZNEAR_DIST, globalRendering->maxViewRange);
 		return true;
 	}
 };
@@ -2962,7 +2980,7 @@ public:
 		if (args.empty())
 			return false;
 
-		globalRendering->maxViewRange = Clamp(StringToInt<float>(args), globalRendering->minViewRange, IGlobalRendering::MAX_VIEW_RANGE);
+		globalRendering->maxViewRange = std::clamp(StringToInt<float>(args), globalRendering->minViewRange, IGlobalRendering::MAX_VIEW_RANGE);
 		return true;
 	}
 };
@@ -3169,13 +3187,13 @@ public:
 		const vector<string> &args = CSimpleParser::Tokenize(action.GetArgs());
 
 		if (args.size() == 2) {
-			const int objType = Clamp(StringToInt(args[0]), int(LUAOBJ_UNIT), int(LUAOBJ_FEATURE));
+			const int objType = std::clamp(StringToInt(args[0]), int(LUAOBJ_UNIT), int(LUAOBJ_FEATURE));
 			const float lodScale = StringToInt<float>(args[1]);
 
 			LuaObjectDrawer::SetLODScale(objType, lodScale);
 		}
 		else if (args.size() == 3) {
-			const int objType = Clamp(StringToInt(args[1]), int(LUAOBJ_UNIT), int(LUAOBJ_FEATURE));
+			const int objType = std::clamp(StringToInt(args[1]), int(LUAOBJ_UNIT), int(LUAOBJ_FEATURE));
 			const float lodScale = StringToInt<float>(args[2]);
 
 			switch (hashString(args[0].c_str())) {
@@ -3422,20 +3440,20 @@ public:
 	}
 };
 
-class DestroyActionExecutor : public IUnsyncedActionExecutor {
+
+class BaseDestroyActionExecutor : public IUnsyncedActionExecutor {
 public:
-	DestroyActionExecutor() : IUnsyncedActionExecutor("Destroy", "Destroys one or multiple units by unit-ID, instantly", true) {
-	}
+	BaseDestroyActionExecutor(const std::string& command, const std::string& description)
+		: IUnsyncedActionExecutor(command, description, true) {}
 
 	bool Execute(const UnsyncedAction& action) const final {
-		if (selectedUnitsHandler.selectedUnits.empty())
+		if (selectedUnitsHandler.selectedUnits.empty()) {
 			return false;
+		}
 
-		// kill selected units
 		std::stringstream ss;
-		ss << GetCommand();
-
-		for (const int unitID: selectedUnitsHandler.selectedUnits) {
+		ss << action.GetCmd();
+		for (const int unitID : selectedUnitsHandler.selectedUnits) {
 			ss << " " << unitID;
 		}
 
@@ -3445,6 +3463,17 @@ public:
 	}
 };
 
+
+class DestroyActionExecutor : public BaseDestroyActionExecutor {
+public:
+	DestroyActionExecutor() : BaseDestroyActionExecutor("Destroy", "Destroys one or multiple units by unitID immediately") {}
+};
+
+
+class RemoveActionExecutor : public BaseDestroyActionExecutor {
+public:
+	RemoveActionExecutor() : BaseDestroyActionExecutor("Remove", "Removes one or multiple units by unitID immediately, bypassing death sequence") {}
+};
 
 
 class SendActionExecutor : public IUnsyncedActionExecutor {
@@ -3568,6 +3597,10 @@ public:
 			projectileDrawer->textureAtlas->ReloadTextures();
 			projectileDrawer->groundFXAtlas->ReloadTextures();
 		};
+		auto decalFunc = []() {
+			LOG("Reloading Decal textures");
+			groundDecals->ReloadTextures();
+		};
 
 		std::array argsExec = {
 			ArgTuple(hashString("lua") , false, luaFunc),
@@ -3576,6 +3609,8 @@ public:
 			ArgTuple(hashString("smf") , false, smfFunc),
 			ArgTuple(hashString("cegs"), false, cegFunc),
 			ArgTuple(hashString("ceg") , false, cegFunc),
+			ArgTuple(hashString("decal")  , false, decalFunc),
+			ArgTuple(hashString("decals") , false, decalFunc),
 		};
 
 		auto args = CSimpleParser::Tokenize(action.GetArgs(), 1);
@@ -3589,12 +3624,25 @@ public:
 	}
 
 	bool Execute(const UnsyncedAction& action) const final {
+		auto projFunc = []() {
+			LOG("Dumping projectile textures");
+			projectileDrawer->textureAtlas->DumpTexture("TextureAtlas");
+			projectileDrawer->groundFXAtlas->DumpTexture("GroundFXAtlas");
+		};
+		auto threeDoFunc = []() {
+			LOG("Dumping 3do atlas textures");
+			glSaveTexture(textureHandler3DO.GetAtlasTex1ID(), "3doTex1.png");
+			glSaveTexture(textureHandler3DO.GetAtlasTex2ID(), "3doTex2.png");
+		};
+		auto decalsFunc = []() {
+			LOG("Dumping decal atlas textures");
+			groundDecals->DumpAtlasTextures();
+		};
 		std::array argsExec = {
-			ArgTuple(hashString("proj"), false, []() {
-				LOG("Dumping projectile textures");
-				projectileDrawer->textureAtlas->DumpTexture("TextureAtlas");
-				projectileDrawer->groundFXAtlas->DumpTexture("GroundFXAtlas");
-			}),
+			ArgTuple(hashString("proj"), false, projFunc),
+			ArgTuple(hashString("3do"), false, threeDoFunc),
+			ArgTuple(hashString("decal"), false, decalsFunc),
+			ArgTuple(hashString("decals"), false, decalsFunc)
 		};
 
 		auto args = CSimpleParser::Tokenize(action.GetArgs(), 1);
@@ -4005,6 +4053,7 @@ void UnsyncedGameCommands::AddDefaultActionExecutors()
 	AddActionExecutor(AllocActionExecutor<DivByZeroActionExecutor>());
 	AddActionExecutor(AllocActionExecutor<GiveActionExecutor>());
 	AddActionExecutor(AllocActionExecutor<DestroyActionExecutor>());
+	AddActionExecutor(AllocActionExecutor<RemoveActionExecutor>());
 	AddActionExecutor(AllocActionExecutor<SendActionExecutor>());
 	AddActionExecutor(AllocActionExecutor<DumpStateActionExecutor>());
 	AddActionExecutor(AllocActionExecutor<DumpRNGActionExecutor>());

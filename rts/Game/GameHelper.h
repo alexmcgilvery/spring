@@ -1,18 +1,20 @@
 /* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
 
-#ifndef GAME_HELPER_H
-#define GAME_HELPER_H
+#pragma once
 
 #include "Sim/Misc/DamageArray.h"
 #include "Sim/Projectiles/ExplosionListener.h"
 #include "Sim/Units/CommandAI/Command.h"
+#include "Sim/Misc/GlobalConstants.h"
+#include "System/EventClient.h"
 #include "System/float3.h"
 #include "System/float4.h"
 #include "System/type2.h"
 
 #include <array>
+#include <bit>
 #include <vector>
-
+#include <memory>
 
 class CUnit;
 class CWeapon;
@@ -38,6 +40,8 @@ struct CExplosionParams {
 	float edgeEffectiveness;
 	float explosionSpeed;
 	float gfxMod;
+
+	mutable float maxGroundDeformation;
 
 	bool impactOnly;
 	bool ignoreOwner;
@@ -77,6 +81,7 @@ public:
 	static CUnit* GetClosestEnemyAircraft(const CUnit* excludeUnit, const float3& pos, float searchRadius, int searchAllyteam);
 
 	static void BuggerOff(const float3& pos, float radius, bool spherical, bool forced, int teamId, const CUnit* excludeUnit);
+	static void BuggerOffRectangle(const float3& mins, const float3& maxs, bool forced, int teamId, const CUnit* excludeUnit);
 	static void BuggerOff(const float3& pos, float radius, bool spherical, bool forced, int teamId, const CUnit* excludeUnit, const std::vector<const UnitDef*> excludeUnitDefs);
 	static float3 Pos2BuildPos(const BuildInfo& buildInfo, bool synced);
 	static float4 BuildPosToRect(const float3& midPoint, int facing, int xsize, int zsize);
@@ -117,6 +122,7 @@ public:
 		const std::vector<Command>* commands = nullptr,
 		int threadOwner = 0
 	);
+
 	static float GetBuildHeight(const float3& pos, const UnitDef* unitdef, bool synced = true);
 	static Command GetBuildCommand(const float3& pos, const float3& dir);
 
@@ -145,6 +151,7 @@ public:
 	static size_t GenerateWeaponTargets(const CWeapon* weapon, const CUnit* avoidUnit, std::vector<std::pair<float, CUnit*>>& targets);
 
 	void Init();
+	void Kill();
 	void Update();
 
 	static float CalcImpulseScale(const DamageArray& damages, const float expDistanceMod);
@@ -194,9 +201,9 @@ private:
 		DamageArray damage;
 		float3 impulse;
 	};
-
-	// note: size must be a power of two
+	
 	std::array<std::vector<WaitingDamage>, 128> waitingDamages;
+	static_assert (std::has_single_bit(std::tuple_size_v <decltype(waitingDamages)>), "Size is used in bit hax and must be 2^N");
 
 public:
 	std::vector<int> targetUnitIDs; // GetEnemyUnits{NoLosTest}
@@ -204,5 +211,3 @@ public:
 };
 
 extern CGameHelper* helper;
-
-#endif // GAME_HELPER_H

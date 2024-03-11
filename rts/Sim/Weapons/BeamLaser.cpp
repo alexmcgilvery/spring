@@ -60,7 +60,7 @@ void CBeamLaser::SweepFireState::Init(const float3& newTargetPos, const float3& 
 	sweepInitDir = (sweepInitPos - muzzlePos).SafeNormalize();
 	sweepGoalDir = (sweepGoalPos - muzzlePos).SafeNormalize();
 
-	sweepStartAngle = math::acosf(Clamp(sweepInitDir.dot(sweepGoalDir), -1.0f, 1.0f));
+	sweepStartAngle = math::acosf(std::clamp(sweepInitDir.dot(sweepGoalDir), -1.0f, 1.0f));
 	sweepFiring = true;
 }
 
@@ -69,10 +69,10 @@ float CBeamLaser::SweepFireState::GetTargetDist2D() const {
 		return sweepGoalDst;
 
 	const float sweepCurAngleCos = sweepCurrDir.dot(sweepGoalDir);
-	const float sweepCurAngleRad = math::acosf(Clamp(sweepCurAngleCos, -1.0f, 1.0f));
+	const float sweepCurAngleRad = math::acosf(std::clamp(sweepCurAngleCos, -1.0f, 1.0f));
 
 	// goes from 1 to 0 as the angular difference decreases during the sweep
-	const float sweepAngleAlpha = (Clamp(sweepCurAngleRad / sweepStartAngle, 0.0f, 1.0f));
+	const float sweepAngleAlpha = (std::clamp(sweepCurAngleRad / sweepStartAngle, 0.0f, 1.0f));
 
 	// get the linearly-interpolated beam length for this point of the sweep
 	return (mix(sweepInitDst, sweepGoalDst, 1.0f - sweepAngleAlpha));
@@ -172,11 +172,13 @@ void CBeamLaser::UpdateSweep()
 	if (reloadStatus > gs->frameNum)
 		return;
 
-	if (teamHandler.Team(owner->team)->res.metal < weaponDef->metalcost) { return; }
-	if (teamHandler.Team(owner->team)->res.energy < weaponDef->energycost) { return; }
-
-	owner->UseEnergy(weaponDef->energycost / salvoSize);
-	owner->UseMetal(weaponDef->metalcost / salvoSize);
+	/* FIXME: checking for the full amount but only consuming
+	 * a fraction looks odd, could use a good looking at. */
+	const auto team = teamHandler.Team(owner->team);
+	if (!team->HaveResources(weaponDef->cost))
+		return;
+	if (!team->UseResources(weaponDef->cost / salvoSize))
+		return;
 
 	FireInternal(sweepFireState.GetSweepCurrDir());
 
@@ -360,8 +362,8 @@ void CBeamLaser::FireInternal(float3 curDir)
 			pparams.pos = curPos;
 			pparams.end = hitPos;
 			pparams.ttl = weaponDef->beamLaserTTL;
-			pparams.startAlpha = Clamp(startAlpha * baseAlpha, 0.0f, 255.0f);
-			pparams.endAlpha = Clamp(endAlpha * baseAlpha, 0.0f, 255.0f);
+			pparams.startAlpha = std::clamp(startAlpha * baseAlpha, 0.0f, 255.0f);
+			pparams.endAlpha = std::clamp(endAlpha * baseAlpha, 0.0f, 255.0f);
 
 			WeaponProjectileFactory::LoadProjectile(pparams);
 		}
@@ -388,22 +390,23 @@ void CBeamLaser::FireInternal(float3 curDir)
 		const DamageArray& baseDamages = damages->GetDynamicDamages(weaponMuzzlePos, curPos);
 		const DamageArray da = baseDamages * (hitIntensity * salvoDamageMult);
 		const CExplosionParams params = {
-			hitPos,
-			curDir,
-			da,
-			weaponDef,
-			owner,
-			hitUnit,
-			hitFeature,
-			damages->craterAreaOfEffect,
-			damages->damageAreaOfEffect,
-			damages->edgeEffectiveness,
-			damages->explosionSpeed,
-			1.0f,                                             // gfxMod
-			weaponDef->impactOnly,
-			weaponDef->noExplode || weaponDef->noSelfDamage,  // ignoreOwner
-			true,                                             // damageGround
-			-1u                                               // projectileID
+			.pos                  = hitPos,
+			.dir                  = curDir,
+			.damages              = da,
+			.weaponDef            = weaponDef,
+			.owner                = owner,
+			.hitUnit              = hitUnit,
+			.hitFeature           = hitFeature,
+			.craterAreaOfEffect   = damages->craterAreaOfEffect,
+			.damageAreaOfEffect   = damages->damageAreaOfEffect,
+			.edgeEffectiveness    = damages->edgeEffectiveness,
+			.explosionSpeed       = damages->explosionSpeed,
+			.gfxMod               = 1.0f,
+			.maxGroundDeformation = 0.0f,
+			.impactOnly           = weaponDef->impactOnly,
+			.ignoreOwner          = weaponDef->noExplode || weaponDef->noSelfDamage,
+			.damageGround         = true,
+			.projectileID         = static_cast<uint32_t>(-1u)
 		};
 
 		helper->Explosion(params);

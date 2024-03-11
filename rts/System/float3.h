@@ -384,9 +384,38 @@ public:
 				(x * f.y) - (y * f.x));
 	}
 
+	template<bool synced, typename Iterable>
+	static void rotate(float angle, const float3& axis, Iterable& iterable) {
+		static_assert(std::is_same_v<std::decay_t<decltype(*std::begin(iterable))>, float3>);
+		float ca;
+		float sa;
+		if constexpr (synced) {
+			ca = math::cos(angle);
+			sa = math::sin(angle);
+		}
+		else {
+			ca = fastmath::cos(angle);
+			sa = fastmath::sin(angle);
+		}
+
+		//Rodrigues' rotation formula
+		// https://en.wikipedia.org/wiki/Rodrigues%27_rotation_formula
+		for (auto& v : iterable) {
+			v = v * ca + axis.cross(v) * sa + axis * axis.dot(v) * (1.0f - ca);
+		}
+	}
+
+	template<bool synced>
 	float3 rotate(float angle, const float3& axis) const {
-		const float ca = math::cos(angle);
-		const float sa = math::sin(angle);
+		float ca;
+		float sa;
+		if constexpr (synced) {
+			ca = math::cos(angle);
+			sa = math::sin(angle);
+		} else {
+			ca = fastmath::cos(angle);
+			sa = fastmath::sin(angle);
+		}
 
 		//Rodrigues' rotation formula
 		// https://en.wikipedia.org/wiki/Rodrigues%27_rotation_formula
@@ -421,6 +450,25 @@ public:
 			cm.dot(float3{pz, (nx * py - ny * px), nz})
 		};
 	}
+
+
+	/**
+	 * Rotate a vector by the angle between rotationVector and RgtVector.
+	 * The result is only normalized if the input vector and self are normalized.
+	 * @return new vector with the result
+	 */
+	float3 rotate2D(const float3& rotationVector) const {
+		// https://blog.demofox.org/2014/12/27/using-imaginary-numbers-to-rotate-2d-vectors/
+		float nx = x * rotationVector.x - z * rotationVector.z;
+		float nz = x * rotationVector.z + z * rotationVector.x;
+		return float3{ nx, y, nz };
+	}
+
+	/**
+	 * Snaps the vector to the closest world axis.
+	 * @return new vector with the result
+	 */
+	float3 snapToAxis() const;
 
 	/**
 	 * @brief distance between float3s

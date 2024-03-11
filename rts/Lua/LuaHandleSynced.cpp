@@ -1261,8 +1261,6 @@ bool CSyncedLuaHandle::AllowBuilderHoldFire(const CUnit* unit, int action)
  *     3 - the player failed to load.
  *     The default 'failed to choose' start-position is the north-west point of their startbox, or (0,0,0) if they do not have a startbox.
  *
- * NB: The order of the parameters changed with the addition of teamID in 104.0. Previouly it was: clampedX, clampedY, clampedZ, playerID, readyState, rawX, rawY, rawZ
- *
  * @number playerID
  * @number teamID
  * @number readyState
@@ -1844,7 +1842,7 @@ int CSyncedLuaHandle::SyncedRandom(lua_State* L)
 				const float diff  = (upper - lower);
 				const float r = gsRNG.NextFloat(); // [0,1], not [0,1) ?
 
-				lua_pushnumber(L, Clamp(lower + int(r * (diff + 1)), lower, upper));
+				lua_pushnumber(L, std::clamp(lower + int(r * (diff + 1)), lower, upper));
 				return 1;
 			}
 		} break;

@@ -12,7 +12,7 @@
 #include <functional>
 #include <memory>
 #include <cinttypes>
-#if defined(__APPLE__) || defined(__FreeBSD__)
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
 #elif defined(_WIN32)
 	#include <windows.h>
 #else
@@ -37,7 +37,7 @@ namespace Threading {
 	static NativeThreadId nativeThreadIDs[THREAD_IDX_LAST] = {};
 	static Error threadError;
 
-#if defined(__APPLE__) || defined(__FreeBSD__)
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
 #elif defined(_WIN32)
 	static DWORD_PTR cpusSystem = 0;
 #else
@@ -47,7 +47,7 @@ namespace Threading {
 
 	void DetectCores()
 	{
-	#if defined(__APPLE__) || defined(__FreeBSD__)
+	#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
 		// no-op
 
 	#elif defined(_WIN32)
@@ -75,14 +75,14 @@ namespace Threading {
 
 
 
-	#if defined(__APPLE__) || defined(__FreeBSD__)
+	#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
 	#elif defined(_WIN32)
 	#else
 	static std::uint32_t CalcCoreAffinityMask(const cpu_set_t* cpuSet) {
 		std::uint32_t coreMask = 0;
 
 		// without the min(..., 32), `(1 << n)` could overflow
-		const int numCPUs = std::min(CPU_COUNT(cpuSet), 32);
+		const int numCPUs = std::min(CPU_COUNT(&cpusSystem), 32);
 
 		for (int n = numCPUs - 1; n >= 0; --n) {
 			if (CPU_ISSET(n, cpuSet))
@@ -92,17 +92,17 @@ namespace Threading {
 		return coreMask;
 	}
 
-	static void SetWantedCoreAffinityMask(const cpu_set_t* cpuSrcSet, cpu_set_t* cpuDstSet, std::uint32_t coreMask) {
+	static void SetWantedCoreAffinityMask(cpu_set_t* cpuDstSet, std::uint32_t coreMask) {
 		CPU_ZERO(cpuDstSet);
 
-		const int numCPUs = std::min(CPU_COUNT(cpuSrcSet), 32);
+		const int numCPUs = std::min(CPU_COUNT(&cpusSystem), 32);
 
 		for (int n = numCPUs - 1; n >= 0; --n) {
 			if ((coreMask & (1 << n)) != 0)
 				CPU_SET(n, cpuDstSet);
 		}
 
-		CPU_AND(cpuDstSet, cpuDstSet, cpuSrcSet);
+		CPU_AND(cpuDstSet, cpuDstSet, &cpusSystem);
 	}
 	#endif
 
@@ -110,7 +110,7 @@ namespace Threading {
 
 	std::uint32_t GetAffinity()
 	{
-	#if defined(__APPLE__) || defined(__FreeBSD__)
+	#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
 		// no-op
 		return 0;
 
@@ -134,7 +134,7 @@ namespace Threading {
 		if (coreMask == 0)
 			return (~0);
 
-	#if defined(__APPLE__) || defined(__FreeBSD__)
+	#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
 		// no-op
 		return 0;
 
@@ -158,7 +158,7 @@ namespace Threading {
 		cpu_set_t cpusWanted;
 
 		// create wanted mask
-		SetWantedCoreAffinityMask(&cpusSystem, &cpusWanted, coreMask);
+		SetWantedCoreAffinityMask(&cpusWanted, coreMask);
 
 		// set the affinity; return final mask (can differ from wanted)
 		if (sched_setaffinity(0, sizeof(cpu_set_t), &cpusWanted) == 0)
@@ -190,7 +190,7 @@ namespace Threading {
 
 	std::uint32_t GetAvailableCoresMask()
 	{
-	#if defined(__APPLE__) || defined(__FreeBSD__)
+	#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
 		// no-op
 		return (~0);
 	#elif defined(_WIN32)
@@ -219,7 +219,7 @@ namespace Threading {
 
 	void SetThreadScheduler()
 	{
-	#if defined(__APPLE__) || defined(__FreeBSD__)
+	#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
 		// no-op
 
 	#elif defined(_WIN32)

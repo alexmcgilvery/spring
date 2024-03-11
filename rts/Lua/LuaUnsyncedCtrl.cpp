@@ -49,7 +49,6 @@
 #include "Rendering/Env/WaterRendering.h"
 #include "Rendering/Env/MapRendering.h"
 #include "Rendering/Env/IGroundDecalDrawer.h"
-#include "Rendering/Env/Decals/DecalsDrawerGL4.h"
 #include "Rendering/Env/Particles/Classes/NanoProjectile.h"
 #include "Rendering/GL/myGL.h"
 #include "Rendering/CommandDrawer.h"
@@ -160,6 +159,8 @@ bool LuaUnsyncedCtrl::PushEntries(lua_State* L)
 	REGISTER_LUA_CFUNC(SetCameraTarget);
 
 	REGISTER_LUA_CFUNC(DeselectUnit);
+	REGISTER_LUA_CFUNC(DeselectUnitMap);
+	REGISTER_LUA_CFUNC(DeselectUnitArray);
 	REGISTER_LUA_CFUNC(SelectUnit);
 	REGISTER_LUA_CFUNC(SelectUnitMap);
 	REGISTER_LUA_CFUNC(SelectUnitArray);
@@ -305,13 +306,15 @@ bool LuaUnsyncedCtrl::PushEntries(lua_State* L)
 	REGISTER_LUA_CFUNC(PreloadSoundItem);
 	REGISTER_LUA_CFUNC(LoadModelTextures);
 
-	REGISTER_LUA_CFUNC(CreateDecal);
-	REGISTER_LUA_CFUNC(DestroyDecal);
-	REGISTER_LUA_CFUNC(SetDecalPos);
-	REGISTER_LUA_CFUNC(SetDecalSize);
-	REGISTER_LUA_CFUNC(SetDecalRotation);
-	REGISTER_LUA_CFUNC(SetDecalTexture);
-	REGISTER_LUA_CFUNC(SetDecalAlpha);
+	REGISTER_LUA_CFUNC(CreateGroundDecal);
+	REGISTER_LUA_CFUNC(DestroyGroundDecal);
+	REGISTER_LUA_CFUNC(SetGroundDecalPosAndDims);
+	REGISTER_LUA_CFUNC(SetGroundDecalQuadPosAndHeight);
+	REGISTER_LUA_CFUNC(SetGroundDecalRotation);
+	REGISTER_LUA_CFUNC(SetGroundDecalTexture);
+	REGISTER_LUA_CFUNC(SetGroundDecalAlpha);
+	REGISTER_LUA_CFUNC(SetGroundDecalNormal);
+	REGISTER_LUA_CFUNC(SetGroundDecalCreationFrame);
 
 	REGISTER_LUA_CFUNC(SDLSetTextInputRect);
 	REGISTER_LUA_CFUNC(SDLStartTextInput);
@@ -488,7 +491,7 @@ int LuaUnsyncedCtrl::Echo(lua_State* L)
  *   Possible values for logLevel are:
  *    "debug"   | LOG.DEBUG
  *    "info"    | LOG.INFO
- *    "notice"  | LOG.NOTICE (engine default) (new in Version 97)
+ *    "notice"  | LOG.NOTICE (engine default)
  *    "warning" | LOG.WARNING
  *    "error"   | LOG.ERROR
  *    "fatal"   | LOG.FATAL
@@ -1237,21 +1240,25 @@ int LuaUnsyncedCtrl::SetCameraState(lua_State* L)
 ******************************************************************************/
 
 
-/***
+/*** Selects a single unit
  *
  * @function Spring.SelectUnit
- * @number unitID
+ * @number unitID or nil
  * @bool[opt=false] append append to current selection
  * @treturn nil
  */
 int LuaUnsyncedCtrl::SelectUnit(lua_State* L)
 {
+	if (!luaL_optboolean(L, 2, false))
+		selectedUnitsHandler.ClearSelected();
+
+	if (lua_isnoneornil(L, 1))
+		return 0;
+
 	CUnit* const unit = ParseSelectUnit(L, __func__, 1);
 	if (unit == nullptr)
 		return 0;
 
-	if (!luaL_optboolean(L, 2, false))
-		selectedUnitsHandler.ClearSelected();
 	selectedUnitsHandler.AddUnit(unit);
 
 	return 0;
@@ -1274,63 +1281,75 @@ int LuaUnsyncedCtrl::DeselectUnit(lua_State* L)
 	return 0;
 }
 
-/***
- *
- * @function Spring.SelectUnitArray
- * @tparam {[number],...} unitIDs
- * @bool[opt=false] append append to current selection
- * @treturn nil
- */
-int LuaUnsyncedCtrl::SelectUnitArray(lua_State* L)
+static int TableSelectionCommonFunc(lua_State* L, int unitIndexInTable, bool isSelect, const char *caller)
 {
 	if (!lua_istable(L, 1))
-		luaL_error(L, "[%s] incorrect arguments", __func__);
+		luaL_error(L, "[%s] 1st argument must be a table", caller);
 
-	// clear the current units, unless the append flag is present
-	if (!luaL_optboolean(L, 2, false))
+	if (isSelect && !luaL_optboolean(L, 2, false))
 		selectedUnitsHandler.ClearSelected();
 
-	constexpr int tableIdx = 1;
-	for (lua_pushnil(L); lua_next(L, tableIdx) != 0; lua_pop(L, 1)) {
-		if (lua_israwnumber(L, -2) && lua_isnumber(L, -1)) {     // avoid 'n'
-			CUnit* unit = ParseSelectUnit(L, __func__, -1); // the value
+	for (lua_pushnil(L); lua_next(L, 1); lua_pop(L, 1)) {
+		if (!lua_israwnumber(L, unitIndexInTable))
+			continue;
 
-			if (unit != nullptr)
-				selectedUnitsHandler.AddUnit(unit);
-		}
+		const auto unit = ParseSelectUnit(L, __func__, unitIndexInTable);
+		if (unit == nullptr)
+			continue;
+
+		isSelect
+			? selectedUnitsHandler.AddUnit(unit)
+			: selectedUnitsHandler.RemoveUnit(unit)
+		;
 	}
 
 	return 0;
 }
 
+/*** Deselects multiple units. Accepts a table with unitIDs as values
+ *
+ * @function Spring.DeselectUnitArray
+ * @tparam {[any] = unitID, ...} unitIDs
+ * @treturn nil
+ */
+int LuaUnsyncedCtrl::DeselectUnitArray(lua_State* L)
+{
+	return TableSelectionCommonFunc(L, -1, false, __func__);
+}
 
-/***
+/*** Deselects multiple units. Accepts a table with unitIDs as keys
+ *
+ * @function Spring.DeselectUnitMap
+ * @tparam {[unitID] = any, ...} unitMap where keys are unitIDs
+ * @treturn nil
+ */
+int LuaUnsyncedCtrl::DeselectUnitMap(lua_State* L)
+{
+	return TableSelectionCommonFunc(L, -2, false, __func__);
+}
+
+/*** Selects multiple units, or appends to selection. Accepts a table with unitIDs as values
+ *
+ * @function Spring.SelectUnitArray
+ * @tparam {[any] = unitID, ...} unitIDs
+ * @bool[opt=false] append append to current selection
+ * @treturn nil
+ */
+int LuaUnsyncedCtrl::SelectUnitArray(lua_State* L)
+{
+	return TableSelectionCommonFunc(L, -1, true, __func__);
+}
+
+/*** Selects multiple units, or appends to selection. Accepts a table with unitIDs as keys
  *
  * @function Spring.SelectUnitMap
- * @tparam {[number]=any,...} unitMap where keys are unitIDs
+ * @tparam {[unitID] = any, ...} unitMap where keys are unitIDs
  * @bool[opt=false] append append to current selection
  * @treturn nil
  */
 int LuaUnsyncedCtrl::SelectUnitMap(lua_State* L)
 {
-	if (!lua_istable(L, 1))
-		luaL_error(L, "[%s] incorrect arguments", __func__);
-
-	// clear the current units, unless the append flag is present
-	if (!luaL_optboolean(L, 2, false))
-		selectedUnitsHandler.ClearSelected();
-
-	constexpr int tableIdx = 1;
-	for (lua_pushnil(L); lua_next(L, tableIdx) != 0; lua_pop(L, 1)) {
-		if (lua_israwnumber(L, -2)) {
-			CUnit* unit = ParseSelectUnit(L, __func__, -2); // the key
-
-			if (unit != nullptr)
-				selectedUnitsHandler.AddUnit(unit);
-		}
-	}
-
-	return 0;
+	return TableSelectionCommonFunc(L, -2, true, __func__);
 }
 
 
@@ -1743,10 +1762,6 @@ int LuaUnsyncedCtrl::SetModelLightTrackingState(lua_State* L)
 int LuaUnsyncedCtrl::SetMapShader(lua_State* L)
 {
 	if (CLuaHandle::GetHandleSynced(L))
-		return 0;
-
-	// SMF_RENDER_STATE_LUA only accepts GLSL shaders
-	if (!globalRendering->haveGLSL)
 		return 0;
 
 	const LuaShaders& shaders = CLuaHandle::GetActiveShaders(L);
@@ -2600,10 +2615,10 @@ int LuaUnsyncedCtrl::SetTeamColor(lua_State* L)
 	if (team == nullptr)
 		return 0;
 
-	team->color[0] = (unsigned char)(Clamp(luaL_checkfloat(L, 2      ), 0.0f, 1.0f) * 255.0f);
-	team->color[1] = (unsigned char)(Clamp(luaL_checkfloat(L, 3      ), 0.0f, 1.0f) * 255.0f);
-	team->color[2] = (unsigned char)(Clamp(luaL_checkfloat(L, 4      ), 0.0f, 1.0f) * 255.0f);
-	team->color[3] = (unsigned char)(Clamp(luaL_optfloat  (L, 5, 1.0f), 0.0f, 1.0f) * 255.0f);
+	team->color[0] = (unsigned char)(std::clamp(luaL_checkfloat(L, 2      ), 0.0f, 1.0f) * 255.0f);
+	team->color[1] = (unsigned char)(std::clamp(luaL_checkfloat(L, 3      ), 0.0f, 1.0f) * 255.0f);
+	team->color[2] = (unsigned char)(std::clamp(luaL_checkfloat(L, 4      ), 0.0f, 1.0f) * 255.0f);
+	team->color[3] = (unsigned char)(std::clamp(luaL_optfloat  (L, 5, 1.0f), 0.0f, 1.0f) * 255.0f);
 	return 0;
 }
 
@@ -3449,7 +3464,7 @@ int LuaUnsyncedCtrl::SetShareLevel(lua_State* L)
 
 
 	const char* shareType = lua_tostring(L, 1);
-	const float shareLevel = Clamp(luaL_checkfloat(L, 2), 0.0f, 1.0f);
+	const float shareLevel = std::clamp(luaL_checkfloat(L, 2), 0.0f, 1.0f);
 
 	if (shareType[0] == 'm') {
 		clientNet->Send(CBaseNetProtocol::Get().SendSetShare(gu->myPlayerNum, gu->myTeam, shareLevel, teamHandler.Team(gu->myTeam)->resShare.energy));
@@ -3502,8 +3517,7 @@ int LuaUnsyncedCtrl::ShareResources(lua_State* L)
 
 	const char* type = lua_tostring(L, 2);
 	if (type[0] == 'u') {
-		// update the selection, and clear the unit command queues
-		selectedUnitsHandler.GiveCommand(Command(CMD_STOP), false);
+		selectedUnitsHandler.SendSelect();
 		clientNet->Send(CBaseNetProtocol::Get().SendShare(gu->myPlayerNum, teamID, 1, 0.0f, 0.0f));
 		selectedUnitsHandler.ClearSelected();
 		return 0;
@@ -4435,18 +4449,14 @@ int LuaUnsyncedCtrl::LoadModelTextures(lua_State* L)
 
 /***
  *
- * @function Spring.CreateDecal
- * @treturn nil|number decalIndex
+ * @function Spring.CreateGroundDecal
+ * @treturn nil|number decalID
  */
-int LuaUnsyncedCtrl::CreateDecal(lua_State* L)
+int LuaUnsyncedCtrl::CreateGroundDecal(lua_State* L)
 {
-	auto decalsGl4 = dynamic_cast<CDecalsDrawerGL4*>(groundDecals);
-	if (decalsGl4 == nullptr)
-		return 0;
-
-	const int idx = decalsGl4->CreateLuaDecal();
-	if (idx > 0) {
-		lua_pushnumber(L, idx);
+	const uint32_t id = groundDecals->CreateLuaDecal();
+	if (id > 0) {
+		lua_pushnumber(L, id);
 		return 1;
 	}
 	return 0;
@@ -4455,128 +4465,219 @@ int LuaUnsyncedCtrl::CreateDecal(lua_State* L)
 
 /***
  *
- * @function Spring.DestroyDecal
- * @number decalIndex
- * @treturn nil
+ * @function Spring.DestroyGroundDecal
+ * @number decalID
+ * @treturn bool delSuccess
  */
-int LuaUnsyncedCtrl::DestroyDecal(lua_State* L)
+int LuaUnsyncedCtrl::DestroyGroundDecal(lua_State* L)
 {
-	auto decalsGl4 = dynamic_cast<CDecalsDrawerGL4*>(groundDecals);
-	if (decalsGl4 == nullptr)
-		return 0;
-
-	auto decal = decalsGl4->GetDecalByIdx(luaL_checkint(L, 1));
-	decal.Free();
-	return 0;
+	lua_pushboolean(L, groundDecals->DeleteLuaDecal(luaL_checkint(L, 1)));
+	return 1;
 }
 
 
 /***
  *
- * @function Spring.SetDecalPos
- * @number decalIndex
- * @number posX
- * @number posY
- * @number posZ
+ * @function Spring.SetGroundDecalPosAndDims
+ * @number decalID
+ * @number[opt=currMidPosX] midPosX
+ * @number[opt=currMidPosZ] midPosZ
+ * @number[opt=currSizeX] sizeX
+ * @number[opt=currSizeZ] sizeZ
+ * @number[opt=calculateProjCubeHeight] projCubeHeight
  * @treturn bool decalSet
  */
-int LuaUnsyncedCtrl::SetDecalPos(lua_State* L)
+int LuaUnsyncedCtrl::SetGroundDecalPosAndDims(lua_State* L)
 {
-	auto decalsGl4 = dynamic_cast<CDecalsDrawerGL4*>(groundDecals);
-	if (decalsGl4 == nullptr)
-		return 0;
+	auto* decal = groundDecals->GetDecalById(luaL_checkint(L, 1));
+	if (!decal) {
+		lua_pushboolean(L, false);
+		return 1;
+	}
 
-	const float3 newPos(luaL_checkfloat(L, 2),
-	luaL_checkfloat(L, 3),
-	luaL_checkfloat(L, 4));
+	const float2 midPointCurr = (decal->posTL + decal->posTR + decal->posBR + decal->posBL) * 0.25f;
 
-	auto decal = decalsGl4->GetDecalByIdx(luaL_checkint(L, 1));
-	decal.pos = newPos;
-	lua_pushboolean(L, decal.InvalidateExtents());
+	const float2 midPoint {
+		luaL_optfloat(L, 2, midPointCurr.x),
+		luaL_optfloat(L, 3, midPointCurr.y)
+	};
+
+	const float sizex = luaL_optfloat(L, 4, (decal->posTL.Distance(decal->posTR) + decal->posBL.Distance(decal->posBR)) * 0.25f);
+	const float sizez = luaL_optfloat(L, 5, (decal->posTL.Distance(decal->posBL) + decal->posTR.Distance(decal->posBR)) * 0.25f);
+
+	const auto posTL = midPoint + float2(-sizex, -sizez);
+	const auto posTR = midPoint + float2( sizex, -sizez);
+	const auto posBR = midPoint + float2( sizex,  sizez);
+	const auto posBL = midPoint + float2(-sizex,  sizez);
+
+	decal->posTL = posTL;
+	decal->posTR = posTR;
+	decal->posBR = posBR;
+	decal->posBL = posBL;
+	decal->height = luaL_optfloat(L, 6, math::sqrt(sizex * sizex + sizez * sizez));
+
+	lua_pushboolean(L, true);
 	return 1;
 }
 
-
 /***
  *
- * @function Spring.SetDecalSize
- * @number decalIndex
- * @number sizeX
- * @number sizeY
+ * @function Spring.SetGroundDecalQuadPosAndHeight
+ *
+ * Use for non-rectangular decals
+ *
+ * @number decalID
+ * @number[opt=currPosTL.x] posTL.x
+ * @number[opt=currPosTL.z] posTL.z
+ * @number[opt=currPosTR.x] posTR.x
+ * @number[opt=currPosTR.z] posTR.z
+ * @number[opt=currPosBR.x] posBR.x
+ * @number[opt=currPosBR.z] posBR.z
+ * @number[opt=currPosBL.x] posBL.x
+ * @number[opt=currPosBL.z] posBL.z
+ * @number[opt=calculateProjCubeHeight] projCubeHeight
  * @treturn bool decalSet
  */
-int LuaUnsyncedCtrl::SetDecalSize(lua_State* L)
+int LuaUnsyncedCtrl::SetGroundDecalQuadPosAndHeight(lua_State* L)
 {
-	auto decalsGl4 = dynamic_cast<CDecalsDrawerGL4*>(groundDecals);
-	if (decalsGl4 == nullptr)
-		return 0;
+	auto* decal = groundDecals->GetDecalById(luaL_checkint(L, 1));
+	if (!decal) {
+		lua_pushboolean(L, false);
+		return 1;
+	}
 
-	const float2 newSize(luaL_checkfloat(L, 2), luaL_checkfloat(L, 3));
+	decal->posTL = float2{ luaL_optfloat(L, 2, decal->posTL.x), luaL_optfloat(L, 3, decal->posTL.y) };
+	decal->posTR = float2{ luaL_optfloat(L, 4, decal->posTR.x), luaL_optfloat(L, 5, decal->posTR.y) };
+	decal->posBR = float2{ luaL_optfloat(L, 6, decal->posBR.x), luaL_optfloat(L, 7, decal->posBR.y) };
+	decal->posBL = float2{ luaL_optfloat(L, 8, decal->posBL.x), luaL_optfloat(L, 9, decal->posBL.y) };
 
-	auto decal = decalsGl4->GetDecalByIdx(luaL_checkint(L, 1));
-	decal.size = newSize;
-	lua_pushboolean(L, decal.InvalidateExtents());
+	const float sizex = (decal->posTL.Distance(decal->posTR) + decal->posBL.Distance(decal->posBR)) * 0.25f;
+	const float sizez = (decal->posTL.Distance(decal->posBL) + decal->posTR.Distance(decal->posBR)) * 0.25f;
+
+	decal->height = luaL_optfloat(L, 10, math::sqrt(sizex * sizex + sizez * sizez));
+
+	lua_pushboolean(L, true);
+	return 1;
+}
+
+/***
+ *
+ * @function Spring.SetGroundDecalRotation
+ * @number decalID
+ * @number[opt=random] rot in radians
+ * @treturn bool decalSet
+ */
+int LuaUnsyncedCtrl::SetGroundDecalRotation(lua_State* L)
+{
+	auto* decal = groundDecals->GetDecalById(luaL_checkint(L, 1));
+	if (!decal) {
+		lua_pushboolean(L, false);
+		return 1;
+	}
+
+	decal->rot = luaL_optfloat(L, 2, guRNG.NextFloat() * math::TWOPI);
+
+	lua_pushboolean(L, true);
 	return 1;
 }
 
 
 /***
  *
- * @function Spring.SetDecalRotation
- * @number decalIndex
- * @number rot in radians
+ * @function Spring.SetGroundDecalTexture
+ * @number decalID
+ * @string textureName The texture has to be on the atlas which seems to mean it's defined as an explosion, unit tracks, or building plate decal on some unit already (no arbitrary textures)
+ * @bool[opt=true] isMainTex If false, it sets the normals/glow map
  * @treturn nil|bool decalSet
  */
-int LuaUnsyncedCtrl::SetDecalRotation(lua_State* L)
+int LuaUnsyncedCtrl::SetGroundDecalTexture(lua_State* L)
 {
-	auto decalsGl4 = dynamic_cast<CDecalsDrawerGL4*>(groundDecals);
-	if (decalsGl4 == nullptr)
-		return 0;
-
-	auto decal = decalsGl4->GetDecalByIdx(luaL_checkint(L, 1));
-	decal.rot = luaL_checkfloat(L, 2);
-	lua_pushboolean(L, decal.InvalidateExtents());
+	lua_pushboolean(L,
+		groundDecals->SetDecalTexture(luaL_checkint(L, 1), luaL_checksstring(L, 2), luaL_optboolean(L, 3, false))
+	);
 	return 1;
 }
 
 
 /***
  *
- * @function Spring.SetDecalTexture
- * @number decalIndex
- * @string textureName
- * @treturn nil|bool decalSet
+ * @function Spring.SetGroundDecalAlpha
+ * @number decalID
+ * @number[opt=currAlpha] alpha Between 0 and 1
+ * @number[opt=currAlphaFalloff] alphaFalloff Between 0 and 1, per frame
+ * @treturn bool decalSet
  */
-int LuaUnsyncedCtrl::SetDecalTexture(lua_State* L)
+int LuaUnsyncedCtrl::SetGroundDecalAlpha(lua_State* L)
 {
-	auto decalsGl4 = dynamic_cast<CDecalsDrawerGL4*>(groundDecals);
-	if (decalsGl4 == nullptr)
-		return 0;
+	auto* decal = groundDecals->GetDecalById(luaL_checkint(L, 1));
+	if (!decal) {
+		lua_pushboolean(L, false);
+		return 1;
+	}
 
-	auto decal = decalsGl4->GetDecalByIdx(luaL_checkint(L, 1));
-	decal.SetTexture(luaL_checksstring(L, 2));
-	decal.Invalidate();
-	return 0;
+	decal->alpha = luaL_optfloat(L, 2, decal->alpha);
+	decal->alphaFalloff = luaL_optfloat(L, 3, decal->alphaFalloff);
+
+	lua_pushboolean(L, true);
+	return 1;
 }
-
 
 /***
  *
- * @function Spring.SetDecalAlpha
- * @number decalIndex
- * @number alpha
- * @treturn nil|bool decalSet
+ * @function Spring.SetGroundDecalNormal
+ * Sets projection cube normal to orient in 3D space.
+ * In case the normal (0,0,0) then normal is picked from the terrain
+ * @number decalID
+ * @number[opt=0] normalX
+ * @number[opt=0] normalY
+ * @number[opt=0] normalZ
+ * @treturn bool decalSet
  */
-int LuaUnsyncedCtrl::SetDecalAlpha(lua_State* L)
+int LuaUnsyncedCtrl::SetGroundDecalNormal(lua_State* L)
 {
-	auto decalsGl4 = dynamic_cast<CDecalsDrawerGL4*>(groundDecals);
-	if (decalsGl4 == nullptr)
-		return 0;
+	auto* decal = groundDecals->GetDecalById(luaL_checkint(L, 1));
+	if (!decal) {
+		lua_pushboolean(L, false);
+		return 1;
+	}
 
-	auto decal = decalsGl4->GetDecalByIdx(luaL_checkint(L, 1));
-	decal.alpha = luaL_checkfloat(L, 2);
-	decal.Invalidate();
-	return 0;
+	float3 forcedNormal{
+		luaL_optfloat(L, 2, 0.0f),
+		luaL_optfloat(L, 3, 0.0f),
+		luaL_optfloat(L, 4, 0.0f)
+	};
+	forcedNormal.SafeNormalize();
+
+	decal->forcedNormal = forcedNormal;
+
+	lua_pushboolean(L, true);
+	return 1;
+}
+
+/***
+ *
+ * @function Spring.SetGroundDecalCreationFrame
+ *
+ * Use separate min and max for "gradient" style decals such as tank tracks
+ *
+ * @number decalID
+ * @number[opt=currCreationFrameMin] creationFrameMin
+ * @number[opt=currCreationFrameMax] creationFrameMax
+ * @treturn bool decalSet
+ */
+int LuaUnsyncedCtrl::SetGroundDecalCreationFrame(lua_State* L)
+{
+	auto* decal = groundDecals->GetDecalById(luaL_checkint(L, 1));
+	if (!decal) {
+		lua_pushboolean(L, false);
+		return 1;
+	}
+
+	decal->createFrameMin = luaL_optfloat(L, 2, decal->createFrameMin);
+	decal->createFrameMax = luaL_optfloat(L, 3, decal->createFrameMax);
+
+	lua_pushboolean(L, true);
+	return 1;
 }
 
 
@@ -4825,7 +4926,13 @@ int LuaUnsyncedCtrl::SetClipboard(lua_State* L)
  *
  * Should be called after each widget/unsynced gadget is loaded in widget/gadget handler. Use it to draw screen updates and process windows events.
  *
- * @number sleep time in milliseconds.
+ * @usage
+ * local wantYield = Spring.Yield and Spring.Yield() -- nil check: not present in synced
+ * for wupget in pairs(wupgetsToLoad) do
+ *   loadWupget(wupget)
+ *   wantYield = wantYield and Spring.Yield()
+ * end
+ *
  * @treturn bool when true caller should continue calling `Spring.Yield` during the widgets/gadgets load, when false it shouldn't call it any longer.
  */
 int LuaUnsyncedCtrl::Yield(lua_State* L)

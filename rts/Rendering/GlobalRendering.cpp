@@ -155,6 +155,7 @@ CR_REG_METADATA(IGlobalRendering, (
 
 	CR_IGNORED(forceDisablePersistentMapping),
 	CR_IGNORED(forceDisableShaders),
+	CR_IGNORED(forceCoreContext),
 	CR_IGNORED(forceSwapBuffers),
 
 	CR_IGNORED(msaaLevel),
@@ -198,6 +199,7 @@ CR_REG_METADATA(IGlobalRendering, (
 	CR_IGNORED(fullScreen),
 	CR_IGNORED(borderless),
 
+	CR_IGNORED(underExternalDebug),
 	CR_IGNORED(sdlWindow)
 ))
 
@@ -230,11 +232,12 @@ IGlobalRendering::IGlobalRendering()
 	, viewWindowOffsetY(0)
 
 	// dual viewport geometry (DualScreenMode = 1)
+	, dualWindowOffsetY(0)
 	, dualViewPosX(0)
 	, dualViewPosY(0)
 	, dualViewSizeX(0)
 	, dualViewSizeY(0)
-	, dualWindowOffsetY(0)
+
 
 	, winBorder{ 0 }
 
@@ -256,6 +259,7 @@ IGlobalRendering::IGlobalRendering()
 	, aspectRatio(1.0f)
 
 	, forceDisableShaders(/*configHandler->GetInt("ForceDisableShaders")*/ false)
+	, forceCoreContext(configHandler->GetInt("ForceCoreContext"))
 	, forceSwapBuffers(configHandler->GetInt("ForceSwapBuffers"))
 
 	// fallback
@@ -281,6 +285,7 @@ IGlobalRendering::IGlobalRendering()
 	, dualScreenMiniMapOnLeft(false)
 	, fullScreen(configHandler->GetBool("Fullscreen"))
 	, borderless(configHandler->GetBool("WindowBorderless"))
+	, underExternalDebug(false)
 	, sdlWindow{nullptr}
 {
 	verticalSync->WrapNotifyOnChange();

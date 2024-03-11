@@ -136,6 +136,7 @@ bool LuaSyncedCtrl::PushEntries(lua_State* L)
 
 
 	REGISTER_LUA_CFUNC(SetAlly);
+	REGISTER_LUA_CFUNC(SetAllyTeamStartBox);
 	REGISTER_LUA_CFUNC(KillTeam);
 	REGISTER_LUA_CFUNC(AssignPlayerToTeam);
 	REGISTER_LUA_CFUNC(GameOver);
@@ -193,6 +194,7 @@ bool LuaSyncedCtrl::PushEntries(lua_State* L)
 	REGISTER_LUA_CFUNC(SetUnitShieldState);
 	REGISTER_LUA_CFUNC(SetUnitShieldRechargeDelay);
 	REGISTER_LUA_CFUNC(SetUnitFlanking);
+	REGISTER_LUA_CFUNC(SetUnitPhysicalStateBit);
 	REGISTER_LUA_CFUNC(SetUnitTravel);
 	REGISTER_LUA_CFUNC(SetUnitFuel);
 	REGISTER_LUA_CFUNC(SetUnitMoveGoal);
@@ -202,6 +204,7 @@ bool LuaSyncedCtrl::PushEntries(lua_State* L)
 	REGISTER_LUA_CFUNC(SetUnitTarget);
 	REGISTER_LUA_CFUNC(SetUnitMidAndAimPos);
 	REGISTER_LUA_CFUNC(SetUnitRadiusAndHeight);
+	REGISTER_LUA_CFUNC(SetUnitBuildeeRadius);
 
 	REGISTER_LUA_CFUNC(SetUnitCollisionVolumeData);
 	REGISTER_LUA_CFUNC(SetUnitPieceCollisionVolumeData);
@@ -654,9 +657,9 @@ static int SetWorldObjectVelocity(lua_State* L, CWorldObject* o)
 		return 0;
 
 	float3 speed;
-	speed.x = Clamp(luaL_checkfloat(L, 2), -MAX_UNIT_SPEED, MAX_UNIT_SPEED);
-	speed.y = Clamp(luaL_checkfloat(L, 3), -MAX_UNIT_SPEED, MAX_UNIT_SPEED);
-	speed.z = Clamp(luaL_checkfloat(L, 4), -MAX_UNIT_SPEED, MAX_UNIT_SPEED);
+	speed.x = std::clamp(luaL_checkfloat(L, 2), -MAX_UNIT_SPEED, MAX_UNIT_SPEED);
+	speed.y = std::clamp(luaL_checkfloat(L, 3), -MAX_UNIT_SPEED, MAX_UNIT_SPEED);
+	speed.z = std::clamp(luaL_checkfloat(L, 4), -MAX_UNIT_SPEED, MAX_UNIT_SPEED);
 
 	o->SetVelocityAndSpeed(speed);
 	return 0;
@@ -694,9 +697,9 @@ static int SetSolidObjectPhysicalState(lua_State* L, CSolidObject* o)
 	rot.y = luaL_checknumber(L, 9);
 	rot.z = luaL_checknumber(L, 10);
 
-	drag.x = Clamp(luaL_optnumber(L, 11, drag.x), 0.0f, 1.0f);
-	drag.y = Clamp(luaL_optnumber(L, 12, drag.y), 0.0f, 1.0f);
-	drag.z = Clamp(luaL_optnumber(L, 13, drag.z), 0.0f, 1.0f);
+	drag.x = std::clamp(luaL_optnumber(L, 11, drag.x), 0.0f, 1.0f);
+	drag.y = std::clamp(luaL_optnumber(L, 12, drag.y), 0.0f, 1.0f);
+	drag.z = std::clamp(luaL_optnumber(L, 13, drag.z), 0.0f, 1.0f);
 
 	o->Move(pos, false);
 	o->SetDirVectorsEuler(rot);
@@ -796,6 +799,38 @@ int LuaSyncedCtrl::SetAlly(lua_State* L)
 		return 0;
 
 	teamHandler.SetAlly(firstAllyTeamID, secondAllyTeamID, luaL_checkboolean(L, 3));
+	return 0;
+}
+
+
+/*** Changes the start box position of an allyTeam.
+ *
+ * @function Spring.SetAllyTeamStartBox
+ * @number allyTeamID
+ * @number xMin left start box boundary (elmos)
+ * @number zMin top start box boundary (elmos)
+ * @number xMax right start box boundary (elmos)
+ * @number zMax bottom start box boundary (elmos)
+ * @treturn nil
+ */
+int LuaSyncedCtrl::SetAllyTeamStartBox(lua_State* L)
+{
+	const unsigned int allyTeamID = luaL_checkint(L, 1);
+	const float xMin = luaL_checkfloat(L, 2);
+	const float zMin = luaL_checkfloat(L, 3);
+	const float xMax = luaL_checkfloat(L, 4);
+	const float zMax = luaL_checkfloat(L, 5);
+
+	if (!teamHandler.IsValidAllyTeam(allyTeamID)) {
+		return 0;
+	}
+
+	const float startRectLeft   = xMin / (mapDims.mapx * SQUARE_SIZE);
+	const float startRectTop    = zMin / (mapDims.mapy * SQUARE_SIZE);
+	const float startRectRight  = xMax / (mapDims.mapx * SQUARE_SIZE);
+	const float startRectBottom = zMax / (mapDims.mapy * SQUARE_SIZE);
+
+	teamHandler.SetAllyTeamStartBox(allyTeamID, startRectLeft, startRectTop, startRectRight, startRectBottom);
 	return 0;
 }
 
@@ -1156,8 +1191,8 @@ int LuaSyncedCtrl::SetTeamShareLevel(lua_State* L)
 	const float value = luaL_checkfloat(L, 3);
 
 	switch (type[0]) {
-		case 'm': { team->resShare.metal  = Clamp(value, 0.0f, 1.0f); } break;
-		case 'e': { team->resShare.energy = Clamp(value, 0.0f, 1.0f); } break;
+		case 'm': { team->resShare.metal  = std::clamp(value, 0.0f, 1.0f); } break;
+		case 'e': { team->resShare.energy = std::clamp(value, 0.0f, 1.0f); } break;
 		default : {                                                   } break;
 	}
 
@@ -2016,7 +2051,7 @@ int LuaSyncedCtrl::SetUnitStockpile(lua_State* L)
 	}
 
 	if (lua_isnumber(L, 3))
-		unit->stockpileWeapon->buildPercent = Clamp(lua_tofloat(L, 3), 0.0f, 1.0f);
+		unit->stockpileWeapon->buildPercent = std::clamp(lua_tofloat(L, 3), 0.0f, 1.0f);
 
 	return 0;
 }
@@ -2765,7 +2800,7 @@ int LuaSyncedCtrl::SetUnitBuildSpeed(lua_State* L)
 	if (unit == nullptr)
 		return 0;
 
-	const float buildScale = (1.0f / TEAM_SLOWUPDATE_RATE);
+	constexpr float buildScale = (1.0f / GAME_SPEED);
 	const float buildSpeed = buildScale * max(0.0f, luaL_checkfloat(L, 2));
 
 	CFactory* factory = dynamic_cast<CFactory*>(unit);
@@ -2809,7 +2844,7 @@ int LuaSyncedCtrl::SetUnitBuildSpeed(lua_State* L)
  * @number builderID
  * @tparam table pieces
  * @treturn nil
- * 
+ *
  */
 int LuaSyncedCtrl::SetUnitNanoPieces(lua_State* L)
 {
@@ -3035,6 +3070,26 @@ int LuaSyncedCtrl::SetUnitFlanking(lua_State* L)
 	return 0;
 }
 
+/***
+ * @function Spring.SetUnitPhysicalStateBit
+ * @number unitID
+ * @number[bit] Physical state bit
+ * @treturn nil
+ */
+int LuaSyncedCtrl::SetUnitPhysicalStateBit(lua_State* L)
+{
+	CUnit* unit = ParseUnit(L, __func__, 1);
+
+	if (unit == nullptr)
+		return 0;
+
+	int statebit = luaL_checkint(L, 2);
+
+	unit->SetPhysicalStateBit(statebit);
+	return 0;
+}
+
+
 
 int LuaSyncedCtrl::SetUnitTravel(lua_State* L) { return 0; } // FIXME: DELETE ME
 int LuaSyncedCtrl::SetUnitFuel(lua_State* L) { return 0; } // FIXME: DELETE ME
@@ -3224,6 +3279,27 @@ int LuaSyncedCtrl::SetUnitRadiusAndHeight(lua_State* L)
 	return 1;
 }
 
+
+/***
+ * @function Spring.SetUnitBuildeeRadius
+ * Sets the unit's radius for when targeted by build, repair, reclaim-type commands.
+ * @number unitID
+ * @number build radius for when targeted by build, repair, reclaim-type commands.
+ * @treturn nil
+ */
+int LuaSyncedCtrl::SetUnitBuildeeRadius(lua_State* L)
+{
+	CUnit* unit = ParseUnit(L, __func__, 1);
+
+	if (unit == nullptr)
+		return 0;
+
+	unit->buildeeRadius = std::max(0.0f, luaL_checkfloat(L, 2));
+
+	return 0;
+}
+
+
 /*** Changes the pieces hierarchy of a unit by attaching a piece to a new parent.
  *
  * @function Spring.SetUnitPieceParent
@@ -3314,7 +3390,7 @@ int LuaSyncedCtrl::SetUnitPieceMatrix(lua_State* L)
  * @number tType
  * @number Axis
  * @treturn nil
- * 
+ *
  *  enum COLVOL_TYPES {
  *      COLVOL_TYPE_DISABLED = -1,
  *      COLVOL_TYPE_ELLIPSOID = 0,
@@ -3389,7 +3465,7 @@ int LuaSyncedCtrl::SetUnitSensorRadius(lua_State* L)
 	if (unit == nullptr)
 		return 0;
 
-	const int radius = Clamp(luaL_checkint(L, 3), 0, MAX_UNIT_SENSOR_RADIUS);
+	const int radius = std::clamp(luaL_checkint(L, 3), 0, MAX_UNIT_SENSOR_RADIUS);
 
 	switch (hashString(luaL_checkstring(L, 2))) {
 		case hashString("los"): {
@@ -3453,7 +3529,7 @@ int LuaSyncedCtrl::SetUnitPosErrorParams(lua_State* L)
 	unit->nextPosErrorUpdate = luaL_optint(L, 8, unit->nextPosErrorUpdate);
 
 	if (lua_isnumber(L, 9) && lua_isboolean(L, 10))
-		unit->SetPosErrorBit(Clamp(lua_tointeger(L, 9), 0, teamHandler.ActiveAllyTeams()), lua_toboolean(L, 10));
+		unit->SetPosErrorBit(std::clamp(lua_tointeger(L, 9), 0, teamHandler.ActiveAllyTeams()), lua_toboolean(L, 10));
 
 	return 0;
 }
@@ -3772,9 +3848,9 @@ int LuaSyncedCtrl::AddUnitDamage(lua_State* L)
 	const int paralyze    = luaL_optint(L, 3, 0);
 	const int attackerID  = luaL_optint(L, 4, -1);
 	const int weaponDefID = luaL_optint(L, 5, -1);
-	const float3 impulse  = float3(Clamp(luaL_optfloat(L, 6, 0.0f), -MAX_EXPLOSION_IMPULSE, MAX_EXPLOSION_IMPULSE),
-	                               Clamp(luaL_optfloat(L, 7, 0.0f), -MAX_EXPLOSION_IMPULSE, MAX_EXPLOSION_IMPULSE),
-	                               Clamp(luaL_optfloat(L, 8, 0.0f), -MAX_EXPLOSION_IMPULSE, MAX_EXPLOSION_IMPULSE));
+	const float3 impulse  = float3(std::clamp(luaL_optfloat(L, 6, 0.0f), -MAX_EXPLOSION_IMPULSE, MAX_EXPLOSION_IMPULSE),
+	                               std::clamp(luaL_optfloat(L, 7, 0.0f), -MAX_EXPLOSION_IMPULSE, MAX_EXPLOSION_IMPULSE),
+	                               std::clamp(luaL_optfloat(L, 8, 0.0f), -MAX_EXPLOSION_IMPULSE, MAX_EXPLOSION_IMPULSE));
 
 	CUnit* attacker = nullptr;
 
@@ -3816,9 +3892,9 @@ int LuaSyncedCtrl::AddUnitImpulse(lua_State* L)
 	if (unit == nullptr)
 		return 0;
 
-	const float3 impulse(Clamp(luaL_checkfloat(L, 2), -MAX_EXPLOSION_IMPULSE, MAX_EXPLOSION_IMPULSE),
-	                     Clamp(luaL_checkfloat(L, 3), -MAX_EXPLOSION_IMPULSE, MAX_EXPLOSION_IMPULSE),
-	                     Clamp(luaL_checkfloat(L, 4), -MAX_EXPLOSION_IMPULSE, MAX_EXPLOSION_IMPULSE));
+	const float3 impulse(std::clamp(luaL_checkfloat(L, 2), -MAX_EXPLOSION_IMPULSE, MAX_EXPLOSION_IMPULSE),
+	                     std::clamp(luaL_checkfloat(L, 3), -MAX_EXPLOSION_IMPULSE, MAX_EXPLOSION_IMPULSE),
+	                     std::clamp(luaL_checkfloat(L, 4), -MAX_EXPLOSION_IMPULSE, MAX_EXPLOSION_IMPULSE));
 
 	unit->ApplyImpulse(impulse);
 	return 0;
@@ -4263,11 +4339,11 @@ int LuaSyncedCtrl::SetFeatureResources(lua_State* L)
 	feature->defResources.metal  = std::max(0.0f, luaL_optfloat(L, 6, feature->defResources.metal));
 	feature->defResources.energy = std::max(0.0f, luaL_optfloat(L, 7, feature->defResources.energy));
 
-	feature->resources.metal  = Clamp(luaL_checknumber(L, 2), 0.0f, feature->defResources.metal );
-	feature->resources.energy = Clamp(luaL_checknumber(L, 3), 0.0f, feature->defResources.energy);
+	feature->resources.metal  = std::clamp(luaL_checknumber(L, 2), 0.0f, feature->defResources.metal );
+	feature->resources.energy = std::clamp(luaL_checknumber(L, 3), 0.0f, feature->defResources.energy);
 
-	feature->reclaimTime = Clamp(luaL_optnumber(L, 4, feature->reclaimTime), 1.0f, 1000000.0f);
-	feature->reclaimLeft = Clamp(luaL_optnumber(L, 5, feature->reclaimLeft), 0.0f,       1.0f);
+	feature->reclaimTime = std::clamp(luaL_optnumber(L, 4, feature->reclaimTime), 1.0f, 1000000.0f);
+	feature->reclaimLeft = std::clamp(luaL_optnumber(L, 5, feature->reclaimLeft), 0.0f,       1.0f);
 	return 0;
 }
 
@@ -4311,7 +4387,7 @@ int LuaSyncedCtrl::SetFeatureResurrect(lua_State* L)
 	if (!lua_isnoneornil(L, 3))
 		feature->buildFacing = LuaUtils::ParseFacing(L, __func__, 3);
 
-	feature->resurrectProgress = Clamp(luaL_optnumber(L, 4, feature->resurrectProgress), 0.0f, 1.0f);
+	feature->resurrectProgress = std::clamp(luaL_optnumber(L, 4, feature->resurrectProgress), 0.0f, 1.0f);
 	return 0;
 }
 
@@ -4449,7 +4525,7 @@ int LuaSyncedCtrl::SetFeatureRotation(lua_State* L)
 
 
 /***
- * @function Spring.SetFeatureDirection 
+ * @function Spring.SetFeatureDirection
  * @number featureID
  * @number dirX
  * @number dirY
@@ -4578,7 +4654,7 @@ int LuaSyncedCtrl::SetFeatureMidAndAimPos(lua_State* L)
 
 
 /***
- * @function Spring.SetFeatureRadiusAndHeight 
+ * @function Spring.SetFeatureRadiusAndHeight
  * @number featureID
  * @number radius
  * @number height
@@ -4782,7 +4858,7 @@ int LuaSyncedCtrl::SetProjectilePosition(lua_State* L)
  * @number[opt=0] velY
  * @number[opt=0] velZ
  * @treturn nil
- * 
+ *
  */
 int LuaSyncedCtrl::SetProjectileVelocity(lua_State* L)
 {
@@ -4808,7 +4884,7 @@ int LuaSyncedCtrl::SetProjectileCollision(lua_State* L)
 /***
  * @function Spring.SetProjectileTarget
  *
- * targetTypeStr can be one of: 
+ * targetTypeStr can be one of:
  *     'u' - unit
  *     'f' - feature
  *     'p' - projectile
@@ -5124,7 +5200,7 @@ int LuaSyncedCtrl::UnitFinishCommand(lua_State* L)
  * @number unitID
  * @number cmdID
  * @tparam {number,...} params
- * @tparam cmdOpts cmdOpts
+ * @tparam cmdOpts options
  * @treturn bool unitOrdered
  */
 int LuaSyncedCtrl::GiveOrderToUnit(lua_State* L)
@@ -5160,7 +5236,7 @@ int LuaSyncedCtrl::GiveOrderToUnit(lua_State* L)
  * @tparam {[number]=table,...} unitMap table with unitIDs as keys
  * @number cmdID
  * @tparam {number,...} params
- * @tparam cmdOpts cmdOpts
+ * @tparam cmdOpts options
  * @treturn number unitsOrdered
  */
 int LuaSyncedCtrl::GiveOrderToUnitMap(lua_State* L)
@@ -5203,7 +5279,7 @@ int LuaSyncedCtrl::GiveOrderToUnitMap(lua_State* L)
  * @tparam {number,...} unitIDs
  * @number cmdID
  * @tparam {number,...} params
- * @tparam cmdOpts cmdOpts
+ * @tparam cmdOpts options
  * @treturn number unitsOrdered
  */
 int LuaSyncedCtrl::GiveOrderToUnitArray(lua_State* L)
@@ -5415,10 +5491,10 @@ static void ParseParams(lua_State* L, const char* caller, float& factor,
 	}
 
 	// quantize and clamp
-	x1 = Clamp((int)(fx1 / resolution), 0, maxX);
-	x2 = Clamp((int)(fx2 / resolution), 0, maxX);
-	z1 = Clamp((int)(fz1 / resolution), 0, maxZ);
-	z2 = Clamp((int)(fz2 / resolution), 0, maxZ);
+	x1 = std::clamp((int)(fx1 / resolution), 0, maxX);
+	x2 = std::clamp((int)(fx2 / resolution), 0, maxX);
+	z1 = std::clamp((int)(fz1 / resolution), 0, maxZ);
+	z2 = std::clamp((int)(fz2 / resolution), 0, maxZ);
 
 }
 
@@ -5593,7 +5669,7 @@ int LuaSyncedCtrl::AddHeightMap(lua_State* L)
  *
  * @function Spring.SetHeightMap
  *
- * Can only be called in `Spring.SetHeightMapFunc`. The terraform argument is 
+ * Can only be called in `Spring.SetHeightMapFunc`. The terraform argument is
  *
  * @number x
  * @number z
@@ -5961,7 +6037,7 @@ static inline void ParseSmoothMeshParams(lua_State* L, const char* caller,
 			smoothGround.GetResolution(),
 			smoothGround.GetMaxX() - 1,
 			smoothGround.GetMaxY() - 1);
-			
+
 }
 
 
@@ -6361,6 +6437,9 @@ int LuaSyncedCtrl::UnitAttach(lua_State* L)
 	if (transportee == nullptr)
 		return 0;
 
+	if (transporter == transportee)
+		return 0;
+
 	int piece = luaL_checkint(L, 3) - 1;
 	const auto& pieces = transporter->localModel.pieces;
 
@@ -6647,22 +6726,23 @@ int LuaSyncedCtrl::SpawnExplosion(lua_State* L)
 	if (lua_istable(L, 7)) {
 		DamageArray damages(1.0f);
 		CExplosionParams params = {
-			pos,
-			dir,
-			damages,
-			nullptr,           // weaponDef
-			nullptr,           // owner
-			nullptr,           // hitUnit
-			nullptr,           // hitFeature
-			0.0f,              // craterAreaOfEffect
-			0.0f,              // damageAreaOfEffect
-			0.0f,              // edgeEffectiveness
-			0.0f,              // explosionSpeed
-			0.0f,              // gfxMod (scale-mult for *S*EG's)
-			false,             // impactOnly
-			false,             // ignoreOwner
-			false,             // damageGround
-			static_cast<unsigned int>(-1)
+			.pos                  = pos,
+			.dir                  = dir,
+			.damages              = damages,
+			.weaponDef            = nullptr,
+			.owner                = nullptr,
+			.hitUnit              = nullptr,
+			.hitFeature           = nullptr,
+			.craterAreaOfEffect   = 0.0f,
+			.damageAreaOfEffect   = 0.0f,
+			.edgeEffectiveness    = 0.0f,
+			.explosionSpeed       = 0.0f,
+			.gfxMod               = 0.0f,
+			.maxGroundDeformation = 0.0f,
+			.impactOnly           = false,
+			.ignoreOwner          = false,
+			.damageGround         = false,
+			.projectileID         = static_cast<uint32_t>(-1)
 		};
 
 		for (lua_pushnil(L); lua_next(L, 7) != 0; lua_pop(L, 1)) {
@@ -6685,6 +6765,7 @@ int LuaSyncedCtrl::SpawnExplosion(lua_State* L)
 		params.edgeEffectiveness  = std::min(luaL_optfloat(L, 10, 0.0f), 1.0f);
 		params.explosionSpeed     = luaL_optfloat(L, 11, 0.0f);
 		params.gfxMod             = luaL_optfloat(L, 12, 0.0f);
+		params.maxGroundDeformation = 0.0f;
 
 		params.impactOnly   = luaL_optboolean(L, 13, false);
 		params.ignoreOwner  = luaL_optboolean(L, 14, false);

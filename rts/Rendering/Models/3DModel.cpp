@@ -364,9 +364,6 @@ void LocalModel::UpdateBoundingVolume()
 {
 	ZoneScoped;
 
-	if (!needsBoundariesRecalc)
-		return;
-
 	// bounding-box extrema (local space)
 	float3 bbMins = DEF_MIN_SIZE;
 	float3 bbMaxs = DEF_MAX_SIZE;
@@ -414,10 +411,9 @@ void LocalModel::UpdateBoundingVolume()
  */
 
 LocalModelPiece::LocalModelPiece(const S3DModelPiece* piece)
-	: dirty(true)
+	: colvol(piece->GetCollisionVolume())
+	, dirty(true)
 	, customDirty(true)
-
-	, colvol(piece->GetCollisionVolume())
 
 	, scriptSetVisible(true)
 	, blockScriptAnims(false)

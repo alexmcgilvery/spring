@@ -55,9 +55,6 @@ public:
 	// relative to a unit's maxspeed (default: inf)
 	float maxCollisionPushMultiplier;
 
-	bool forceCollisionsSingleThreaded;
-	bool forceCollisionAvoidanceSingleThreaded;
-
 	// rate in sim frames that a unit's position in the quad grid is updated (default: 3)
 	// a lower number will increase CPU load, but increase accuracy of collision detection
 	int unitQuadPositionUpdateRate;
@@ -188,11 +185,37 @@ public:
 	// PFS
 	/// which pathfinder system (NOP, DEFAULT/legacy, or QT) the mod will use
 	int pathFinderSystem;
-	bool pfForceSingleThreaded;
-	bool pfForceUpdateSingleThreaded;
+
+	/// Minimum delay after unit has made progress to next waypoint before allowing repath
+	int pfRepathDelayInFrames;
+
+	/// Minimum wait time after the the last repath before a unit is permitted to request a new one.
+	int pfRepathMaxRateInFrames;
+
+	/// Point at which a region is considered bad for raw path tracing.
+	float pfRawMoveSpeedThreshold;
+
+	/// Limits how many nodes the QTPFS pathing system is permitted to search. A smaller number
+	/// improves CPU performance, but a larger number will resolve longer paths better, without
+	/// needing to refresh the path.
+	int qtMaxNodesSearched;
+
+	/// Limits how many nodes the QTPFS pathing system is permitted to search, like
+	/// qtMaxNodesSearched, except that it calculated based off a relative to walkable nodes
+	/// in the map. The larger of this and qtMaxNodesSearched will be used.
+	float qtMaxNodesSearchedRelativeToMapOpenNodes;
+
+	/// Minimum size, in elmos, an incomplete path has to be to allow the path to be refreshed.
+	/// Once the path is smaller than this distance then the system assumes the path cannot be
+	/// improved further. A larger number reduces CPU usage, but also increses the chance that
+	/// a unit will become trapped in a complex terrain/base setup even if there's a route that
+	/// would bring the unit nearer to the goal.
+	float qtRefreshPathMinDist;
+
+	/// Enable to reduce CPU usage, but also reduce quality of resultant paths.
+	bool qtLowerQualityPaths;
 
 	float pfRawDistMult;
-	float pfUpdateRate; // remove if Default PFS gets replaced/removed.
 	float pfUpdateRateScale;
 
 	bool enableSmoothMesh;

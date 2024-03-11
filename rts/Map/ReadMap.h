@@ -166,6 +166,7 @@ public:
 	const float* GetMapFileHeightMapSynced() const { return &mapFileHeightMap[0]; }
 	const float* GetOriginalHeightMapSynced() const { return &originalHeightMap[0]; }
 	const float* GetCenterHeightMapSynced() const { return &centerHeightMap[0]; }
+	const float* GetMaxHeightMapSynced() const { return &maxHeightMap[0]; }
 	const float* GetMIPHeightMapSynced(unsigned int mip) const { return mipPointerHeightMaps[mip]; }
 	const float* GetSlopeMapSynced() const { return &slopeMap[0]; }
 	const uint8_t* GetTypeMapSynced() const { return &typeMap[0]; }
@@ -261,6 +262,7 @@ protected:
 	static std::vector<float> originalHeightMap;        //< size: (mapx+1)*(mapy+1) (per vertex) [SYNCED, does NOT update on terrain deformation]
 	static std::vector<float> centerHeightMap;          //< size: (mapx  )*(mapy  ) (per face) [SYNCED, updates on terrain deformation]
 	static std::array<std::vector<float>, numHeightMipMaps - 1> mipCenterHeightMaps;
+	static std::vector<float> maxHeightMap;			// map for sea/hover to catch coast lines with sharp vertical changes so they don't try to climb the cliff.
 
 	/**
 	 * array of pointers to heightmaps in different resolutions
@@ -337,8 +339,8 @@ inline float CReadMap::SetHeightValue(float& heightRef, const int idx, const flo
 static inline float3 CornerSqrToPosRaw(const float* hm, int sqx, int sqz) { return {sqx * SQUARE_SIZE * 1.0f, hm[(sqz * mapDims.mapxp1) + sqx], sqz * SQUARE_SIZE * 1.0f}; }
 static inline float3 CenterSqrToPosRaw(const float* hm, int sqx, int sqz) { return {sqx * SQUARE_SIZE * 1.0f, hm[(sqz * mapDims.mapx  ) + sqx], sqz * SQUARE_SIZE * 1.0f}; }
 
-static inline float3 CornerSqrToPos(const float* hm, int sqx, int sqz) { return (CornerSqrToPosRaw(hm, Clamp(sqx, 0, mapDims.mapx  ), Clamp(sqz, 0, mapDims.mapy  ))); }
-static inline float3 CenterSqrToPos(const float* hm, int sqx, int sqz) { return (CenterSqrToPosRaw(hm, Clamp(sqx, 0, mapDims.mapxm1), Clamp(sqz, 0, mapDims.mapym1))); }
+static inline float3 CornerSqrToPos(const float* hm, int sqx, int sqz) { return (CornerSqrToPosRaw(hm, std::clamp(sqx, 0, mapDims.mapx  ), std::clamp(sqz, 0, mapDims.mapy  ))); }
+static inline float3 CenterSqrToPos(const float* hm, int sqx, int sqz) { return (CenterSqrToPosRaw(hm, std::clamp(sqx, 0, mapDims.mapxm1), std::clamp(sqz, 0, mapDims.mapym1))); }
 
 
 static inline float3 CornerSquareToFloat3(int sqx, int sqz) { return (CornerSqrToPosRaw(readMap->GetCornerHeightMapSynced(), sqx, sqz)); }

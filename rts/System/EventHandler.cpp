@@ -555,6 +555,12 @@ void CEventHandler::GameFrame(int gameFrame)
 	ITERATE_EVENTCLIENTLIST(GameFrame, gameFrame);
 }
 
+void CEventHandler::GameFramePost(int gameFrame)
+{
+	ZoneScoped;
+	ITERATE_EVENTCLIENTLIST(GameFramePost, gameFrame);
+}
+
 void CEventHandler::GameProgress(int gameFrame)
 {
 	ZoneScoped;
@@ -746,7 +752,7 @@ template<typename T, typename F, typename... A> std::string ControlReverseIterat
 	for (size_t i = 0; i < list.size(); i++) {
 		CEventClient* ec = list[list.size() - 1 - i];
 
-		std::string str = std::move((ec->*func)(std::forward<A>(args)...));
+		std::string str = (ec->*func)(std::forward<A>(args)...);
 
 		if (str.empty())
 			continue;

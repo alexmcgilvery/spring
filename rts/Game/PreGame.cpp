@@ -178,10 +178,13 @@ bool CPreGame::Draw()
 	} else {
 		font->glPrint(0.5f, 0.48f, 2.0f, FONT_CENTER | FONT_SCALE | FONT_NORM, "Waiting for server response");
 	}
-
-	font->glFormat(0.60f, 0.40f, 1.0f, FONT_SCALE | FONT_NORM, "Connecting to: %s", clientNet->ConnectionStr().c_str());
-	font->glFormat(0.60f, 0.35f, 1.0f, FONT_SCALE | FONT_NORM, "User name: %s", clientSetup->myPlayerName.c_str());
-
+	if (clientSetup->showServerName.empty()) {
+		font->glFormat(0.60f, 0.40f, 1.0f, FONT_SCALE | FONT_NORM, "Connecting to: %s", clientNet->ConnectionStr().c_str());
+		font->glFormat(0.60f, 0.35f, 1.0f, FONT_SCALE | FONT_NORM, "User name: %s", clientSetup->myPlayerName.c_str());
+	}
+	else {
+		font->glFormat(0.60f, 0.40f, 1.0f, FONT_SCALE | FONT_NORM, "Connecting to: %s", clientSetup->showServerName.c_str());
+	}
 	font->glFormat(0.5f,0.25f,0.8f,FONT_CENTER | FONT_SCALE | FONT_NORM, "Press SHIFT + ESC to quit");
 	// credits
 	font->glFormat(0.5f,0.06f,1.0f,FONT_CENTER | FONT_SCALE | FONT_NORM, "Spring %s", SpringVersion::GetFull().c_str());
@@ -412,7 +415,7 @@ void CPreGame::UpdateClientNet()
 				CLIENT_NETLOG(gu->myPlayerNum, LOG_LEVEL_INFO, mapChecksumMsgBuf);
 				CLIENT_NETLOG(gu->myPlayerNum, LOG_LEVEL_INFO, modChecksumMsgBuf);
 
-				CLoadScreen::CreateDeleteInstance(std::move(gameSetup->MapFileName()), std::move(modFileName), saveFileHandler);
+				CLoadScreen::CreateDeleteInstance(gameSetup->MapFileName(), std::move(modFileName), saveFileHandler);
 
 				assert(pregame == this);
 				spring::SafeDelete(pregame);

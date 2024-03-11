@@ -7,7 +7,7 @@
 #include <tuple>
 
 #include "MoveType.h"
-#include "Sim/Path/IPathController.hpp"
+#include "Sim/Path/IPathController.h"
 #include "System/Sync/SyncedFloat3.h"
 
 struct UnitDef;
@@ -54,6 +54,8 @@ public:
 	void TestNewTerrainSquare();
 	bool CanApplyImpulse(const float3&) override;
 	void LeaveTransport() override;
+	void Connect() override;
+	void Disconnect() override;
 
 	void InitMemberPtrs(MemberData* memberData);
 	bool SetMemberValue(unsigned int memberHash, void* memberValue) override;
@@ -64,7 +66,7 @@ public:
 	bool WantToStop() const { return (pathID == 0 && (!useRawMovement || atEndOfPath)); }
 
 	void TriggerSkipWayPoint() {
-		earlyCurrWayPoint.y = -1.0f;
+		earlyCurrWayPoint.y = -2.0f;
 	}
 	void TriggerCallArrived() {
 		atEndOfPath = true;
@@ -99,16 +101,6 @@ public:
 	const float3& GetGroundNormal(const float3&) const;
 	float GetGroundHeight(const float3&) const;
 
-	void DelayedReRequestPath() {
-		earlyCurrWayPoint = currWayPoint;
-		earlyNextWayPoint = nextWayPoint;
-
-		PathRequestType curRepath = wantRepath;
-		wantRepath = PATH_REQUEST_NONE;
-
-		if (curRepath & PATH_REQUEST_UPDATE_FULLPATH) { DoReRequestPath(); }
-		else if (curRepath & PATH_REQUEST_UPDATE_EXISTING) { DoSetNextWaypoint(); }
-	}
 	void SyncWaypoints() {
 		if (moveFailed){
 			Fail(false);
@@ -123,26 +115,32 @@ public:
 	}
 	unsigned int GetPathId() { return pathID; }
 
+	float GetTurnRadius() {
+		const float absTurnSpeed = std::max(0.0001f, math::fabs(turnRate));
+		const float framesToTurn = SPRING_CIRCLE_DIVS / absTurnSpeed;
+		return std::max((currentSpeed * framesToTurn) * math::INVPI2, currentSpeed * 1.05f);
+	}
+
+	bool IsAtGoal() const override { return atGoal; }
+	void OwnerMayBeStuck() { forceStaticObjectCheck = true; };
+
 private:
 	float3 GetObstacleAvoidanceDir(const float3& desiredDir);
 	float3 Here() const;
 
-	#define SQUARE(x) ((x) * (x))
-	bool StartSkidding(const float3& vel, const float3& dir) const { return ((SQUARE(vel.dot(dir)) + 0.01f) < (vel.SqLength() * sqSkidSpeedMult)); }
-	bool StopSkidding(const float3& vel, const float3& dir) const { return ((SQUARE(vel.dot(dir)) + 0.01f) >= (vel.SqLength() * sqSkidSpeedMult)); }
+	// Start skidding if the angle between the vel and dir vectors is >arccos(2*sqSkidSpeedMult-1)/2
+	bool StartSkidding(const float3& vel, const float3& dir) const { return ((SignedSquare(vel.dot(dir)) + 0.01f) < (vel.SqLength() * sqSkidSpeedMult)); }
+	bool StopSkidding(const float3& vel, const float3& dir) const { return ((SignedSquare(vel.dot(dir)) + 0.01f) >= (vel.SqLength() * sqSkidSpeedMult)); }
 	bool StartFlying(const float3& vel, const float3& dir) const { return (vel.dot(dir) > 0.2f); }
 	bool StopFlying(const float3& vel, const float3& dir) const { return (vel.dot(dir) <= 0.2f); }
-	#undef SQUARE
 
 	float Distance2D(CSolidObject* object1, CSolidObject* object2, float marginal = 0.0f);
 
 	unsigned int GetNewPath();
 
-	void SetNextWayPoint(int thread = 0);
-	bool CanSetNextWayPoint(int thread = 0);
-	void DoSetNextWaypoint();
-	void ReRequestPath(PathRequestType requestType);
-	void DoReRequestPath();
+	void SetNextWayPoint(int thread);
+	bool CanSetNextWayPoint(int thread);
+	void ReRequestPath(bool forceRequest);
 
 	void StartEngine(bool callScript);
 	void StopEngine(bool callScript, bool hardStop = false);
@@ -191,11 +189,13 @@ private:
 	void AdjustPosToWaterLine();
 	bool UpdateDirectControl();
 	void UpdateOwnerAccelAndHeading();
+	void UpdatePos(const CUnit* unit, const float3&, float3& resultantMove, int thread) const;
 	void UpdateOwnerPos(const float3&, const float3&);
 	bool UpdateOwnerSpeed(float oldSpeedAbs, float newSpeedAbs, float newSpeedRaw);
 	bool OwnerMoved(const short, const float3&, const float3&);
-	bool FollowPath(int thread = 0);
+	bool FollowPath(int thread);
 	bool WantReverse(const float3& wpDir, const float3& ffDir) const;
+	void SetWaypointDir(const float3& cwp, const float3 &opos);
 
 private:
 	GMTDefaultPathController pathController;
@@ -239,9 +239,13 @@ private:
 	float skidRotSpeed = 0.0f;              /// rotational speed when skidding (radians / (GAME_SPEED frames))
 	float skidRotAccel = 0.0f;              /// rotational acceleration when skidding (radians / (GAME_SPEED frames^2))
 
+	float3 forceFromMovingCollidees;
+	float3 forceFromStaticCollidees;
 	float3 resultantForces;
 
 	unsigned int pathID = 0;
+	unsigned int nextPathId = 0;
+	unsigned int deletePathId = 0;
 
 	unsigned int numIdlingUpdates = 0;      /// {in, de}creased every Update if idling is true/false and pathId != 0
 	unsigned int numIdlingSlowUpdates = 0;  /// {in, de}creased every SlowUpdate if idling is true/false and pathId != 0
@@ -249,9 +253,19 @@ private:
 	short wantedHeading = 0;
 	short minScriptChangeHeading = 0;       /// minimum required turn-angle before script->ChangeHeading is called
 
+	int wantRepathFrame = std::numeric_limits<int>::min();
+	int lastRepathFrame = std::numeric_limits<int>::min();
+	float bestLastWaypointDist = std::numeric_limits<float>::infinity();
+	float bestReattemptedLastWaypointDist = std::numeric_limits<float>::infinity();
+	int setHeading = 0; // 1 = Regular (use setHeadingDir), 2 = Main
+	short setHeadingDir = 0;
+	short limitSpeedForTurning = 0;			/// if set, take extra care to prevent overshooting while turning for the next N waypoints.
+
 	bool atGoal = true;
 	bool atEndOfPath = true;
+	bool wantRepath = false;
 	bool moveFailed = false;
+	bool lastWaypoint = false;
 
 	bool reversing = false;
 	bool idling = false;
@@ -261,8 +275,9 @@ private:
 	bool useRawMovement = false;            /// if true, move towards goal without invoking PFS (unrelated to MoveDef::allowRawMovement)
 	bool pathingFailed = false;
 	bool pathingArrived = false;
-	int setHeading = 0; // 1 = Regular (use setHeadingDir), 2 = Main
-	short setHeadingDir = 0;
+	bool positionStuck = false;
+	bool forceStaticObjectCheck = false;
+	bool avoidingUnits = false;
 
 	std::vector<CFeature*> collidedFeatures;
 	std::vector<CUnit*> collidedUnits;

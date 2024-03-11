@@ -60,7 +60,7 @@ So, `3 r4` gives a value between 3 and 7.
 In that case, also use the offset. A common idiom is to use, for example, `-15 r30` to roll ±15.
  * the value is distributed uniformly, but with some knowledge of statistics you could tweak it by stacking rolls.
 For example `r6` produces a flat uniform distribution, `r3 r3` a sort of triangle, and `r2 r2 r2` something smoother still.
-In practice this seems very underused though, and you can't make it nonsymmetrical via this basic method,
+In practice this seems very underused though, and you can't make the distribution asymmetrical via this basic method,
 though you can via the more advanced ones below.
 
 ### Index (`i`)
@@ -77,12 +77,12 @@ For example, if an explosion spawns 4 particles and `size = "3 i2"`, then they w
 ### Damage (`d`)
 
 The `d` operator multiplies its operand by the "damage" of an explosion.
-For example `10 d0.1` will net 20 for a 100-damage explosion, and 110 for a 1000-damage explosion.
+For example `d0.1` will net 10 for a 100-damage explosion, and 50 for a 500-damage explosion.
 
 Some practical remarks:
- * for CEG trails, this is the TTL of the projectile. So you can for example make missile trails burn out.
- * for explosions spawned by unit scripts, this defaults to 0 but you can set it to an arbitrary value.
  * for regular weapons, this is the "default" damage. Beware if you treat it as the "features" armor class (since they can't have a real armor class)!
+ * for CEG trails, damage is the TTL of the projectile. So you can for example make missile trails burn out.
+ * for explosions spawned by unit scripts, this defaults to 0 but you can set it to an arbitrary value.
  * existing games prefer to have a separate effect for each similar weapon, so this is quite an uncommon operator, but if made to work could work wonders for consistency.
 
 ## Advanced
@@ -107,7 +107,7 @@ The `s` operator treats its operand as an amplitude and the current running valu
 For example `3 s2` is about 0.28, because that's `2 * sin(3 radians)`.
 
  * only really makes sense with sources of unpredictability such as `r`, `i`, or `d`.
- * there is no separate cosinus operator, but you can make a ghetto cosinus via `cos(x) = sin(π/4 + x)`.
+ * there is no separate cosinus operator, but you can make a ghetto cosinus via `cos(x) = sin(π/2 + x)`, i.e. just do `1.57 sX` instead of just `sX`.
  * good for making circular or spherical volumetric effects (for non-volumetric there's basic spread parameters like `emitRot`).
 
 ### Sawtooth/modulo (`m`) and discretize (`k`)
@@ -122,7 +122,9 @@ The `m` operator applies the modulo operator to the running value. The `k` opera
 
 ### Power (`p`) and power buffer (`q`)
 
-The `p` operator raises the running value to the operandth power. The `q` operator is similar but takes the power from given buffer. The main use case is probably for getting x² or √x.
+The `p` operator raises the running value to the operandth power. The `q` operator is similar but takes the power from given buffer. The main use case is probably for getting x² or √x. Examples:
+ * `3p4` is 81, since that's 3⁴.
+ * `4y7 3q7` is also 81 (and leaves the 7th buffer slot with the value of 4).
 
 ## Table
 

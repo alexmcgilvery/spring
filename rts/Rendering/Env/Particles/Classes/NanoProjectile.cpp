@@ -89,8 +89,7 @@ void CNanoProjectile::Draw()
 	};
 
 	if (math::fabs(rotVal) > 0.01f) {
-		for (auto& b : bounds)
-			b = b.rotate(rotVal, camera->GetForward());
+		float3::rotate<false>(rotVal, camera->GetForward(), bounds);
 	}
 
 	const auto* gfxt = projectileDrawer->gfxtex;
@@ -102,7 +101,7 @@ void CNanoProjectile::Draw()
 	);
 }
 
-void CNanoProjectile::DrawOnMinimap()
+void CNanoProjectile::DrawOnMinimap() const
 {
 	AddMiniMapVertices({ pos        , color4::green }, { pos + speed, color4::green });
 }

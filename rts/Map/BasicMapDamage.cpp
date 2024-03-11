@@ -80,7 +80,7 @@ void CBasicMapDamage::TerrainTypeSpeedModChanged(int ttIndex)
 }
 
 
-void CBasicMapDamage::Explosion(const float3& pos, float strength, float radius)
+void CBasicMapDamage::Explosion(const float3& pos, float strength, float radius, float& maxHeightDiff)
 {
 	if (!pos.IsInMap())
 		return;
@@ -95,10 +95,10 @@ void CBasicMapDamage::Explosion(const float3& pos, float strength, float radius)
 	e.strength = strength;
 	e.radius = radius;
 	e.ttl = EXPLOSION_LIFETIME;
-	e.x1 = Clamp<int>((pos.x - radius) / SQUARE_SIZE, 1, mapDims.mapxm1);
-	e.x2 = Clamp<int>((pos.x + radius) / SQUARE_SIZE, 1, mapDims.mapxm1);
-	e.y1 = Clamp<int>((pos.z - radius) / SQUARE_SIZE, 1, mapDims.mapym1);
-	e.y2 = Clamp<int>((pos.z + radius) / SQUARE_SIZE, 1, mapDims.mapym1);
+	e.x1 = std::clamp <int> ((pos.x - radius) / SQUARE_SIZE, 1, mapDims.mapxm1);
+	e.x2 = std::clamp <int> ((pos.x + radius) / SQUARE_SIZE, 1, mapDims.mapxm1);
+	e.y1 = std::clamp <int> ((pos.z - radius) / SQUARE_SIZE, 1, mapDims.mapym1);
+	e.y2 = std::clamp <int> ((pos.z + radius) / SQUARE_SIZE, 1, mapDims.mapym1);
 	e.idx = explSquaresPoolIdx;
 
 	const float* curHeightMap = readMap->GetCornerHeightMapSynced();
@@ -107,6 +107,8 @@ void CBasicMapDamage::Explosion(const float3& pos, float strength, float radius)
 
 	const float baseStrength = -math::pow(strength, 0.6f) * 3.0f;
 	const float invRadius = 1.0f / radius;
+
+	float2 minMax = { std::numeric_limits<float>::max(), std::numeric_limits<float>::lowest() };
 
 	// figure out how much height to add to each square
 	for (int y = e.y1; y <= e.y2; ++y) {
@@ -135,8 +137,8 @@ void CBasicMapDamage::Explosion(const float3& pos, float strength, float radius)
 
 			for (int j = -1; j <= 1; j++) {
 				for (int i = -1; i <= 1; i++) {
-					const int tmz = Clamp((y >> 1) + j, 0, mapDims.hmapy - 1);
-					const int tmx = Clamp((x >> 1) + i, 0, mapDims.hmapx - 1);
+					const int tmz = std::clamp((y >> 1) + j, 0, mapDims.hmapy - 1);
+					const int tmx = std::clamp((x >> 1) + i, 0, mapDims.hmapx - 1);
 					const int tti = typeMap[tmz * mapDims.hmapx + tmx];
 
 					sumRawHardness += (rawHardness[tti] * weightTable[(j + 1) * 3 + (i + 1)]);
@@ -160,9 +162,13 @@ void CBasicMapDamage::Explosion(const float3& pos, float strength, float radius)
 			if (explDif < -0.3f && strength > 200.0f)
 				grassDrawer->RemoveGrass(float3(x * SQUARE_SIZE, 0.0f, y * SQUARE_SIZE));
 
+			minMax.x = std::min(minMax.x, explDif);
+			minMax.y = std::max(minMax.y, explDif);
 			SetExplosionSquare(explDif);
 		}
 	}
+
+	maxHeightDiff = (minMax.y - minMax.x) * e.ttl;
 
 	QuadFieldQuery qfQuery;
 	quadField.GetUnitsExact(qfQuery, pos, radius);

@@ -39,7 +39,7 @@
 #include "System/SafeUtil.h"
 #include "System/StringHash.h"
 
-static DynMemPool<sizeof(CCustomExplosionGenerator)> egMemPool;
+static DynMemPoolT<CCustomExplosionGenerator, CStdExplosionGenerator, IExplosionGenerator> egMemPool;
 
 alignas(LuaParser) static std::byte exploParserMem[sizeof(LuaParser)];
 alignas(LuaParser) static std::byte aliasParserMem[sizeof(LuaParser)];
@@ -830,7 +830,7 @@ void CCustomExplosionGenerator::ParseExplosionCode(
 			code.append(1, opcode);
 			code.append((char*) &v, ((char*) &v) + sizeof(v));
 		} else {
-			const int v = Clamp(int(strtol(&script[p], &endp, 10)), 0, 16);
+			const int v = std::clamp(int(strtol(&script[p], &endp, 10)), 0, 16);
 
 			p += (endp - &script[p]);
 

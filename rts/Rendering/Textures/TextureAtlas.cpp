@@ -26,13 +26,13 @@ CR_BIND(AtlasedTexture, )
 CR_REG_METADATA(AtlasedTexture, (CR_IGNORED(x), CR_IGNORED(y), CR_IGNORED(z), CR_IGNORED(w)))
 
 
-const AtlasedTexture AtlasedTexture::DefaultAtlasTexture = AtlasedTexture{};
+const AtlasedTexture& AtlasedTexture::DefaultAtlasTexture = AtlasedTexture{};
 CTextureAtlas::CTextureAtlas(uint32_t allocType_, int32_t atlasSizeX_, int32_t atlasSizeY_, const std::string& name_, bool reloadable_)
-	: name{ name_ }
-	, allocType{ allocType_ }
+	: allocType{ allocType_ }
 	, atlasSizeX{ atlasSizeX_ }
 	, atlasSizeY{ atlasSizeY_ }
 	, reloadable{ reloadable_ }
+	, name{ name_ }
 {
 
 	textures.reserve(256);
@@ -90,7 +90,7 @@ size_t CTextureAtlas::AddTex(std::string texName, int xsize, int ysize, TextureT
 	return (memTextures.size() - 1);
 }
 
-size_t CTextureAtlas::AddTexFromMem(std::string texName, int xsize, int ysize, TextureType texType, void* data)
+size_t CTextureAtlas::AddTexFromMem(std::string texName, int xsize, int ysize, TextureType texType, const void* data)
 {
 	const size_t texIdx = AddTex(std::move(texName), xsize, ysize, texType);
 
@@ -146,10 +146,20 @@ const uint32_t CTextureAtlas::GetTexTarget() const
 	return GL_TEXTURE_2D; // just constant for now
 }
 
+int CTextureAtlas::GetNumTexLevels() const
+{
+	return atlasAllocator->GetNumTexLevels();
+}
+
+void CTextureAtlas::SetMaxTexLevel(int maxLevels)
+{
+	atlasAllocator->SetMaxTexLevel(maxLevels);
+}
+
 bool CTextureAtlas::CreateTexture()
 {
 	const int2 atlasSize = atlasAllocator->GetAtlasSize();
-	const int maxMipMaps = atlasAllocator->GetMaxMipMaps();
+	const int numLevels = atlasAllocator->GetNumTexLevels();
 
 	// ATI drivers like to *crash* in glTexImage if x=0 or y=0
 	if (atlasSize.x <= 0 || atlasSize.y <= 0) {
@@ -167,7 +177,6 @@ bool CTextureAtlas::CreateTexture()
 		// make spacing between textures black transparent to avoid ugly lines with linear filtering
 		std::memset(data, 0, atlasSize.x * atlasSize.y * 4);
 
-		int iter = 0;
 		for (const MemTex& memTex: memTextures) {
 			const float4 texCoords = atlasAllocator->GetTexCoords(memTex.names[0]);
 			const float4 absCoords = atlasAllocator->GetEntry(memTex.names[0]);
@@ -204,11 +213,11 @@ bool CTextureAtlas::CreateTexture()
 
 	glBindTexture(GL_TEXTURE_2D, atlasTexID);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, (maxMipMaps > 0) ? GL_LINEAR_MIPMAP_NEAREST : GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, (numLevels > 1) ? GL_LINEAR_MIPMAP_NEAREST : GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,     GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,     GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL,  maxMipMaps);
-	if (maxMipMaps > 0) {
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL,  numLevels - 1);
+	if (numLevels > 1) {
 		glBuildMipmaps(GL_TEXTURE_2D, GL_RGBA8, atlasSize.x, atlasSize.y, GL_RGBA, GL_UNSIGNED_BYTE, pbo.GetPtr()); //FIXME disable texcompression, PBO
 	} else {
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, atlasSize.x, atlasSize.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, pbo.GetPtr());
@@ -286,6 +295,9 @@ void CTextureAtlas::ReloadTextures()
 
 void CTextureAtlas::DumpTexture(const char* newFileName) const
 {
+	if (!initialized)
+		return;
+
 	std::string filename = newFileName ? newFileName : name.c_str();
 	filename += ".png";
 
@@ -298,7 +310,7 @@ AtlasedTexture& CTextureAtlas::GetTexture(const std::string& name)
 	if (TextureExists(name))
 		return textures[StringToLower(name)];
 
-	return CTextureAtlas::dummy;
+	return const_cast<AtlasedTexture&>(AtlasedTexture::DefaultAtlasTexture);
 }
 
 
@@ -310,7 +322,7 @@ AtlasedTexture& CTextureAtlas::GetTextureWithBackup(const std::string& name, con
 	if (TextureExists(backupName))
 		return textures[StringToLower(backupName)];
 
-	return CTextureAtlas::dummy;
+	return const_cast<AtlasedTexture&>(AtlasedTexture::DefaultAtlasTexture);
 }
 
 std::string CTextureAtlas::GetTextureName(AtlasedTexture* tex)

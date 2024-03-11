@@ -43,13 +43,16 @@
 static CGameHelper gGameHelper;
 CGameHelper* helper = &gGameHelper;
 
-
 void CGameHelper::Init()
 {
 	for (auto& wdVec: waitingDamages) {
 		wdVec.clear();
 		wdVec.reserve(32);
 	}
+}
+
+void CGameHelper::Kill()
+{
 }
 
 void CGameHelper::Update()
@@ -93,7 +96,7 @@ float CGameHelper::CalcImpulseScale(const DamageArray& damages, const float expD
 	const float impulseDmgMult = (damages.GetDefault() + damages.impulseBoost);
 	const float rawImpulseScale = damages.impulseFactor * expDistanceMod * impulseDmgMult;
 
-	return Clamp(rawImpulseScale, -MAX_EXPLOSION_IMPULSE, MAX_EXPLOSION_IMPULSE);
+	return std::clamp(rawImpulseScale, -MAX_EXPLOSION_IMPULSE, MAX_EXPLOSION_IMPULSE);
 }
 
 void CGameHelper::DoExplosionDamage(
@@ -300,7 +303,7 @@ void CGameHelper::Explosion(const CExplosionParams& params) {
 				const float craterStrength = (damageDepth + damages.craterBoost) * damages.craterMult;
 				const float craterRadius = craterAOE - altitude;
 
-				mapDamage->Explosion(params.pos, craterStrength, craterRadius);
+				mapDamage->Explosion(params.pos, craterStrength, craterRadius, params.maxGroundDeformation);
 			}
 		}
 	}
@@ -892,6 +895,50 @@ void CGameHelper::BuggerOff(const float3& pos, float radius, bool spherical, boo
 	::BuggerOffImpl(pos, radius, spherical, forced, teamId, testPredicate);
 }
 
+// version of bugger off that takes into account the unit's movedef footprint, which is what gets
+// used to check for square testing for building other units.
+void CGameHelper::BuggerOffRectangle(const float3& mins, const float3& maxs, bool forced, int teamId, const CUnit* excludeUnit)
+{
+	const int bufferSize = (moveDefHandler.GetLargestFootPrintSizeH() + 1) * SQUARE_SIZE;
+	const float3 min((mins.x - bufferSize), 0.f, (mins.z - bufferSize));
+	const float3 max((maxs.x + bufferSize), 0.f, (maxs.z + bufferSize));
+
+	const float3 baseBufferOffLengths = (maxs - mins) * 0.5f;
+	const float3 centreOfBuggerOff = mins + baseBufferOffLengths;
+	const float baseBuggerOffRadius = baseBufferOffLengths.Length2D() + SQUARE_SIZE;
+
+	// copy on purpose since BuggerOff can call risky stuff
+	QuadFieldQuery qfQuery;
+	quadField.GetUnitsExact(qfQuery, min, max);
+	const int allyTeamId = teamHandler.AllyTeam(teamId);
+
+	for (CUnit* u : *qfQuery.units) {
+		if (u->moveDef == nullptr) { continue; }
+
+		const float footPrintX = (u->moveDef->xsizeh+1)*SQUARE_SIZE;
+		const float footPrintZ = (u->moveDef->zsizeh+1)*SQUARE_SIZE;
+
+		if (u->pos.x + footPrintX < mins.x) { continue; }
+		if (u->pos.z + footPrintZ < mins.z) { continue; }
+		if (u->pos.x - footPrintX > maxs.x) { continue; }
+		if (u->pos.z - footPrintZ > maxs.z) { continue; }
+
+		if (u == excludeUnit)
+			continue;
+
+		// don't send BuggerOff commands to enemy units
+		if (!teamHandler.Ally(u->allyteam, allyTeamId) && !teamHandler.Ally(allyTeamId, u->allyteam))
+			continue;
+		if (!forced && (u->moveType->IsPushResistant() || u->UsingScriptMoveType()))
+			continue;
+
+		const float footPrintRadius = math::sqrtf(footPrintX*footPrintX + footPrintZ*footPrintZ);
+		const float buggerOffRadius = baseBuggerOffRadius + footPrintRadius;
+
+		u->commandAI->BuggerOff(centreOfBuggerOff, buggerOffRadius);
+	}
+}
+
 void CGameHelper::BuggerOff(const float3& pos, float radius, bool spherical, bool forced, int teamId, const CUnit* excludeUnit, const std::vector<const UnitDef*> excludeUnitDefs)
 {
 	const auto testPredicate = [excludeUnit, &excludeUnitDefs](const CUnit* u) {
@@ -1028,7 +1075,7 @@ float3 CGameHelper::ClosestBuildPos(
 
 	const int allyTeam = teamHandler.AllyTeam(team);
 	const int rawRadius = static_cast<int>(searchRadius / BUILD_SQUARE_SIZE);
-	const int maxRadius = Clamp(rawRadius, 1, 128);
+	const int maxRadius = std::clamp(rawRadius, 1, 128);
 
 	const auto& offsets = GetSearchOffsetTable(maxRadius);
 
@@ -1139,10 +1186,10 @@ float CGameHelper::GetBuildHeight(const float3& pos, const UnitDef* unitdef, boo
 	const int px = (pos.x - (xsize * (SQUARE_SIZE >> 1))) / SQUARE_SIZE;
 	const int pz = (pos.z - (zsize * (SQUARE_SIZE >> 1))) / SQUARE_SIZE;
 	// top-left and bottom-right footprint corner (clamped)
-	const int x1 = Clamp(px        , 0, mapDims.mapx);
-	const int z1 = Clamp(pz        , 0, mapDims.mapy);
-	const int x2 = Clamp(x1 + xsize, 0, mapDims.mapx);
-	const int z2 = Clamp(z1 + zsize, 0, mapDims.mapy);
+	const int x1 = std::clamp(px        , 0, mapDims.mapx);
+	const int z1 = std::clamp(pz        , 0, mapDims.mapy);
+	const int x2 = std::clamp(x1 + xsize, 0, mapDims.mapx);
+	const int z2 = std::clamp(z1 + zsize, 0, mapDims.mapy);
 
 	for (int x = x1; x <= x2; x++) {
 		for (int z = z1; z <= z2; z++) {
@@ -1189,90 +1236,6 @@ CGameHelper::BuildSquareStatus CGameHelper::TestUnitBuildSquare(
 	const std::vector<Command>* commands,
 	int threadOwner
 ) {
-	struct TestUnitBuildSquareCacheItem {
-		TestUnitBuildSquareCacheItem(
-			int createFrame_,
-			std::tuple<bool, float3, int, int, const UnitDef*>&& key_,
-			CFeature* feature_,
-			CGameHelper::BuildSquareStatus result_,
-			std::vector<float3> canbuildpos_,
-			std::vector<float3> featurepos_,
-			std::vector<float3> nobuildpos_)
-			: createFrame(createFrame_)
-			, key(std::move(key_))
-			, feature(feature_)
-			, result(result_)
-			, canbuildpos(canbuildpos_)
-			, featurepos(featurepos_)
-			, nobuildpos(nobuildpos_)
-		{};
-		TestUnitBuildSquareCacheItem(
-			int createFrame_,
-			std::tuple<bool, float3, int, int, const UnitDef*>&& key_,
-			CFeature* feature_,
-			CGameHelper::BuildSquareStatus result_)
-			: createFrame(createFrame_)
-			, key(std::move(key_))
-			, feature(feature_)
-			, result(result_)
-		{};
-		int createFrame;
-		std::tuple<bool, float3, int, int, const UnitDef*> key;
-		CFeature* feature;
-		CGameHelper::BuildSquareStatus result;
-		std::vector<float3> canbuildpos;
-		std::vector<float3> featurepos;
-		std::vector<float3> nobuildpos;
-	};
-
-	/* synced, unsynced. Unsynced is arbitrary, but being 500ms
-	 * seems like a good tradeoff between not evicting cache value
-	 * too quickly and not to stale the state for too long. */
-	static constexpr int CACHE_VALIDITY_PERIOD[] = {1, GAME_SPEED / 2};
-
-	static std::vector<TestUnitBuildSquareCacheItem> testUnitBuildSquareCache;
-	spring::VectorEraseAllIf(testUnitBuildSquareCache, [synced](const auto& item) {
-		return gs->frameNum - item.createFrame >= CACHE_VALIDITY_PERIOD[synced];
-	});
-
-	auto key = std::make_tuple(synced, buildInfo.pos, buildInfo.buildFacing, allyteam, buildInfo.def);
-	const auto it = std::find_if(testUnitBuildSquareCache.begin(), testUnitBuildSquareCache.end(), [&key](const auto& item) {
-		return item.key == key;
-	});
-
-	if (it != testUnitBuildSquareCache.end()) {
-		feature = it->feature;
-
-		if (commands != nullptr) {
-			assert(!synced);
-			*canbuildpos = it->canbuildpos;
-			*featurepos = it->featurepos;
-			*nobuildpos = it->nobuildpos;
-		}
-
-		return it->result;
-	}
-
-	const auto SaveToCache = [&](CGameHelper::BuildSquareStatus result) {
-		if (!commands)
-			testUnitBuildSquareCache.emplace_back(
-				gs->frameNum,
-				std::move(key),
-				feature,
-				result
-			);
-		else
-			testUnitBuildSquareCache.emplace_back(
-				gs->frameNum,
-				std::move(key),
-				feature,
-				result,
-				*canbuildpos,
-				*featurepos,
-				*nobuildpos
-			);
-	};
-
 	feature = nullptr;
 
 	const int xsize = buildInfo.GetXSize();
@@ -1317,6 +1280,30 @@ CGameHelper::BuildSquareStatus CGameHelper::TestUnitBuildSquare(
 				testStatus = BUILDSQUARE_OPEN;
 				break;
 			}
+		}
+	}
+
+	// Units update their positions on slow update. Synced code must avoid building and trapping
+	// units - so check that all nearby mobile units have correctly accurate positions up to date.
+	if (synced)
+	{
+		assert(!ThreadPool::inMultiThreadedSection);
+
+		// buffer should be the maximum distance given by the movetype using the formula:
+		// maxspeed * modInfo.unitQuadPositionUpdateRate + half footStep + 1
+		// +1 on end is a safety buffer against rounding issues with square placement.
+		// placeholder values are given here for the moment.
+		const int largestMoveTypSizeH = moveDefHandler.GetLargestFootPrintSizeH() + 1;
+		const int bufferSize = SQUARE_SIZE * modInfo.unitQuadPositionUpdateRate * 2 + largestMoveTypSizeH + 1;
+		const float3 min((x1 - bufferSize) * SQUARE_SIZE, 0.f, (z1 - bufferSize) * SQUARE_SIZE);
+		const float3 max((x2 + bufferSize) * SQUARE_SIZE, 0.f, (z2 + bufferSize) * SQUARE_SIZE);
+
+		QuadFieldQuery qfQuery;
+		qfQuery.threadOwner = threadOwner;
+		quadField.GetUnitsExact(qfQuery, min, max);
+		for (const CUnit* unit: *qfQuery.units) {
+			if (unit->moveDef != nullptr) 
+				unit->moveType->UpdateGroundBlockMap();
 		}
 	}
 
@@ -1372,7 +1359,6 @@ CGameHelper::BuildSquareStatus CGameHelper::TestUnitBuildSquare(
 		// out of map?
 		if (static_cast<unsigned>(x1) > mapDims.mapx || static_cast<unsigned>(x2) > mapDims.mapx ||
 			static_cast<unsigned>(z1) > mapDims.mapy || static_cast<unsigned>(z2) > mapDims.mapy) {
-			SaveToCache(BUILDSQUARE_BLOCKED);
 			return BUILDSQUARE_BLOCKED;
 		}
 
@@ -1385,14 +1371,12 @@ CGameHelper::BuildSquareStatus CGameHelper::TestUnitBuildSquare(
 				const BuildSquareStatus sqrStatus = TestBuildSquare(sqrPos, xrange, zrange, buildInfo, moveDef, feature, allyteam, synced);
 
 				if ((testStatus = std::min(testStatus, sqrStatus)) == BUILDSQUARE_BLOCKED) {
-					SaveToCache(BUILDSQUARE_BLOCKED);
 					return BUILDSQUARE_BLOCKED;
 				}
 			}
 		}
 	}
 
-	SaveToCache(testStatus);
 	return testStatus;
 }
 
@@ -1422,8 +1406,8 @@ CGameHelper::BuildSquareStatus CGameHelper::TestBuildSquare(
 
 
 	BuildSquareStatus ret = BUILDSQUARE_OPEN;
-	const int yardxpos = unsigned(pos.x + (SQUARE_SIZE >> 1)) / SQUARE_SIZE;
-	const int yardypos = unsigned(pos.z + (SQUARE_SIZE >> 1)) / SQUARE_SIZE;
+	const int yardxpos = unsigned(pos.x) / SQUARE_SIZE;
+	const int yardypos = unsigned(pos.z) / SQUARE_SIZE;
 
 	CSolidObject* so = groundBlockingObjectMap.GroundBlocked(yardxpos, yardypos);
 
@@ -1523,8 +1507,8 @@ bool CGameHelper::TestBlockSquareForBuildOnly(
  * @return the build Command, or a Command with id 0 if none is found
  */
 Command CGameHelper::GetBuildCommand(const float3& pos, const float3& dir) {
-	for (const auto& pair: unitHandler.GetBuilderCAIs()) {
-		const CUnit* unit = unitHandler.GetUnit(pair.first);
+	for (const auto& [bid, builderCAI] : unitHandler.GetBuilderCAIs()) {
+		const CUnit* unit = unitHandler.GetUnit(bid);
 
 		if (unit->team != gu->myTeam)
 			continue;
@@ -1592,7 +1576,7 @@ bool CGameHelper::CheckTerrainConstraints(
 	}
 
 	if (clampedHeight != nullptr)
-		*clampedHeight = Clamp(groundHeight, -maxDepth, -minDepth);
+		*clampedHeight = std::clamp(groundHeight, -maxDepth, -minDepth);
 
 	/* NB: mobiles also have maxHeightDiff, which can have a different
 	 * value compared to moveDef and could be used here (for example,
@@ -1614,4 +1598,3 @@ bool CGameHelper::CheckTerrainConstraints(
 
 	return (depthCheck && slopeCheck);
 }
-

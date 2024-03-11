@@ -192,8 +192,8 @@ void CMapInfo::ReadLight()
 
 	light.specularExponent = lightTable.GetFloat("specularExponent", 100.0f);
 
-	light.groundShadowDensity = Clamp(light.groundShadowDensity, 0.0f, 1.0f);
-	light.modelShadowDensity   = Clamp(light.modelShadowDensity,   0.0f, 1.0f);
+	light.groundShadowDensity = std::clamp(light.groundShadowDensity, 0.0f, 1.0f);
+	light.modelShadowDensity   = std::clamp(light.modelShadowDensity,   0.0f, 1.0f);
 }
 
 
@@ -268,7 +268,7 @@ void CMapInfo::ReadWater()
 	}
 
 	FIND_MAP_TEXTURE(&water.normalTexture);
-	water.numTiles = Clamp(wt.GetInt("numTiles", 1), 1, 16);
+	water.numTiles = std::clamp(wt.GetInt("numTiles", 1), 1, 16);
 	if (water.normalTexture.empty()) {
 		water.normalTexture = resGfxMaps.GetString("waternormaltex", "waterbump.png");
 		FIND_MAP_TEXTURE(&water.normalTexture, "bitmaps/");
@@ -278,7 +278,7 @@ void CMapInfo::ReadWater()
 		water.numTiles = 3;
 
 		if (resGfxMaps.KeyExists("waternormaltex")) {
-			water.numTiles = Clamp(resGfxMaps.GetInt("numTiles", 1), 1, 16);
+			water.numTiles = std::clamp(resGfxMaps.GetInt("numTiles", 1), 1, 16);
 		}
 	}
 
@@ -441,6 +441,8 @@ void CMapInfo::ReadPFSConstants()
 	qtpfsConsts.numSpeedModBins = qtpfsTable.GetInt("numSpeedModBins", 10);
 	qtpfsConsts.minSpeedModVal  = std::max(                      0.0f, qtpfsTable.GetFloat("minSpeedModVal", 0.0f));
 	qtpfsConsts.maxSpeedModVal  = std::max(qtpfsConsts.minSpeedModVal, qtpfsTable.GetFloat("maxSpeedModVal", 2.0f));
+	qtpfsConsts.maxNodesSearched = qtpfsTable.GetInt("maxNodesSearched", 0);
+	qtpfsConsts.maxRelativeNodesSearched = qtpfsTable.GetFloat("maxRelativeNodesSearched", 0.f);
 }
 
 void CMapInfo::ReadSound()

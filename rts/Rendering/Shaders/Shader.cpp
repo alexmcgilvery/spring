@@ -156,9 +156,7 @@ namespace Shader {
 		const std::string& shSrcFile,
 		const std::string& shSrcDefs
 	): IShaderObject(shType, shSrcFile, shSrcDefs)
-	{
-		assert(globalRendering->haveGLSL); // non-debug check is done in ShaderHandler
-	}
+	{ }
 
 	GLSLShaderObject::CompiledShaderObjectUniquePtr GLSLShaderObject::CompileShaderObject()
 	{
@@ -321,7 +319,7 @@ namespace Shader {
 
 	UniformState* IProgramObject::GetNewUniformState(const char* name)
 	{
-		const size_t hash = hashString(name);
+		const auto hash = hashString(name);
 		const auto it = uniformStates.emplace(hash, UniformState{name});
 
 		UniformState* us = &(it.first->second);
@@ -749,4 +747,15 @@ namespace Shader {
 	void GLSLProgramObject::SetUniformMatrix2fv(int idx, bool transp, const float* v) { assert(IsBound()); auto it = uniformStates.find(uniformLocs[idx]); if (it != uniformStates.end() && it->second.Set2x2(v, transp)) glUniformMatrix2fv(it->second.GetLocation(), 1, transp, v); }
 	void GLSLProgramObject::SetUniformMatrix3fv(int idx, bool transp, const float* v) { assert(IsBound()); auto it = uniformStates.find(uniformLocs[idx]); if (it != uniformStates.end() && it->second.Set3x3(v, transp)) glUniformMatrix3fv(it->second.GetLocation(), 1, transp, v); }
 	void GLSLProgramObject::SetUniformMatrix4fv(int idx, bool transp, const float* v) { assert(IsBound()); auto it = uniformStates.find(uniformLocs[idx]); if (it != uniformStates.end() && it->second.Set4x4(v, transp)) glUniformMatrix4fv(it->second.GetLocation(), 1, transp, v); }
+	ShaderEnabledToken::ShaderEnabledToken(IProgramObject* prog_)
+		: prog(prog_)
+	{
+		if (prog)
+			prog->Enable();
+	}
+	ShaderEnabledToken::~ShaderEnabledToken()
+	{
+		if (prog)
+			prog->Disable();
+	}
 }

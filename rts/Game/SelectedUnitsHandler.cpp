@@ -257,7 +257,7 @@ void CSelectedUnitsHandler::GiveCommand(const Command& c, bool fromUser)
 	}
 }
 
-static bool CanISelectTeam(const CPlayer* myPlayer, int teamID)
+bool CSelectedUnitsHandler::CanISelectTeam(const CPlayer* myPlayer, int teamID)
 {
 	/* Not redundant with the check below, because
 	 * spectators cannot control the team they view. */
@@ -664,8 +664,7 @@ void CSelectedUnitsHandler::Draw()
 			bool myColor = true;
 			glColor4fv(cmdColors.buildBox);
 
-			for (const auto bi: unitHandler.GetBuilderCAIs()) {
-				const CBuilderCAI* builderCAI = bi.second;
+			for (const auto& [bid, builderCAI] : unitHandler.GetBuilderCAIs()) {
 				const CUnit* builder = builderCAI->owner;
 
 				if (builder->team == gu->myTeam) {
@@ -940,7 +939,7 @@ std::string CSelectedUnitsHandler::GetTooltip()
 		}
 	}
 
-	const std::string custom = std::move(eventHandler.WorldTooltip(nullptr, nullptr, nullptr));
+	const std::string custom = eventHandler.WorldTooltip(nullptr, nullptr, nullptr);
 	if (!custom.empty())
 		return custom;
 
@@ -992,6 +991,12 @@ void CSelectedUnitsHandler::SetCommandPage(int page)
 
 void CSelectedUnitsHandler::SendCommand(const Command& c)
 {
+	SendSelect();
+	clientNet->Send(CBaseNetProtocol::Get().SendCommand(gu->myPlayerNum, c.GetID(), c.GetTimeOut(), c.GetOpts(), c.GetNumParams(), c.GetParams()));
+}
+
+void CSelectedUnitsHandler::SendSelect()
+{
 	if (selectionChanged) {
 		// send new selection; first gather unit IDs
 		selectedUnitIDs.clear();
@@ -1002,8 +1007,6 @@ void CSelectedUnitsHandler::SendCommand(const Command& c)
 		clientNet->Send(CBaseNetProtocol::Get().SendSelect(gu->myPlayerNum, selectedUnitIDs));
 		selectionChanged = false;
 	}
-
-	clientNet->Send(CBaseNetProtocol::Get().SendCommand(gu->myPlayerNum, c.GetID(), c.GetTimeOut(), c.GetOpts(), c.GetNumParams(), c.GetParams()));
 }
 
 

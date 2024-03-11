@@ -3,6 +3,7 @@
 
 #include "StartPosSelecter.h"
 #include "MouseHandler.h"
+#include "Game/Game.h"
 #include "Game/Camera.h"
 #include "Game/GameSetup.h"
 #include "Game/GlobalUnsynced.h"
@@ -76,6 +77,10 @@ bool CStartPosSelecter::Ready(bool luaForcedReady)
 
 bool CStartPosSelecter::MousePress(int x, int y, int button)
 {
+	// Not ready to process mouse clicks yet. Pass.
+	if (!game->IsDoneLoading())
+		return false;
+
 	const float mx = MouseX(x);
 	const float my = MouseY(y);
 
@@ -101,8 +106,7 @@ void CStartPosSelecter::DrawStartBox(GL::RenderDataBufferC* buffer, Shader::IPro
 {
 	glAttribStatePtr->EnableDepthTest();
 
-	const std::vector<AllyTeam>& allyStartData = CGameSetup::GetAllyStartingData();
-	const AllyTeam& myStartData = allyStartData[gu->myAllyTeam];
+	const AllyTeam& myStartData = teamHandler.GetAllyTeam(gu->myAllyTeam);
 
 	const float by = myStartData.startRectTop * mapDims.mapy * SQUARE_SIZE;
 	const float bx = myStartData.startRectLeft * mapDims.mapx * SQUARE_SIZE;

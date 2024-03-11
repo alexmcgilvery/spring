@@ -190,13 +190,13 @@ SDrawElementsIndirectCommand LuaVAOImpl::DrawObjectGetCmdImpl(int id)
 {
 	const auto& indexAndCount = LuaVAOImpl::GetDrawIndicesImpl<TObj>(id);
 
-	return std::move(SDrawElementsIndirectCommand{
+	return SDrawElementsIndirectCommand {
 		indexAndCount.count,
 		1u,
 		indexAndCount.index,
 		0u,
 		baseInstance++
-	});
+	};
 }
 
 void LuaVAOImpl::CheckDrawPrimitiveType(GLenum mode) const
@@ -368,7 +368,6 @@ LuaVAOImpl::DrawCheckResult LuaVAOImpl::DrawCheck(GLenum mode, const DrawCheckIn
  *
  * @function VAO:DrawArrays
  * @number glEnum primitivesMode
- * @number[opt] numVertices
  * @number[opt] vertexCount
  * @number[opt] vertexFirst
  * @number[opt] instanceCount

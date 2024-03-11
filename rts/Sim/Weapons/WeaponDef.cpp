@@ -133,8 +133,8 @@ WEAPONTAG(float, sizeGrowth).defaultValue(0.5f);
 WEAPONDUMMYTAG(float, flameGfxTime);
 
 // Eco
-WEAPONTAG(float, metalcost).externalName("metalPerShot").defaultValue(0.0f);
-WEAPONTAG(float, energycost).externalName("energyPerShot").defaultValue(0.0f);
+WEAPONDUMMYTAG(float,  metalPerShot);
+WEAPONDUMMYTAG(float, energyPerShot);
 
 // Other Properties
 WEAPONTAG(float, fireStarter).defaultValue(0.0f).minimumValue(0.0f).scaleValue(0.01f) // max value that makes engine sense is 100%, but Lua gadgets may make use of higher ones
@@ -323,6 +323,11 @@ WeaponDef::WeaponDef(const LuaTable& wdTable, const std::string& name_, int id_)
 	collisionFlags |= (Collision::NOGROUND     * (!wdTable.GetBool("collideGround",     true)));
 	collisionFlags |= (Collision::NOCLOAKED    * (!wdTable.GetBool("collideCloaked",    true)));
 
+	cost =
+		{ wdTable.GetFloat( "metalPerShot", 0.0f)
+		, wdTable.GetFloat("energyPerShot", 0.0f)
+	};
+
 	//FIXME defaults depend on other tags
 	{
 		if (paralyzer)
@@ -333,8 +338,8 @@ WeaponDef::WeaponDef(const LuaTable& wdTable, const std::string& name_, int id_)
 
 		switch (hashString(type.c_str())) {
 			case hashString("Melee"): {
-				targetBorder = Clamp(wdTable.GetFloat("targetBorder", 1.0f), -1.0f, 1.0f);
-				cylinderTargeting = Clamp(wdTable.GetFloat("cylinderTargeting", wdTable.GetFloat("cylinderTargetting", 1.0f)), 0.0f, 128.0f);
+				targetBorder = std::clamp(wdTable.GetFloat("targetBorder", 1.0f), -1.0f, 1.0f);
+				cylinderTargeting = std::clamp(wdTable.GetFloat("cylinderTargeting", wdTable.GetFloat("cylinderTargetting", 1.0f)), 0.0f, 128.0f);
 			} break;
 
 			//TODO move to lua (for all other weapons this tag is named `duration` and has a different default)

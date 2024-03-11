@@ -211,14 +211,8 @@ void CBumpWater::InitResources(bool loadShader)
 	               && ((readMap->HasVisibleWater()) || (waterRendering->forceRendering));
 	dynWaves     = (configHandler->GetBool("BumpWaterDynamicWaves")) && (waterRendering->numTiles > 1);
 
-	// CHECK HARDWARE
-	if (!globalRendering->haveGLSL) {
-		throw content_error("[" LOG_SECTION_BUMP_WATER "] your hardware/driver setup does not support GLSL");
-	}
-
 	shoreWaves = shoreWaves && (FBO::IsSupported());
 	dynWaves   = dynWaves && (FBO::IsSupported() && GLEW_ARB_imaging);
-
 
 	// LOAD TEXTURES
 	foamTexture   = LoadTexture(waterRendering->foamTexture);
@@ -978,7 +972,8 @@ void CBumpWater::Draw()
 }
 
 void CBumpWater::DrawRefraction(const CGame* game)
-{
+{	
+	ZoneScopedN("BumpWater::DrawRefraction");
 	// _RENDER_ REFRACTION TEXTURE
 	refractFBO.Bind();
 
@@ -1012,6 +1007,7 @@ void CBumpWater::DrawRefraction(const CGame* game)
 
 void CBumpWater::DrawReflection(const CGame* game)
 {
+	ZoneScopedN("BumpWater::DrawReflection");
 	reflectFBO.Bind();
 
 	const auto& sky = ISky::GetSky();

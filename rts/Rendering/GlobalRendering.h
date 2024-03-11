@@ -434,6 +434,7 @@ public:
 	bool fullScreen;
 	bool borderless;
 
+	bool underExternalDebug;
 	/**
 	 * @brief renderer debug mode active
 	 */
