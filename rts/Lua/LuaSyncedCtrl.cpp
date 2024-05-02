@@ -3456,6 +3456,7 @@ int LuaSyncedCtrl::SetUnitPieceVisible(lua_State* L)
  * @function Spring.SetUnitSensorRadius
  * @number unitID
  * @string type "los" | "airLos" | "radar" | "sonar" | "seismic" | "radarJammer" | "sonarJammer"
+ * @number radius
  * @treturn ?nil|number newRadius
  */
 int LuaSyncedCtrl::SetUnitSensorRadius(lua_State* L)
@@ -3653,12 +3654,28 @@ int LuaSyncedCtrl::SetUnitMass(lua_State* L)
 }
 
 
-/***
+/*** Set unit position (2D)
  * @function Spring.SetUnitPosition
+ *
+ * Sets a unit's position in 2D, at terrain height.
+ *
  * @number unitID
  * @number x
  * @number z
- * @bool[opt] alwaysAboveSea
+ * @bool[opt=false] floating If true, over water the position is on surface. If false, on seafloor.
+ * @treturn nil
+ */
+
+
+/*** Set unit position (3D)
+ * @function Spring.SetUnitPosition
+ *
+ * Sets a unit's position in 3D, at an arbitrary height.
+ *
+ * @number unitID
+ * @number x
+ * @number y
+ * @number z
  * @treturn nil
  */
 int LuaSyncedCtrl::SetUnitPosition(lua_State* L)
