@@ -272,7 +272,7 @@ void LuaMaterial::Parse(
 
 					const unsigned int texUnit = lua_toint(L, -2);
 
-					if (texUnit >= IGlobalRendering::MAX_TEXTURE_UNITS)
+					if (texUnit >= CGlobalRendering::MAX_TEXTURE_UNITS)
 						continue;
 
 					ParseTexture(L, -1, textures[texUnit]);
@@ -281,7 +281,7 @@ void LuaMaterial::Parse(
 				// "texunitX" = string|table
 				const unsigned int texUnit = atoi(key.c_str() + 7);
 
-				if (texUnit >= IGlobalRendering::MAX_TEXTURE_UNITS)
+				if (texUnit >= CGlobalRendering::MAX_TEXTURE_UNITS)
 					continue;
 
 				ParseTexture(L, -1, textures[texUnit]);
@@ -335,7 +335,7 @@ void LuaMaterial::Finalize()
 		uniforms[i].Validate(&shaders[i]);
 	}
 
-	for (int t = 0; t < IGlobalRendering::MAX_TEXTURE_UNITS; t++) {
+	for (int t = 0; t < CGlobalRendering::MAX_TEXTURE_UNITS; t++) {
 		textures[t].Finalize();
 
 		if (textures[t].type != LuaMatTexture::LUATEX_NONE) {
@@ -448,7 +448,7 @@ int LuaMaterial::Compare(const LuaMaterial& a, const LuaMaterial& b)
 	if ((cmp = LuaMatShader::Compare(a.shaders[LuaMatShader::LUASHADER_PASS_DFR], b.shaders[LuaMatShader::LUASHADER_PASS_DFR])) != 0)
 		return cmp;
 
-	for (int t = 0; t < IGlobalRendering::MAX_TEXTURE_UNITS; t++) {
+	for (int t = 0; t < CGlobalRendering::MAX_TEXTURE_UNITS; t++) {
 		if ((cmp = LuaMatTexture::Compare(a.textures[t], b.textures[t])) != 0) {
 			return cmp;
 		}

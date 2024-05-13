@@ -238,7 +238,7 @@ void CDynWater::InitResources(bool loadShader)
 
 	glGenFramebuffersEXT(1, &frameBuffer);
 
-	GLenum depthFormat = static_cast<GLenum>(IGlobalRendering::DepthBitsToFormat(globalRendering->supportDepthBufferBitDepth));
+	GLenum depthFormat = static_cast<GLenum>(CGlobalRendering::DepthBitsToFormat(globalRendering->supportDepthBufferBitDepth));
 
 	reflectFBO.Bind();
 	reflectFBO.AttachTexture(reflectTexture, GL_TEXTURE_2D, GL_COLOR_ATTACHMENT0_EXT);

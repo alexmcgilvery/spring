@@ -25,8 +25,8 @@ typedef void* SDL_GLContext;
  * Contains globally accessible rendering related data
  * that does not remain synced.
  */
-class IGlobalRendering {
-	CR_DECLARE_STRUCT(IGlobalRendering)
+class CGlobalRendering {
+	CR_DECLARE_STRUCT(CGlobalRendering)
 protected:
 
 	/**
@@ -123,8 +123,8 @@ public:
 	virtual void AquireThreadContext() = 0;
 	virtual void ReleaseThreadContext() = 0;
 public:
-	IGlobalRendering();
-	~IGlobalRendering();
+	CGlobalRendering();
+	~CGlobalRendering();
 
 	void PreKill();
 
@@ -481,7 +481,7 @@ private:
 	static constexpr inline const char* ysKeys[2] = { "YResolutionWindowed", "YResolution" };
 };
 
-extern IGlobalRendering* globalRendering;
+extern CGlobalRendering* globalRendering;
 
 #endif /* _GLOBAL_RENDERING_H */
 

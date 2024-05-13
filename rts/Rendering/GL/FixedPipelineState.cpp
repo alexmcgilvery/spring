@@ -105,7 +105,7 @@ FixedPipelineState& GL::FixedPipelineState::InferState()
 	{
 		lastActiveTexture = glGetIntT(GL_ACTIVE_TEXTURE) - GL_TEXTURE0;
 	}
-	for (int texRelUnit = 0; texRelUnit < IGlobalRendering::MAX_TEXTURE_UNITS; ++texRelUnit)
+	for (int texRelUnit = 0; texRelUnit < CGlobalRendering::MAX_TEXTURE_UNITS; ++texRelUnit)
 	{
 		// https://www.khronos.org/registry/OpenGL-Refpages/gl4/html/glBindTextures.xhtml
 		#define MAKE_TEX_QUERY_BIND_PAIR(type) std::make_pair(GL_TEXTURE_BINDING_##type, GL_TEXTURE_##type)
@@ -214,12 +214,12 @@ void FixedPipelineState::BindUnbind(const bool bind) const
 		}
 	}
 
-	if (lastActiveTexture < IGlobalRendering::MAX_TEXTURE_UNITS)
+	if (lastActiveTexture < CGlobalRendering::MAX_TEXTURE_UNITS)
 		glActiveTexture(lastActiveTexture + GL_TEXTURE0);
 	else {
 		if (!bind && !statesChain.empty()) {
 			const auto prevLastActiveTexture = statesChain.top().lastActiveTexture;
-			if (prevLastActiveTexture < IGlobalRendering::MAX_TEXTURE_UNITS)
+			if (prevLastActiveTexture < CGlobalRendering::MAX_TEXTURE_UNITS)
 				glActiveTexture(prevLastActiveTexture + GL_TEXTURE0);
 		}
 	}

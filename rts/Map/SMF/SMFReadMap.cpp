@@ -814,7 +814,7 @@ float3 CSMFReadMap::GetLightValue(const int x, const int y) const
 		sunLighting->groundDiffuseColor * DiffuseSunCoeff(x, y);
 
 	for (int a = 0; a < 3; ++a) {
-		light[a] = std::min(light[a] * IGlobalRendering::SMF_INTENSITY_MULT, 1.0f);
+		light[a] = std::min(light[a] * CGlobalRendering::SMF_INTENSITY_MULT, 1.0f);
 	}
 
 	return light;

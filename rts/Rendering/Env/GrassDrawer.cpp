@@ -866,7 +866,7 @@ void CGrassDrawer::CreateFarTex()
 	fboTex.AttachTexture(farTex);
 	fboTex.CheckStatus("GRASSDRAWER1");
 
-	GLenum depthFormat = static_cast<GLenum>(IGlobalRendering::DepthBitsToFormat(globalRendering->supportDepthBufferBitDepth));
+	GLenum depthFormat = static_cast<GLenum>(CGlobalRendering::DepthBitsToFormat(globalRendering->supportDepthBufferBitDepth));
 
 	FBO fbo;
 	fbo.Bind();

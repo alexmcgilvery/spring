@@ -43,7 +43,7 @@ bool SMFRenderStateGLSL::Init(const CSMFGroundDrawer* smfGroundDrawer) {
 	};
 	const std::string defs =
 		("#define SMF_TEXSQUARE_SIZE " + FloatToString(                  SMF_TEXSQUARE_SIZE) + "\n") +
-		("#define SMF_INTENSITY_MULT " + FloatToString(IGlobalRendering::SMF_INTENSITY_MULT) + "\n");
+		("#define SMF_INTENSITY_MULT " + FloatToString(CGlobalRendering::SMF_INTENSITY_MULT) + "\n");
 
 
 	if (useLuaShaders) {

@@ -49,8 +49,8 @@ CCamera::CCamera(uint32_t cameraType, uint32_t projectionType)
 	memset(movState, 0, sizeof(movState));
 	memset(rotState, 0, sizeof(rotState));
 
-	frustum.scales.z = IGlobalRendering::MIN_ZNEAR_DIST;
-	frustum.scales.w = IGlobalRendering::MAX_VIEW_RANGE;
+	frustum.scales.z = CGlobalRendering::MIN_ZNEAR_DIST;
+	frustum.scales.w = CGlobalRendering::MAX_VIEW_RANGE;
 
 	SetVFOV(45.0f);
 	UpdateFrustum();
@@ -317,7 +317,7 @@ void CCamera::UpdateViewRange()
 	#endif
 
 	#if 0
-	constexpr float SQ_MAX_VIEW_RANGE = Square(IGlobalRendering::MAX_VIEW_RANGE);
+	constexpr float SQ_MAX_VIEW_RANGE = Square(CGlobalRendering::MAX_VIEW_RANGE);
 	#endif
 	constexpr float ZFAR_ZNEAR_FACTOR = 0.001f;
 
@@ -346,7 +346,7 @@ void CCamera::UpdateViewRange()
 	wantedViewRange = std::max(wantedViewRange, CGround::LinePlaneCol(pos, trPixelDir, SQ_MAX_VIEW_RANGE, mapMinHeight));
 	wantedViewRange = std::max(wantedViewRange, CGround::LinePlaneCol(pos, brPixelDir, SQ_MAX_VIEW_RANGE, mapMinHeight));
 	wantedViewRange = std::max(wantedViewRange, CGround::LinePlaneCol(pos, blPixelDir, SQ_MAX_VIEW_RANGE, mapMinHeight));
-	wantedViewRange = std::clamp(wantedViewRange, IGlobalRendering::MIN_ZNEAR_DIST, IGlobalRendering::MAX_VIEW_RANGE);
+	wantedViewRange = std::clamp(wantedViewRange, CGlobalRendering::MIN_ZNEAR_DIST, CGlobalRendering::MAX_VIEW_RANGE);
 	#endif
 
 	frustum.scales.z = std::max(wantedViewRange * ZFAR_ZNEAR_FACTOR, globalRendering->minViewRange);

@@ -92,13 +92,13 @@ CONFIG(bool, ForceDisableShaders).deprecated(true);
  * Global instance of CGlobalRendering
  */
 
-IGlobalRendering* globalRendering = nullptr;
+CGlobalRendering* globalRendering = nullptr;
 GlobalRenderingInfo globalRenderingInfo;
 
 
-CR_BIND_INTERFACE(IGlobalRendering)
+CR_BIND_INTERFACE(CGlobalRendering)
 
-CR_REG_METADATA(IGlobalRendering, (
+CR_REG_METADATA(CGlobalRendering, (
 	CR_MEMBER(teamNanospray),
 	CR_MEMBER(drawSky),
 	CR_MEMBER(drawWater),
@@ -203,7 +203,7 @@ CR_REG_METADATA(IGlobalRendering, (
 	CR_IGNORED(sdlWindow)
 ))
 
-IGlobalRendering::IGlobalRendering()
+CGlobalRendering::CGlobalRendering()
 	: timeOffset(0.0f)
 	, lastTimeOffset(0.0f)
 	, lastFrameTime(0.0f)
@@ -304,7 +304,7 @@ IGlobalRendering::IGlobalRendering()
 	SetDualScreenParams();
 }
 
-IGlobalRendering::~IGlobalRendering()
+CGlobalRendering::~CGlobalRendering()
 {
 	configHandler->RemoveObserver(this);
 	verticalSync->WrapRemoveObserver();
@@ -313,14 +313,14 @@ IGlobalRendering::~IGlobalRendering()
 	KillSDL();
 }
 
-void IGlobalRendering::PreKill()
+void CGlobalRendering::PreKill()
 {
 	UniformConstants::GetInstance().Kill(); //unsafe to kill in ~CGlobalRendering()
 	RenderBuffer::KillStatic();
 	CShaderHandler::FreeInstance();
 }
 
-SDL_Window* IGlobalRendering::CreateSDLWindow(const char* title)
+SDL_Window* CGlobalRendering::CreateSDLWindow(const char* title)
 {
 	SDL_Window* newWindow = nullptr;
 	
@@ -337,7 +337,7 @@ SDL_Window* IGlobalRendering::CreateSDLWindow(const char* title)
 	return newWindow;
 }
 
-bool IGlobalRendering::CreateWindow(const char* title)
+bool CGlobalRendering::CreateWindow(const char* title)
 {
 	if (SDL_Init(SDL_INIT_VIDEO) == -1) {
 		LOG_L(L_FATAL, "[GR::%s] error \"%s\" initializing SDL", __func__, SDL_GetError());
@@ -350,7 +350,7 @@ bool IGlobalRendering::CreateWindow(const char* title)
 	return result;
 }
 
-void IGlobalRendering::DestroyWindow() {
+void CGlobalRendering::DestroyWindow() {
 	if (!sdlWindow)
 		return;
 
@@ -362,7 +362,7 @@ void IGlobalRendering::DestroyWindow() {
 	sdlWindow = nullptr;
 }
 
-void IGlobalRendering::KillSDL() const {
+void CGlobalRendering::KillSDL() const {
 	#if !defined(HEADLESS)
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
 	#endif
@@ -371,18 +371,18 @@ void IGlobalRendering::KillSDL() const {
 	SDL_Quit();
 }
 
-void IGlobalRendering::PostWindowInit() { 
+void CGlobalRendering::PostWindowInit() { 
 	RendererPostWindowInit();
 
 	UpdateTimer();
 }
 
-void IGlobalRendering::SwapBuffers(bool allowSwapBuffers, bool clearErrors)
+void CGlobalRendering::SwapBuffers(bool allowSwapBuffers, bool clearErrors)
 {
 	RendererPresentFrame(allowSwapBuffers, clearErrors);
 }
 
-void IGlobalRendering::LogDisplayMode(SDL_Window* window) const
+void CGlobalRendering::LogDisplayMode(SDL_Window* window) const
 {
 	// print final mode (call after SetupViewportGeometry, which updates viewSizeX/Y)
 	SDL_DisplayMode dmode;
@@ -401,7 +401,7 @@ void IGlobalRendering::LogDisplayMode(SDL_Window* window) const
 	LOG("[GR::%s] display-mode set to %ix%ix%ibpp@%iHz (%s)", __func__, viewSizeX, viewSizeY, SDL_BITSPERPIXEL(dmode.format), dmode.refresh_rate, names[fs * 2 + bl]);
 }
 
-void IGlobalRendering::GetAllDisplayBounds(SDL_Rect& r) const
+void CGlobalRendering::GetAllDisplayBounds(SDL_Rect& r) const
 {
 	int displayIdx = 0;
 	GetDisplayBounds(r, &displayIdx);
@@ -422,7 +422,7 @@ void IGlobalRendering::GetAllDisplayBounds(SDL_Rect& r) const
 	r = { mb[0], mb[1], mb[2] - mb[0], mb[3] - mb[1] };
 }
 
-void IGlobalRendering::GetWindowPosSizeBounded(int& x, int& y, int& w, int& h) const
+void CGlobalRendering::GetWindowPosSizeBounded(int& x, int& y, int& w, int& h) const
 {
 	SDL_Rect r;
 	GetAllDisplayBounds(r);
@@ -433,7 +433,7 @@ void IGlobalRendering::GetWindowPosSizeBounded(int& x, int& y, int& w, int& h) c
 	h = std::max(h, minRes.y * (1 - fullScreen)); h = std::min(h, r.h - y);
 }
 
-void IGlobalRendering::SetWindowTitle(const std::string& title)
+void CGlobalRendering::SetWindowTitle(const std::string& title)
 {
 	// SDL_SetWindowTitle deadlocks in case it's called from non-main thread (during the MT loading).
 
@@ -447,7 +447,7 @@ void IGlobalRendering::SetWindowTitle(const std::string& title)
 		spring::QueuedFunction::Enqueue<decltype(SetWindowTitleImpl), SDL_Window*, const std::string&>(SetWindowTitleImpl, sdlWindow, title);
 }
 
-void IGlobalRendering::SetWindowAttributes(SDL_Window* window)
+void CGlobalRendering::SetWindowAttributes(SDL_Window* window)
 {
 	// Get wanted state
 	borderless = configHandler->GetBool("WindowBorderless");
@@ -486,7 +486,7 @@ void IGlobalRendering::SetWindowAttributes(SDL_Window* window)
 	WindowManagerHelper::SetWindowResizable(window, !borderless && !fullScreen);
 }
 
-void IGlobalRendering::ConfigNotify(const std::string& key, const std::string& value)
+void CGlobalRendering::ConfigNotify(const std::string& key, const std::string& value)
 {
 	LOG("[GR::%s][1] key=%s val=%s", __func__, key.c_str(), value.c_str());
 	if (key == "DualScreenMode" || key == "DualScreenMiniMapOnLeft") {
@@ -501,7 +501,7 @@ void IGlobalRendering::ConfigNotify(const std::string& key, const std::string& v
 	winChgFrame = drawFrame + 1; //need to do on next frame since config mutex is locked inside ConfigNotify
 }
 
-void IGlobalRendering::UpdateWindow()
+void CGlobalRendering::UpdateWindow()
 {
 	ZoneScoped;
 	if (!spring::QueuedFunction::Empty()) {
@@ -525,17 +525,17 @@ void IGlobalRendering::UpdateWindow()
 	RendererUpdateWindow();
 }
 
-void IGlobalRendering::UpdateTimer()
+void CGlobalRendering::UpdateTimer()
 {
 	grTime = spring_now();
 }
 
-bool IGlobalRendering::GetWindowInputGrabbing()
+bool CGlobalRendering::GetWindowInputGrabbing()
 {
 	return static_cast<bool>(SDL_GetWindowGrab(sdlWindow));
 }
 
-bool IGlobalRendering::SetWindowInputGrabbing(bool enable)
+bool CGlobalRendering::SetWindowInputGrabbing(bool enable)
 {
 	// SDL_SetWindowGrab deadlocks in case it's called from non-main thread (during the MT loading).
 
@@ -551,7 +551,7 @@ bool IGlobalRendering::SetWindowInputGrabbing(bool enable)
 	return enable;
 }
 
-bool IGlobalRendering::ToggleWindowInputGrabbing()
+bool CGlobalRendering::ToggleWindowInputGrabbing()
 {
 	if (GetWindowInputGrabbing())
 		return (SetWindowInputGrabbing(false));
@@ -559,7 +559,7 @@ bool IGlobalRendering::ToggleWindowInputGrabbing()
 	return (SetWindowInputGrabbing(true));
 }
 
-bool IGlobalRendering::SetWindowPosHelper(int displayIdx, int winRPosX, int winRPosY, int winSizeX_, int winSizeY_, bool fs, bool bl) const
+bool CGlobalRendering::SetWindowPosHelper(int displayIdx, int winRPosX, int winRPosY, int winSizeX_, int winSizeY_, bool fs, bool bl) const
 {
 #ifndef HEADLESS
 	if (displayIdx < 0 || displayIdx >= numDisplays) {
@@ -585,13 +585,13 @@ bool IGlobalRendering::SetWindowPosHelper(int displayIdx, int winRPosX, int winR
 	return true;
 }
 
-int2 IGlobalRendering::GetMaxWinRes() const {
+int2 CGlobalRendering::GetMaxWinRes() const {
 	SDL_DisplayMode dmode;
 	SDL_GetDesktopDisplayMode(GetCurrentDisplayIndex(), &dmode);
 	return {dmode.w, dmode.h};
 }
 
-int2 IGlobalRendering::GetCfgWinRes() const
+int2 CGlobalRendering::GetCfgWinRes() const
 {
 	int2 res = {configHandler->GetInt(xsKeys[fullScreen]), configHandler->GetInt(ysKeys[fullScreen])};
 
@@ -606,18 +606,18 @@ int2 IGlobalRendering::GetCfgWinRes() const
 	return res;
 }
 
-int IGlobalRendering::GetCurrentDisplayIndex() const
+int CGlobalRendering::GetCurrentDisplayIndex() const
 {
 	return sdlWindow ? SDL_GetWindowDisplayIndex(sdlWindow) : 0;
 }
 
-void IGlobalRendering::GetDisplayBounds(SDL_Rect& r, const int* di) const
+void CGlobalRendering::GetDisplayBounds(SDL_Rect& r, const int* di) const
 {
 	const int displayIndex = di ? *di : GetCurrentDisplayIndex();
 	SDL_GetDisplayBounds(displayIndex, &r);
 }
 
-void IGlobalRendering::GetUsableDisplayBounds(SDL_Rect& r, const int* di) const
+void CGlobalRendering::GetUsableDisplayBounds(SDL_Rect& r, const int* di) const
 {
 	const int displayIndex = di ? *di : GetCurrentDisplayIndex();
 	SDL_GetDisplayUsableBounds(displayIndex, &r);
@@ -625,7 +625,7 @@ void IGlobalRendering::GetUsableDisplayBounds(SDL_Rect& r, const int* di) const
 
 
 // only called on startup; change the config based on command-line args
-void IGlobalRendering::SetFullScreen(bool cliWindowed, bool cliFullScreen)
+void CGlobalRendering::SetFullScreen(bool cliWindowed, bool cliFullScreen)
 {
 	const bool cfgFullScreen = configHandler->GetBool("Fullscreen");
 
@@ -635,7 +635,7 @@ void IGlobalRendering::SetFullScreen(bool cliWindowed, bool cliFullScreen)
 	configHandler->Set("Fullscreen", fullScreen);
 }
 
-void IGlobalRendering::SetDualScreenParams()
+void CGlobalRendering::SetDualScreenParams()
 {
 	dualScreenMode = configHandler->GetBool("DualScreenMode");
 	dualScreenMiniMapOnLeft = dualScreenMode && configHandler->GetBool("DualScreenMiniMapOnLeft");
@@ -645,7 +645,7 @@ static const auto compareSDLRectPosX = [](const SDL_Rect& a, const SDL_Rect& b) 
   return (a.x < b.x);
 };
 
-void IGlobalRendering::UpdateViewPortGeometry()
+void CGlobalRendering::UpdateViewPortGeometry()
 {
 	viewPosY = 0;
 	viewSizeY = winSizeY;
@@ -749,7 +749,7 @@ void IGlobalRendering::UpdateViewPortGeometry()
 	LOG("[GR::%s] Dual: pos %dx%d | size %dx%d | yoff %d", __func__,  dualViewPosX, dualViewPosY, dualViewSizeX, dualViewSizeY, dualWindowOffsetY);
 }
 
-void IGlobalRendering::UpdatePixelGeometry()
+void CGlobalRendering::UpdatePixelGeometry()
 {
 	pixelX = 1.0f / viewSizeX;
 	pixelY = 1.0f / viewSizeY;
@@ -757,7 +757,7 @@ void IGlobalRendering::UpdatePixelGeometry()
 	aspectRatio = viewSizeX / float(viewSizeY);
 }
 
-void IGlobalRendering::ReadWindowPosAndSize()
+void CGlobalRendering::ReadWindowPosAndSize()
 {
 #ifdef HEADLESS
 	screenSizeX = 8;
@@ -794,7 +794,7 @@ void IGlobalRendering::ReadWindowPosAndSize()
 	// UpdateViewPortGeometry();
 }
 
-void IGlobalRendering::SaveWindowPosAndSize()
+void CGlobalRendering::SaveWindowPosAndSize()
 {
 #ifdef HEADLESS
 	return;
@@ -818,7 +818,7 @@ void IGlobalRendering::SaveWindowPosAndSize()
 }
 
 
-void IGlobalRendering::UpdateRendererConfigs()
+void CGlobalRendering::UpdateRendererConfigs()
 {
 	LOG("[GR::%s]", __func__);
 
@@ -826,7 +826,7 @@ void IGlobalRendering::UpdateRendererConfigs()
 	verticalSync->SetInterval();
 }
 
-void IGlobalRendering::UpdateScreenMatrices()
+void CGlobalRendering::UpdateScreenMatrices()
 {
 	// .x := screen width (meters), .y := eye-to-screen (meters)
 	static float2 screenParameters = { 0.36f, 0.60f };
@@ -860,7 +860,7 @@ void IGlobalRendering::UpdateScreenMatrices()
 	screenProjMatrix = CMatrix44f::ClipPerspProj(left, right, bottom, top, znear, zfar, supportClipSpaceControl * 1.0f);
 }
 
-void IGlobalRendering::UpdateWindowBorders(SDL_Window* window) const
+void CGlobalRendering::UpdateWindowBorders(SDL_Window* window) const
 {
 #ifndef HEADLESS
 	assert(window);
@@ -918,7 +918,7 @@ void IGlobalRendering::UpdateWindowBorders(SDL_Window* window) const
 #endif
 }
 
-void IGlobalRendering::UpdateRendererGeometry()
+void CGlobalRendering::UpdateRendererGeometry()
 {
 	LOG("[GR::%s][1] winSize=<%d,%d>", __func__, winSizeX, winSizeY);
 
@@ -930,14 +930,14 @@ void IGlobalRendering::UpdateRendererGeometry()
 	LOG("[GR::%s][2] winSize=<%d,%d>", __func__, winSizeX, winSizeY);
 }
 
-void IGlobalRendering::SetRendererStartState()
+void CGlobalRendering::SetRendererStartState()
 {
 	RendererSetStartState();
 	LogDisplayMode(sdlWindow);
 }
 
 
-int IGlobalRendering::DepthBitsToFormat(int bits)
+int CGlobalRendering::DepthBitsToFormat(int bits)
 {
 	switch (bits)
 	{
@@ -953,7 +953,7 @@ int IGlobalRendering::DepthBitsToFormat(int bits)
 }
 
 
-bool IGlobalRendering::SetWindowMinMaximized(bool maximize) const
+bool CGlobalRendering::SetWindowMinMaximized(bool maximize) const
 {
 	static constexpr uint32_t mmFlags[] = {
 		SDL_WINDOW_MINIMIZED,

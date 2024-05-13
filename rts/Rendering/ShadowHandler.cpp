@@ -369,7 +369,7 @@ bool CShadowHandler::InitFBOAndTextures()
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0); //no mips
 
 		const int depthBits = std::min(globalRendering->supportDepthBufferBitDepth, 24);
-		const GLint depthFormat = IGlobalRendering::DepthBitsToFormat(depthBits);
+		const GLint depthFormat = CGlobalRendering::DepthBitsToFormat(depthBits);
 
 		glTexParameteri(GL_TEXTURE_2D, GL_DEPTH_TEXTURE_MODE, GL_LUMINANCE);
 		glTexImage2D(GL_TEXTURE_2D, 0, depthFormat, realShTexSize, realShTexSize, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);

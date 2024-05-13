@@ -362,7 +362,7 @@ void CBumpWater::InitResources(bool loadShader)
 		glBindTexture(target, depthTexture);
 		glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		GLuint depthFormat = IGlobalRendering::DepthBitsToFormat(globalRendering->supportDepthBufferBitDepth);
+		GLuint depthFormat = CGlobalRendering::DepthBitsToFormat(globalRendering->supportDepthBufferBitDepth);
 		glTexImage2D(target, 0, depthFormat, screenTextureX, screenTextureY, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
 	}
 
@@ -388,7 +388,7 @@ void CBumpWater::InitResources(bool loadShader)
 
 	// CREATE FBOs
 	if (FBO::IsSupported()) {
-		GLuint depthRBOFormat = static_cast<GLuint>(IGlobalRendering::DepthBitsToFormat(depthBits));
+		GLuint depthRBOFormat = static_cast<GLuint>(CGlobalRendering::DepthBitsToFormat(depthBits));
 
 		if (reflection>0) {
 			reflectFBO.Bind();

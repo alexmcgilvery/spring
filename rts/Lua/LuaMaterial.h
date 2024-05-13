@@ -342,7 +342,7 @@ public:
 	// [0] := standard, [1] := deferred
 	LuaMatShader   shaders[LuaMatShader::LUASHADER_PASS_CNT];
 	LuaMatUniforms uniforms[LuaMatShader::LUASHADER_PASS_CNT];
-	LuaMatTexture  textures[IGlobalRendering::MAX_TEXTURE_UNITS];
+	LuaMatTexture  textures[CGlobalRendering::MAX_TEXTURE_UNITS];
 
 	GLenum cullingMode = 0;
 

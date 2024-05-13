@@ -2964,7 +2964,7 @@ public:
 		if (args.empty())
 			return false;
 
-		globalRendering->minViewRange = std::clamp(StringToInt<float>(args), IGlobalRendering::MIN_ZNEAR_DIST, globalRendering->maxViewRange);
+		globalRendering->minViewRange = std::clamp(StringToInt<float>(args), CGlobalRendering::MIN_ZNEAR_DIST, globalRendering->maxViewRange);
 		return true;
 	}
 };
@@ -2980,7 +2980,7 @@ public:
 		if (args.empty())
 			return false;
 
-		globalRendering->maxViewRange = std::clamp(StringToInt<float>(args), globalRendering->minViewRange, IGlobalRendering::MAX_VIEW_RANGE);
+		globalRendering->maxViewRange = std::clamp(StringToInt<float>(args), globalRendering->minViewRange, CGlobalRendering::MAX_VIEW_RANGE);
 		return true;
 	}
 };
