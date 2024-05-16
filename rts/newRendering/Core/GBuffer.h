@@ -1,0 +1,8 @@
+
+/*
+	Graphics Buffer
+*/
+class GBuffer
+{
+
+};
