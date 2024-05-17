@@ -8,7 +8,6 @@
 
 #include "GlobalRendering.h"
 #include "GlobalRenderingInfo.h"
-#include "Rendering/Core/IRendererCore.h"
 #include "Rendering/VerticalSync.h"
 #include "Rendering/GL/StreamBuffer.h"
 #include "Rendering/GL/RenderBuffers.h"
@@ -155,7 +154,6 @@ CR_REG_METADATA(CGlobalRendering, (
 
 	CR_IGNORED(forceDisablePersistentMapping),
 	CR_IGNORED(forceDisableShaders),
-	CR_IGNORED(forceCoreContext),
 	CR_IGNORED(forceSwapBuffers),
 
 	CR_IGNORED(msaaLevel),
@@ -259,7 +257,6 @@ CGlobalRendering::CGlobalRendering()
 	, aspectRatio(1.0f)
 
 	, forceDisableShaders(/*configHandler->GetInt("ForceDisableShaders")*/ false)
-	, forceCoreContext(configHandler->GetInt("ForceCoreContext"))
 	, forceSwapBuffers(configHandler->GetInt("ForceSwapBuffers"))
 
 	// fallback
