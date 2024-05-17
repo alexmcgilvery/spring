@@ -327,7 +327,7 @@ bool CTextureRenderAtlas::Finalize()
 
 		fbo.DetachAll();
 		FBO::Unbind();
-		globalRendering->LoadViewport();
+		globalRendering->UpdateViewport();
 	}
 
 	if (!finalized)
