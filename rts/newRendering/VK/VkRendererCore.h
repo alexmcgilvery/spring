@@ -4,7 +4,7 @@
 
 #if defined(HAS_VULKAN) && !defined(HEADLESS)
 
-class CVkRendererCore final : CGlobalRendering
+class CVkRendererCore : CGlobalRendering
 {
 public:
 	void RendererPreWindowInit();

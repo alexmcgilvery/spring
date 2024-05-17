@@ -5,7 +5,7 @@
 
 typedef void* SDL_GLContext;
 
-class CGLRendererCore final : CGlobalRendering
+class CGLRendererCore : CGlobalRendering
 {
 public:
 	CGLRendererCore();
