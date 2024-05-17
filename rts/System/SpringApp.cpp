@@ -42,17 +42,17 @@
 #include "Game/UI/ScanCodes.h"
 #include "Game/UI/InfoConsole.h"
 #include "Game/UI/MouseHandler.h"
-#include "Lua/LuaOpenGL.h" // FIXME Vulkan pass on Lua
+#include "Lua/LuaOpenGL.h" // FIXME LUA Generic Renderer Backend pass
 #include "Lua/LuaVFSDownload.h"
 #include "Menu/LuaMenuController.h"
 #include "Menu/SelectMenu.h"
 #include "Net/GameServer.h"
 #include "Net/Protocol/NetProtocol.h" // clientNet
-#include "Rendering/Fonts/glFont.h" // FIXME Vulkan pass on fonts
+#include "Rendering/Fonts/glFont.h" // FIXME Fonts Generic Renderer Backend pass
 #include "Rendering/GlobalRendering.h"
 #include "Rendering/GL/GLRendererCore.h"
-#include "Rendering/GL/FBO.h" // FIXME Vulkan pass on FBO
-#include "Rendering/GL/RenderBuffers.h" // FIXME Vulkan pass on renderbuffers
+#include "Rendering/GL/FBO.h" // FIXME Generic Renderer Backend Pass
+#include "Rendering/GL/RenderBuffers.h" // FIXME Generic Renderer Backend Pass
 #include "Rendering/Models/ModelsMemStorage.h"
 #include "Rendering/Shaders/ShaderHandler.h"
 #include "Rendering/Textures/Bitmap.h"
