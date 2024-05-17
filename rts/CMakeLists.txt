@@ -138,6 +138,7 @@ add_subdirectory(Game)
 add_subdirectory(Lua)
 add_subdirectory(ExternalAI)
 add_subdirectory(Rendering)
+add_subdirectory(newRendering)
 add_subdirectory(aGui)
 add_subdirectory(Menu)
 add_subdirectory(Map)
@@ -151,6 +152,7 @@ make_global_var(engineSources
 		${sources_engine_Lua}
 		${sources_engine_Map}
 		${sources_engine_Rendering}
+		${sources_engine_newRendering}
 		${sources_engine_aGui}
 		${sources_engine_Menu}
 		${sources_engine_System}
