@@ -1,6 +1,7 @@
 #pragma once
 
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
+#include "newRendering/NewGlobalRendering.h"
 
 #if defined(HAS_VULKAN) && !defined(HEADLESS)
 

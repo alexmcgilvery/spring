@@ -104,7 +104,7 @@ void CGLRendererCore::InitStatic()
 { 
 	alignas(CGLRendererCore) static std::byte globalRenderingMem[sizeof(CGLRendererCore)];
 	glRenderer = new (globalRenderingMem) CGLRendererCore(); 
-	globalRendering = (IGlobalRendering*) glRenderer;
+	globalRendering = (CGlobalRendering*) glRenderer;
 }
 
 void CGLRendererCore::KillStatic()
@@ -612,7 +612,7 @@ void CGLRendererCore::SetGLSupportFlags()
 			FBO fbo;
 			fbo.Bind();
 			fbo.CreateRenderBuffer(GL_COLOR_ATTACHMENT0_EXT, GL_RGBA8, 16, 16);
-			const GLint format = IGlobalRendering::DepthBitsToFormat(bits);
+			const GLint format = CGlobalRendering::DepthBitsToFormat(bits);
 			fbo.CreateRenderBuffer(GL_DEPTH_ATTACHMENT_EXT, format, 16, 16);
 			supported = (fbo.GetStatus() == GL_FRAMEBUFFER_COMPLETE_EXT);
 			fbo.Unbind();

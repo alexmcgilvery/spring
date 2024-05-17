@@ -50,7 +50,7 @@
 #include "Net/Protocol/NetProtocol.h" // clientNet
 #include "Rendering/Fonts/glFont.h" // FIXME Fonts Generic Renderer Backend pass
 #include "Rendering/GlobalRendering.h"
-#include "Rendering/GL/GLRendererCore.h"
+#include "newRendering/GL/GLRendererCore.h"
 #include "Rendering/GL/FBO.h" // FIXME Generic Renderer Backend Pass
 #include "Rendering/GL/RenderBuffers.h" // FIXME Generic Renderer Backend Pass
 #include "Rendering/Models/ModelsMemStorage.h"
