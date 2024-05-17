@@ -1,10 +1,10 @@
 #pragma once
 
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 
 #if defined(HAS_VULKAN) && !defined(HEADLESS)
 
-class CVkRendererCore final : IGlobalRendering
+class CVkRendererCore final : CGlobalRendering
 {
 public:
 	void RendererPreWindowInit();
