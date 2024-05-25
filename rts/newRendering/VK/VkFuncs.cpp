@@ -566,7 +566,7 @@ bool Vulkan::DeviceSupport::CheckDeviceExtensionSupport(
 	return required_extensions.empty(); // the list should be empty if all the required extensions are found, if it is empty we are returning true here
 }
 
-bool CheckInstanceLayerSupport(
+bool Vulkan::CheckInstanceLayerSupport(
 	std::vector<const char*>			_required_layers
 	)
 {
