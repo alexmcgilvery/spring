@@ -48,11 +48,12 @@
 #include "Menu/SelectMenu.h"
 #include "Net/GameServer.h"
 #include "Net/Protocol/NetProtocol.h" // clientNet
-#include "Rendering/Fonts/glFont.h" // FIXME Fonts Generic Renderer Backend pass
+#include "Rendering/Fonts/glFont.h
 #include "Rendering/GlobalRendering.h"
 #include "newRendering/GL/GLRendererCore.h"
-#include "Rendering/GL/FBO.h" // FIXME Generic Renderer Backend Pass
-#include "Rendering/GL/RenderBuffers.h" // FIXME Generic Renderer Backend Pass
+#include "newRendering/VK/VkRendererCore.h"
+#include "Rendering/GL/FBO.h"
+#include "Rendering/GL/RenderBuffers.h"
 #include "Rendering/Models/ModelsMemStorage.h"
 #include "Rendering/Shaders/ShaderHandler.h"
 #include "Rendering/Textures/Bitmap.h"
@@ -230,7 +231,9 @@ bool SpringApp::Init()
 
 	if (true) { //TODO If GL Renderer:
 		CGLRendererCore::InitStatic(); 
-	} //TODO Else if Vulkan Renderer:
+	} else{//TODO Else if Vulkan Renderer:
+		CVkRendererCore::InitStatic();
+	}
 	
 	globalRendering->SetFullScreen(FLAGS_window, FLAGS_fullscreen);
 
