@@ -1,4 +1,3 @@
-#pragma once
 #if defined(HAS_VULKAN) && !defined(HEADLESS)
 
 #include <vulkan/vulkan.h>
