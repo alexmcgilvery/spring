@@ -3,7 +3,6 @@
 #include "System/Config/ConfigHandler.h"
 #include "System/Log/ILog.h"
 
-
 #include <SDL.h>
 #include <SDL2/SDL_vulkan.h>
 
@@ -18,6 +17,11 @@ void CVkRendererCore::RendererPreWindowInit()
 void CVkRendererCore::RendererPostWindowInit()
 {
 
+}
+
+bool CVkRendererCore::RendererCreateWindow(const char *title)
+{
+	return false;
 }
 
 void CVkRendererCore::RendererSetStartState()
@@ -51,6 +55,51 @@ SDL_Window* CVkRendererCore::RendererCreateSDLWindow(const char* title)
 	if ((newWindow = SDL_CreateWindow(title, winPosX_, winPosY_, newRes.x, newRes.y, sdlFlags)) == nullptr ){
 		LOG_L(L_WARNING, frmts[0], __func__ ,SDL_GetError());
 	};
+}
+
+void CVkRendererCore::RendererDestroyWindow()
+{
+
+}
+
+void CVkRendererCore::RendererUpdateWindow()
+{
+
+}
+
+void CVkRendererCore::RendererPresentFrame(bool allowSwapBuffers, bool clearErrors)
+{
+
+}
+
+void CVkRendererCore::UpdateViewport()
+{
+
+}
+
+void CVkRendererCore::SetTimeStamp(uint32_t queryIdx) const
+{
+
+}
+
+uint64_t CVkRendererCore::CalculateFrameTimeDelta(uint32_t queryIdx0, uint32_t queryIdx1) const
+{
+
+}
+
+bool CVkRendererCore::ToggleDebugOutput(unsigned int msgSrceIdx, unsigned int msgTypeIdx, unsigned int msgSevrIdx) const
+{
+
+}
+
+void CVkRendererCore::AquireThreadContext()
+{
+
+}
+
+void CVkRendererCore::ReleaseThreadContext()
+{
+
 }
 
 #endif
