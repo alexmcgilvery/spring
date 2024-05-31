@@ -48,7 +48,7 @@
 #include "Menu/SelectMenu.h"
 #include "Net/GameServer.h"
 #include "Net/Protocol/NetProtocol.h" // clientNet
-#include "Rendering/Fonts/glFont.h
+#include "Rendering/Fonts/glFont.h"
 #include "Rendering/GlobalRendering.h"
 #include "newRendering/GL/GLRendererCore.h"
 #include "newRendering/VK/VkRendererCore.h"
@@ -232,7 +232,7 @@ bool SpringApp::Init()
 	if (true) { //TODO If GL Renderer:
 		CGLRendererCore::InitStatic(); 
 	} else{//TODO Else if Vulkan Renderer:
-		CVkRendererCore::InitStatic();
+		//CVkRendererCore::InitStatic();
 	}
 	
 	globalRendering->SetFullScreen(FLAGS_window, FLAGS_fullscreen);
