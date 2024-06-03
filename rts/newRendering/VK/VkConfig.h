@@ -1,5 +1,3 @@
-#if defined(HAS_VULKAN) && !defined(HEADLESS)
-
 #include <vulkan/vulkan.h>
 #include <array>
 
@@ -27,5 +25,3 @@ static constexpr std::array requiredDeviceExtensions {
 		"VK_EXT_extended_dynamic_state2",
 	};
 */
-
-#endif // defined(HAS_VULKAN) && !defined(HEADLESS)

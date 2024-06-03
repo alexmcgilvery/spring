@@ -1,5 +1,4 @@
 #pragma once
-#if defined(HAS_VULKAN) && !defined(HEADLESS)
 
 #include "vma/include/vk_mem_alloc.h"
 #include <vulkan/vulkan.h>
@@ -96,5 +95,3 @@ struct VulkanGraphicsPipeline {
 struct VulkanGraphicalSettings {
 	VkPresentModeKHR 			present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
 };
-
-#endif // defined(HAS_VULKAN) && !defined(HEADLESS)

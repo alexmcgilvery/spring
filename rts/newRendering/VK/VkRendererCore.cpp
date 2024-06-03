@@ -6,9 +6,6 @@
 #include <SDL.h>
 #include <SDL2/SDL_vulkan.h>
 
-#if defined(HAS_VULKAN) && !defined(HEADLESS)
-
-
 void CVkRendererCore::RendererPreWindowInit()
 {
 
@@ -101,5 +98,3 @@ void CVkRendererCore::ReleaseThreadContext()
 {
 
 }
-
-#endif

@@ -10,8 +10,6 @@
 #include <vector>
 #include <string>
 
-#if defined(HAS_VULKAN) && !defined(HEADLESS)
-
 // Constant definitions
 #ifdef NDEBUG
 const bool 	ENABLE_VALIDATION_LAYERS = false;
@@ -790,5 +788,3 @@ VkExtent2D Vulkan::DeviceSupport::ChooseSwapExtent(
 		return actual_extent;
 	}
 }
-
-#endif // defined(HAS_VULKAN) && !defined(HEADLESS)

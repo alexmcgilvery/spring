@@ -1,5 +1,3 @@
-#if defined(HAS_VULKAN) && !defined(HEADLESS)
-
 #include "VkInit.h"
 #include "VkFuncs.h"
 #include "VkConfig.h"
@@ -464,5 +462,3 @@ void VkCoreObjects::TerminateVulkanCore()
 {
 	Vulkan::TerminateVulkanInstance(vkCore_.instance, vkCore_.allocator_ptr, vkCore_.message_back);
 }
-
-#endif // defined(HAS_VULKAN) && !defined(HEADLESS)

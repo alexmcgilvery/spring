@@ -120,8 +120,8 @@ public:
 	virtual void ToggleMultisampling() const = 0;
 	virtual bool ToggleDebugOutput(unsigned int msgSrceIdx, unsigned int msgTypeIdx, unsigned int msgSevrIdx) const = 0;
 
-	virtual void AquireThreadContext() = 0;
-	virtual void ReleaseThreadContext() = 0;
+	virtual void AquireThreadContext() = 0; //FIXME thread hack for GL
+	virtual void ReleaseThreadContext() = 0; //FIXME thread hack for GL
 public:
 	CGlobalRendering();
 	~CGlobalRendering();

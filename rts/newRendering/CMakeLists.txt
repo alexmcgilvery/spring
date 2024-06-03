@@ -4,7 +4,6 @@ set(sources_engine_newRendering
 		"${CMAKE_CURRENT_SOURCE_DIR}/Core/GCommandRecorder.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/GL/GLRendererCore.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/VK/VkRendererCore.cpp"
-		"${CMAKE_CURRENT_SOURCE_DIR}/VK/VkObjects.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/VK/VkFuncs.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/VK/VkInit.cpp"
 		PARENT_SCOPE

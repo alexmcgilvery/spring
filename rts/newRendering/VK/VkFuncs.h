@@ -1,4 +1,4 @@
-#if defined(HAS_VULKAN) && !defined(HEADLESS)
+#if !defined(HEADLESS)
 
 #include "VkObjects.h"
 
