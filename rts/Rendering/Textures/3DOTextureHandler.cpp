@@ -5,7 +5,7 @@
 #include <sstream>
 
 #include "3DOTextureHandler.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/ShadowHandler.h"
 #include "Rendering/Units/UnitDrawer.h"
 #include "Rendering/Textures/Bitmap.h"

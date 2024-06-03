@@ -6,7 +6,7 @@
 #include "QuadtreeAtlasAlloc.h"
 #include "RowAtlasAlloc.h"
 
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/GL/myGL.h"
 #include "Rendering/GL/FBO.h"
 #include "Rendering/GL/TexBind.h"

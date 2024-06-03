@@ -7,7 +7,7 @@
 #include "Map/Ground.h"
 #include "Map/ReadMap.h"
 #include "Map/MapInfo.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/Units/UnitDrawer.h"
 #include "Rendering/GL/myGL.h"
 #include "Rendering/Env/DebugCubeMapTexture.h"

@@ -3,7 +3,7 @@
 #include "BitmapMuzzleFlame.h"
 
 #include "Sim/Misc/GlobalSynced.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/Env/Particles/ProjectileDrawer.h"
 #include "Rendering/GL/RenderBuffers.h"
 #include "Rendering/Textures/ColorMap.h"

@@ -12,7 +12,7 @@
 #include "System/SpringMem.h"
 #include "System/SafeUtil.h"
 #include "Rendering/ModelsDataUploader.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/GL/VBO.h"
 #include "Rendering/Env/Particles/ProjectileDrawer.h"
 #include "Sim/Objects/SolidObjectDef.h"

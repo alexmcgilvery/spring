@@ -7,7 +7,7 @@
 #include <SDL.h>
 
 #include "GlobalRendering.h"
-#include "GlobalRenderingInfo.h"
+#include "Rendering/GlobalRenderingInfo.h"
 #include "Rendering/VerticalSync.h"
 #include "Rendering/GL/StreamBuffer.h"
 #include "Rendering/GL/RenderBuffers.h"

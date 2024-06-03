@@ -8,7 +8,7 @@
 #include "LuaHandle.h"
 #include "LuaHashString.h"
 #include "LuaUtils.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 
 
 /******************************************************************************

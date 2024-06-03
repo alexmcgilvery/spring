@@ -22,7 +22,7 @@
 #include "Game/UI/MouseHandler.h"
 #include "Lua/LuaHandle.h"
 #include "Net/Protocol/NetProtocol.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Sim/Misc/GlobalSynced.h"
 #include "Sim/Misc/TeamHandler.h"
 #include "Sim/Path/IPathManager.h"

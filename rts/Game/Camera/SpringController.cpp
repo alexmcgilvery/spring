@@ -8,7 +8,7 @@
 #include "Map/Ground.h"
 #include "Map/ReadMap.h"
 #include "Game/UI/MouseHandler.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "System/Config/ConfigHandler.h"
 #include "System/Log/ILog.h"
 #include "System/SpringMath.h"

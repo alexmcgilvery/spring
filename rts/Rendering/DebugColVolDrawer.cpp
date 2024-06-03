@@ -6,7 +6,7 @@
 #include "Game/GlobalUnsynced.h"
 #include "Map/ReadMap.h"
 #include "Rendering/Units/UnitDrawer.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/GL/glExtra.h"
 #include "Rendering/GL/myGL.h"
 #include "Rendering/Models/3DModel.h"

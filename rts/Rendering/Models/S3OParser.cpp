@@ -6,7 +6,7 @@
 #include "S3OParser.h"
 #include "s3o.h"
 #include "Game/GlobalUnsynced.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/Textures/S3OTextureHandler.h"
 #include "Sim/Misc/CollisionVolume.h"
 #include "System/Exceptions.h"

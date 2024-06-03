@@ -7,7 +7,7 @@
 
 #include "Lua/LuaParser.h"
 #include "Sim/Misc/CollisionVolume.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/Textures/S3OTextureHandler.h"
 #include "System/StringUtil.h"
 #include "System/Log/ILog.h"

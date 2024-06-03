@@ -49,7 +49,7 @@
 #include "Net/GameServer.h"
 #include "Net/Protocol/NetProtocol.h" // clientNet
 #include "Rendering/Fonts/glFont.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "newRendering/GL/GLRendererCore.h"
 #include "newRendering/VK/VkRendererCore.h"
 #include "Rendering/GL/FBO.h"

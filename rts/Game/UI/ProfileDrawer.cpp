@@ -9,7 +9,7 @@
 #include "Lua/LuaAllocState.h"
 #include "Rendering/GL/myGL.h"
 #include "Rendering/Fonts/glFont.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/GlobalRenderingInfo.h"
 #include "Rendering/GL/RenderBuffers.h"
 #include "Sim/Features/FeatureMemPool.h"

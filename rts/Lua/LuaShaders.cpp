@@ -16,7 +16,7 @@
 #include "System/Log/ILog.h"
 #include "System/StringUtil.h"
 #include "System/TypeToStr.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/Models/ModelsMemStorage.h"
 #include "Rendering/Models/ModelsMemStorageDefs.h"
 #include "Rendering/UniformConstants.h"

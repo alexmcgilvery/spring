@@ -6,7 +6,7 @@
 
 #include "System/bitops.h"
 #include "CommandColors.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/GL/myGL.h"
 #include "Rendering/GL/RenderBuffers.h"
 #include "Rendering/Textures/Bitmap.h"

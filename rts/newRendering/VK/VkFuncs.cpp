@@ -405,22 +405,22 @@ void Vulkan::InitializeGraphicsPipeline( //FIXME Mod to match BAR requirements
 
 	// Create a descriptor set layout for textures
 	{
-        VkDescriptorSetLayoutBinding samplerLayoutBinding = {};
-        samplerLayoutBinding.binding = 0;
-        samplerLayoutBinding.descriptorCount = 1;
-        samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        samplerLayoutBinding.pImmutableSamplers = nullptr;
-        samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+		VkDescriptorSetLayoutBinding samplerLayoutBinding = {};
+		samplerLayoutBinding.binding = 0;
+		samplerLayoutBinding.descriptorCount = 1;
+		samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		samplerLayoutBinding.pImmutableSamplers = nullptr;
+		samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        VkDescriptorSetLayoutBinding bindings[1] = {samplerLayoutBinding};
-        VkDescriptorSetLayoutCreateInfo layoutInfo = {};
-        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo.bindingCount = 1;
-        layoutInfo.pBindings = bindings;
+		VkDescriptorSetLayoutBinding bindings[1] = {samplerLayoutBinding};
+		VkDescriptorSetLayoutCreateInfo layoutInfo = {};
+		layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		layoutInfo.bindingCount = 1;
+		layoutInfo.pBindings = bindings;
 
-        if (vkCreateDescriptorSetLayout(_device, &layoutInfo, nullptr, &_descriptor_set_layout) != VK_SUCCESS) {
-            LOG("failed to create texture descriptor set layout!");
-        }
+		if (vkCreateDescriptorSetLayout(_device, &layoutInfo, nullptr, &_descriptor_set_layout) != VK_SUCCESS) {
+			LOG("failed to create texture descriptor set layout!");
+		}
 	}
 
 	//create pipeline layout
@@ -475,23 +475,23 @@ void Vulkan::InitializeGraphicsPipeline( //FIXME Mod to match BAR requirements
 
 
 		VkViewport viewport = {};
-        viewport.x = 0.0f;
-        viewport.y = 0.0f;
-        viewport.width = (float) _extent.width;
-        viewport.height = (float) _extent.height;
-        viewport.minDepth = 0.0f;
-        viewport.maxDepth = 1.0f;
+		viewport.x = 0.0f;
+		viewport.y = 0.0f;
+		viewport.width = (float) _extent.width;
+		viewport.height = (float) _extent.height;
+		viewport.minDepth = 0.0f;
+		viewport.maxDepth = 1.0f;
 
-        VkRect2D scissor = {};
-        scissor.offset = {0, 0};
-        scissor.extent = _extent;
+		VkRect2D scissor = {};
+		scissor.offset = {0, 0};
+		scissor.extent = _extent;
 
-        VkPipelineViewportStateCreateInfo viewport_info = {};
-        viewport_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-        viewport_info.viewportCount = 1;
-        viewport_info.pViewports = &viewport;
-        viewport_info.scissorCount = 1;
-        viewport_info.pScissors = &scissor;
+		VkPipelineViewportStateCreateInfo viewport_info = {};
+		viewport_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+		viewport_info.viewportCount = 1;
+		viewport_info.pViewports = &viewport;
+		viewport_info.scissorCount = 1;
+		viewport_info.pScissors = &scissor;
 
 		VkPipelineRasterizationStateCreateInfo raster_info = {};
 		raster_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;

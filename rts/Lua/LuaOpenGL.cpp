@@ -43,7 +43,7 @@
 #include "Map/MapInfo.h"
 #include "Map/ReadMap.h"
 #include "Rendering/Fonts/glFont.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/LineDrawer.h"
 #include "Rendering/ShadowHandler.h"
 #include "Rendering/LuaObjectDrawer.h"

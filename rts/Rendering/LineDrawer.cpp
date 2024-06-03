@@ -6,7 +6,7 @@
 
 #include <cmath>
 
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Game/UI/CommandColors.h"
 
 CLineDrawer lineDrawer;

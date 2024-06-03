@@ -8,7 +8,7 @@
 #include "Rendering/GL/RenderBuffers.h"
 #include "Rendering/Textures/TextureAtlas.h"
 #include "Rendering/Colors.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Game/GlobalUnsynced.h"
 #include "Sim/Misc/GlobalSynced.h"
 #include "Sim/Projectiles/ExpGenSpawnableMemberInfo.h"

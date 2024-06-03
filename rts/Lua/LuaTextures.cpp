@@ -2,7 +2,7 @@
 
 #include "LuaTextures.h"
 #include "Rendering/Textures/TextureFormat.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/GL/FBO.h"
 #include "Rendering/GL/TexBind.h"
 #include "System/SpringMath.h"

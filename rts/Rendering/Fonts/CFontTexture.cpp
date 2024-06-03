@@ -19,7 +19,7 @@
 #endif // HEADLESS
 
 #include "Rendering/GL/myGL.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/Textures/Bitmap.h"
 #include "System/Config/ConfigHandler.h"
 #include "System/Exceptions.h"

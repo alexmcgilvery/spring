@@ -5,7 +5,7 @@
 #include "System/Threading/SpringThreading.h"
 #include "System/Threading/WrappedSync.h"
 #include "System/ScopedResource.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 
 class CLoadLockMtx {
 public:

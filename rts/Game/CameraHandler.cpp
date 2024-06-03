@@ -18,7 +18,7 @@
 #include "Camera/SpringController.h"
 #include "Players/Player.h"
 #include "UI/UnitTracker.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "System/SpringMath.h"
 #include "System/SafeUtil.h"
 #include "System/StringHash.h"

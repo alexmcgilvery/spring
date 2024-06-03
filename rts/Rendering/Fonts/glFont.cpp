@@ -8,7 +8,7 @@
 #include <stdexcept>
 
 #include "Game/Camera.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "System/Color.h"
 #include "System/Exceptions.h"
 #include "System/SpringMath.h"

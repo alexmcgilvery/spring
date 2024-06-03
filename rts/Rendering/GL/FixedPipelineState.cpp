@@ -6,7 +6,7 @@
 #include "System/type2.h"
 #include "System/float4.h"
 #include "System/StringHash.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 
 #include "System/Misc/TracyDefs.h"
 

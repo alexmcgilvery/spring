@@ -12,7 +12,7 @@
 #include "Game/LoadScreen.h"
 #include "Lua/LuaParser.h"
 #include "Rendering/GroundFlash.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/ShadowHandler.h"
 #include "Rendering/Units/UnitDrawer.h"
 #include "Rendering/Env/ISky.h"

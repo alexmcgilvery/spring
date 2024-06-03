@@ -5,7 +5,7 @@
 #include "Lua/LuaUtils.h"
 #include "Lua/LuaUnsyncedCtrl.h"
 #include "Lua/LuaUnsyncedRead.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/Shaders/ShaderHandler.h"
 #include "Rendering/Shaders/Shader.h"
 #include "System/StringUtil.h"

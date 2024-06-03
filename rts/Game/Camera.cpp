@@ -8,7 +8,7 @@
 #include "Map/Ground.h"
 #include "Map/ReadMap.h"
 #include "Rendering/GL/myGL.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "System/SpringMath.h"
 #include "System/float3.h"
 #include "System/Matrix44f.h"

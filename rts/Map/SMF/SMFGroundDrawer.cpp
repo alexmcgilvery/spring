@@ -10,7 +10,7 @@
 #include "Map/ReadMap.h"
 #include "Map/SMF/Basic/BasicMeshDrawer.h"
 #include "Map/SMF/ROAM/RoamMeshDrawer.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/ShadowHandler.h"
 #include "Rendering/Env/ISky.h"
 #include "Rendering/Env/WaterRendering.h"

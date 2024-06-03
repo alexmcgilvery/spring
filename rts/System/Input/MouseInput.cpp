@@ -23,7 +23,7 @@
 #include "InputHandler.h"
 
 #include "Game/UI/MouseHandler.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "System/MainDefines.h"
 #include "System/SafeUtil.h"
 

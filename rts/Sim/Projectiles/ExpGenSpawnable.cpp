@@ -4,7 +4,7 @@
 #include "ExpGenSpawner.h"
 #include "ProjectileMemPool.h"
 #include "Rendering/GroundFlash.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/Env/Particles/Classes/BitmapMuzzleFlame.h"
 #include "Rendering/Env/Particles/Classes/BubbleProjectile.h"
 #include "Rendering/Env/Particles/Classes/DirtProjectile.h"

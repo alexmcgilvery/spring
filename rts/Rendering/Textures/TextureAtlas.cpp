@@ -7,7 +7,7 @@
 #include "LegacyAtlasAlloc.h"
 #include "QuadtreeAtlasAlloc.h"
 #include "RowAtlasAlloc.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/GL/myGL.h"
 #include "Rendering/GL/PBO.h"
 #include "System/Config/ConfigHandler.h"

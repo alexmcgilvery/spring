@@ -4,7 +4,7 @@
 #include "ModelDrawer.h"
 #include "Game/Camera.h"
 #include "Game/Game.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/ShadowHandler.h"
 #include "Rendering/Env/SunLighting.h"
 #include "Rendering/Env/ISky.h"

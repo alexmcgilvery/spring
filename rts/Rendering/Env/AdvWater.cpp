@@ -9,7 +9,7 @@
 #include "Game/CameraHandler.h"
 #include "Map/MapInfo.h"
 #include "Map/ReadMap.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/GL/VertexArray.h"
 #include "System/Exceptions.h"
 

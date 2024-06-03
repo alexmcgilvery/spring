@@ -1,7 +1,7 @@
 #include "glFontRenderer.h"
 
 #include "glFont.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/Shaders/Shader.h"
 #include "System/Log/ILog.h"
 #include "System/SafeUtil.h"

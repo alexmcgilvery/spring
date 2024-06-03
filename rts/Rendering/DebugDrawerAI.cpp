@@ -4,7 +4,7 @@
 #include "Game/GlobalUnsynced.h"
 #include "Rendering/DebugDrawerAI.h"
 #include "Rendering/Fonts/glFont.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/GL/myGL.h"
 #include "Rendering/GL/RenderBuffers.h"
 #include "Sim/Misc/TeamHandler.h"

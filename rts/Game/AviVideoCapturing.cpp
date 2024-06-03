@@ -4,7 +4,7 @@
 #include "AviVideoCapturing.h"
 
 #include "Rendering/AVIGenerator.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Sim/Misc/GlobalConstants.h"
 #include "System/Log/ILog.h"
 #include "System/SafeUtil.h"

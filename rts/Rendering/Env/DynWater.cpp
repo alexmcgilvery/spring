@@ -11,7 +11,7 @@
 // #include "Game/UI/MouseHandler.h"
 #include "Map/MapInfo.h"
 #include "Map/ReadMap.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/Units/UnitDrawer.h"
 #include "Rendering/ShadowHandler.h"
 #include "Rendering/Env/ISky.h"

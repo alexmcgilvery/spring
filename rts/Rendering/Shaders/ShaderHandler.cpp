@@ -4,7 +4,7 @@
 
 #include "Rendering/Shaders/ShaderHandler.h"
 #include "Rendering/Shaders/Shader.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "System/Log/ILog.h"
 #include "System/StringUtil.h"
 #include "System/SafeUtil.h"

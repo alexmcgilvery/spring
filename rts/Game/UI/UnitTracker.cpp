@@ -8,7 +8,7 @@
 #include "Game/SelectedUnitsHandler.h"
 #include "Game/GlobalUnsynced.h"
 #include "Map/Ground.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Sim/Misc/GlobalSynced.h"
 #include "Sim/Misc/LosHandler.h"
 #include "Sim/Misc/TeamHandler.h"

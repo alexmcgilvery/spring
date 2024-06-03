@@ -5,7 +5,7 @@
 #include "Camera.h"
 #include "GlobalUnsynced.h"
 #include "Map/Ground.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Sim/Features/Feature.h"
 #include "Sim/Misc/CollisionHandler.h"
 #include "Sim/Misc/CollisionVolume.h"

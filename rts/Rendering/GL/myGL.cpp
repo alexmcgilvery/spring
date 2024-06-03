@@ -13,7 +13,7 @@
 
 #include "myGL.h"
 #include "VertexArray.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/GlobalRenderingInfo.h"
 #include "Rendering/Textures/Bitmap.h"
 #include "Rendering/GL/VBO.h"

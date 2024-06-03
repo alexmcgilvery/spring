@@ -3,7 +3,7 @@
 #include "IInfoTextureHandler.h"
 #include "Legacy/LegacyInfoTextureHandler.h"
 #include "Modern/InfoTextureHandler.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/GL/FBO.h"
 #include "System/Exceptions.h"
 #include "System/Log/ILog.h"

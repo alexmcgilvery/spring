@@ -16,7 +16,7 @@
 #include "SMFFormat.h"
 #include "SMFReadMap.h"
 #include "Rendering/GL/PBO.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Map/MapInfo.h"
 #include "Game/Camera.h"
 #include "Game/CameraHandler.h"

@@ -11,7 +11,7 @@
 #include "System/ContainerUtil.h"
 #include "System/Config/ConfigHandler.h"
 #include "System/Threading/ThreadPool.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/ShadowHandler.h"
 #include "Rendering/Models/ModelsMemStorage.h"
 #include "Rendering/Models/ModelRenderContainer.h"

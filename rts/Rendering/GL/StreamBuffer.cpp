@@ -4,7 +4,7 @@
 
 #include "System/ContainerUtil.h"
 #include "System/Log/ILog.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/GlobalRenderingInfo.h"
 
 #include "System/Misc/TracyDefs.h"

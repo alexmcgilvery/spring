@@ -1,5 +1,5 @@
 
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "System/type2.h"
 
 typedef void* SDL_GLContext;

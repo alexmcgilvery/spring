@@ -4,7 +4,7 @@
 #include "InMapDrawView.h"
 #include "Rendering/Colors.h"
 #include "Rendering/Fonts/glFont.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 
 #include "Game/Camera.h"
 #include "Game/InMapDrawModel.h"

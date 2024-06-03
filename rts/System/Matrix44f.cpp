@@ -3,7 +3,7 @@
 #include "System/Matrix44f.h"
 #include "System/SpringMath.h"
 #ifndef UNIT_TEST
-	#include "Rendering/GlobalRendering.h"
+	#include "newRendering/GlobalRendering.h"
 #endif
 
 #include <memory.h>

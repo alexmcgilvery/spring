@@ -15,7 +15,7 @@
 #include "RoamMeshDrawer.h"
 #include "Map/ReadMap.h"
 #include "Map/SMF/SMFGroundDrawer.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "System/Log/ILog.h"
 #include "System/Threading/ThreadPool.h"
 #include "xsimd/xsimd.hpp"

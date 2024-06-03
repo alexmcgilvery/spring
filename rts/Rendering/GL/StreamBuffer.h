@@ -17,7 +17,7 @@
 #include "System/SpringMem.h"
 #include "System/SpringMath.h"
 #include "System/TypeToStr.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 
 class IStreamBufferConcept {
 public:

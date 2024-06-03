@@ -1,3 +1,4 @@
+#if 0
 #include "VkObjects.h"
 
 #include <vector>
@@ -101,3 +102,5 @@ private:
 
 	std::vector<VulkanImage>					vkImages_; // Non swapchain images
 };
+
+#endif

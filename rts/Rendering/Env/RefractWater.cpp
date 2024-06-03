@@ -3,7 +3,7 @@
 
 #include "WaterRendering.h"
 
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/GL/myGL.h"
 #include "RefractWater.h"
 #include "Map/MapInfo.h"

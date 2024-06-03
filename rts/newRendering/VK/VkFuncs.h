@@ -1,5 +1,3 @@
-#if !defined(HEADLESS)
-
 #include "VkObjects.h"
 
 #include <SDL.h>
@@ -167,7 +165,3 @@ namespace Vulkan
 										);
 	}
 }
-
-#endif // defined(HAS_VULKAN) && !defined(HEADLESS)
-
-

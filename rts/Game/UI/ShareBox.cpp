@@ -12,7 +12,7 @@
 #include "Rendering/Fonts/glFont.h"
 #include "Rendering/GL/myGL.h"
 #include "Rendering/GL/glExtra.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Sim/Misc/GlobalSynced.h"
 #include "Sim/Misc/TeamHandler.h"
 #include "Net/Protocol/NetProtocol.h"

@@ -5,7 +5,7 @@
 #include <SDL_mouse.h>
 
 #include "Rendering/Fonts/glFont.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/GL/myGL.h"
 #include "Game/GlobalUnsynced.h"
 #include "Gui.h"

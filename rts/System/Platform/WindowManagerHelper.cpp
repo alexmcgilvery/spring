@@ -5,7 +5,7 @@
 #include <SDL_video.h>
 
 #include "Game/GameVersion.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/Textures/Bitmap.h"
 #include "System/Log/ILog.h"
 #include "System/Platform/Threading.h"

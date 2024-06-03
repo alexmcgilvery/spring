@@ -7,7 +7,7 @@
 #include "Map/Ground.h"
 #include "Map/ReadMap.h"
 #include "Map/SMF/SMFGroundDrawer.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/GL/RenderBuffers.h"
 #include "System/EventHandler.h"
 

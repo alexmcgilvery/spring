@@ -6,7 +6,7 @@
 #include "Map/ReadMap.h"
 #include "Map/SMF/SMFReadMap.h"
 #include "Map/SMF/SMFGroundDrawer.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/ShadowHandler.h"
 #include "Sim/Misc/GlobalConstants.h"
 #include "System/Rectangle.h"

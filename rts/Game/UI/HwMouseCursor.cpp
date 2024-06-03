@@ -2,7 +2,7 @@
 
 #include "System/Platform/Win/win32.h"
 #include "System/TypeToStr.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 
 #if defined(__APPLE__) || defined(HEADLESS)
 	// FIXME: no hardware cursor support for macs

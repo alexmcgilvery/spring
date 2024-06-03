@@ -15,7 +15,7 @@
 #endif
 
 #include "Bitmap.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "System/bitops.h"
 #include "System/ScopedFPUSettings.h"
 #include "System/ContainerUtil.h"

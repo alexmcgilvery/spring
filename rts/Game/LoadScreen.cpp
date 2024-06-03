@@ -15,7 +15,7 @@
 #include "Lua/LuaMenu.h"
 #include "Map/MapInfo.h"
 #include "Rendering/Fonts/glFont.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/Textures/NamedTextures.h"
 #include "Sim/Misc/TeamHandler.h"
 #include "Sim/Path/IPathManager.h"

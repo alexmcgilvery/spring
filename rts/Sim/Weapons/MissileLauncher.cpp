@@ -11,7 +11,7 @@
 #include "Sim/Units/UnitDef.h"
 #include "System/SpringMath.h"
 
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Sim/Misc/GeometricObjects.h"
 #include "Sim/Misc/QuadField.h"
 #include "Sim/Features/Feature.h"

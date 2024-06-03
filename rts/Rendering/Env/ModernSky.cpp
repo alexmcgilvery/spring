@@ -1,6 +1,6 @@
 #include "ModernSky.h"
 
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/GL/myGL.h"
 #include "Rendering/Shaders/Shader.h"
 #include "Rendering/Shaders/ShaderHandler.h"

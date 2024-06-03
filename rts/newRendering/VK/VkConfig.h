@@ -1,5 +1,5 @@
 #include <vulkan/vulkan.h>
-#include <array>
+#include <vector>
 
 namespace Vulkan::RenderConfig
 {

@@ -5,7 +5,7 @@
 #include "Rendering/Shaders/LuaShaderContainer.h"
 #include "Rendering/Shaders/GLSLCopyState.h"
 #include "Rendering/GL/myGL.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 
 #include "System/SafeUtil.h"
 #include "System/StringUtil.h"

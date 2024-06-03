@@ -3,7 +3,7 @@
 #include "Radar.h"
 #include "InfoTextureHandler.h"
 #include "Game/GlobalUnsynced.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/Shaders/ShaderHandler.h"
 #include "Rendering/Shaders/Shader.h"
 #include "Sim/Misc/LosHandler.h"

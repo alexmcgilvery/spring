@@ -4,7 +4,7 @@
 #include "Map/HeightLinePalette.h"
 #include "Map/HeightMapTexture.h"
 #include "Map/ReadMap.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/Shaders/ShaderHandler.h"
 #include "Rendering/Shaders/Shader.h"
 #include "System/Color.h"

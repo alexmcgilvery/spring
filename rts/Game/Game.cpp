@@ -38,7 +38,7 @@
 #include "Rendering/Fonts/glFont.h"
 #include "Rendering/CommandDrawer.h"
 #include "Rendering/LineDrawer.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/DebugDrawerAI.h"
 #include "Rendering/HUDDrawer.h"
 #include "Rendering/IconHandler.h"

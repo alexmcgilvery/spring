@@ -6,7 +6,7 @@
 #include "Game/Camera.h"
 #include "Map/MapInfo.h"
 #include "Map/HeightMapTexture.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/ShadowHandler.h"
 #include "Rendering/Env/CubeMapHandler.h"
 #include "Rendering/Env/ISky.h"

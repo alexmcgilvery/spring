@@ -15,7 +15,7 @@
 #include "Game/GlobalUnsynced.h"
 #include "Map/MapInfo.h"
 #include "Map/ReadMap.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/ShadowHandler.h"
 #include "Rendering/Map/InfoTexture/IInfoTextureHandler.h"
 #include "Rendering/Shaders/ShaderHandler.h"

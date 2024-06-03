@@ -22,7 +22,7 @@
 #include "Net/Protocol/NetProtocol.h"
 #include "Game/UI/KeySet.h"
 #include "Game/UI/MiniMap.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Sim/Misc/GlobalSynced.h"
 #include "Sim/Misc/TeamHandler.h"
 #include "Sim/Projectiles/Projectile.h"

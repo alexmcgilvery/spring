@@ -5,7 +5,7 @@
 #include "Game/GameHelper.h"
 #include "Map/Ground.h"
 #include "MissileProjectile.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/Env/Particles/Classes/SmokeTrailProjectile.h"
 #include "Rendering/Env/Particles/ProjectileDrawer.h"
 #include "Rendering/GL/RenderBuffers.h"

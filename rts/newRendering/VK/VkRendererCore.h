@@ -1,7 +1,6 @@
-#include "Rendering/GlobalRendering.h"
-#include "newRendering/NewGlobalRendering.h"
 
 #include "VkObjects.h"
+#include "newRendering/GlobalRendering.h"
 
 class CVkRendererCore : CGlobalRendering
 {
@@ -23,20 +22,19 @@ public:
 	void SetTimeStamp(uint32_t queryIdx) const override;
 	uint64_t CalculateFrameTimeDelta(uint32_t queryIdx0, uint32_t queryIdx1) const override;
 
+	void ToggleMultisampling() const;
 	bool ToggleDebugOutput(unsigned int msgSrceIdx, unsigned int msgTypeIdx, unsigned int msgSevrIdx) const override;
 
 	void AquireThreadContext() override;
 	void ReleaseThreadContext() override;
 
 public:
-	static void InitStatic(){} //todo
-	static void KillStatic(){} //todo
-
-	const bool IsVulkanSupported();
+	static void InitStatic();
+	static void KillStatic();
 
 private:
 	// Initializers
-	void InitializeVulkanForSDL(SDL_Window* _sdl_window_ptr);
+	bool InitializeVulkanForSDL(SDL_Window* _window_ptr);
 	void InitializeVulkanSwapchainForSDL();
 
 	// Frame Update 
@@ -71,5 +69,3 @@ private:
 
 	std::vector<VulkanImage>					vkImages_; // Non swapchain images
 };
-
-#endif

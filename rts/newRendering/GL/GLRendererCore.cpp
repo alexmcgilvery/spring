@@ -1,6 +1,6 @@
 #include "GLRendererCore.h"
 
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/GlobalRenderingInfo.h"
 #include "Rendering/VerticalSync.h"
 #include "Rendering/GL/StreamBuffer.h"
@@ -361,8 +361,6 @@ void CGLRendererCore::RendererPresentFrame(bool allowSwapBuffers, bool clearErro
 	eventHandler.DbgTimingInfo(TIMING_SWAP, pre, spring_now());
 	lastSwapBuffersEnd = spring_now();
 }
-
-
 
 void CGLRendererCore::AquireThreadContext() // equivalent to prior MakeCurrentContext(false)
 {

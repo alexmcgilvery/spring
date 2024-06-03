@@ -3,7 +3,7 @@
 #include "HeightMapTexture.h"
 
 #include "ReadMap.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "System/EventHandler.h"
 #include "System/Rectangle.h"
 #include "System/TimeProfiler.h"

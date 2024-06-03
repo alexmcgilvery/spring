@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "Rendering/GL/myGL.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "Rendering/Textures/Bitmap.h"
 #include "System/StringUtil.h"
 #include "System/Config/ConfigHandler.h"

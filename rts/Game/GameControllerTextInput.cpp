@@ -13,7 +13,7 @@
 #include "Game/UI/KeyCodes.h"
 #include "Rendering/Fonts/glFont.h"
 #include "Rendering/GL/myGL.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 #include "System/SpringMath.h"
 #include "System/StringHash.h"
 #include "System/StringUtil.h"

@@ -4,7 +4,7 @@
 #include "MapInfo.h"
 
 #include "Sim/Misc/GlobalConstants.h"
-#include "Rendering/GlobalRendering.h"
+#include "newRendering/GlobalRendering.h"
 
 #include "Lua/LuaParser.h"
 #include "System/Log/ILog.h"
