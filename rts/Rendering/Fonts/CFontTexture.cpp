@@ -2,7 +2,7 @@
 
 #include "CFontTexture.h"
 #include "glFontRenderer.h"
-#include "FontLogSection.h"
+#include "newRendering/Fonts/FontLogSection.h"
 
 #include <cstring> // for memset, memcpy
 #include <string>

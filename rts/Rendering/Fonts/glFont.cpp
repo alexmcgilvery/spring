@@ -2,7 +2,7 @@
 
 #include "glFont.h"
 #include "glFontRenderer.h"
-#include "FontLogSection.h"
+#include "newRendering/Fonts/FontLogSection.h"
 
 #include <cstdarg>
 #include <stdexcept>

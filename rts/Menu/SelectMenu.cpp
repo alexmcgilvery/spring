@@ -15,6 +15,7 @@
 #include "Game/PreGame.h"
 //#include "Rendering/Fonts/glFont.h"
 //#include "Rendering/GL/myGL.h"
+#include "newRendering/GlobalDraw.h"
 #include "System/Config/ConfigHandler.h"
 #include "System/Exceptions.h"
 #include "System/Log/ILog.h"
@@ -186,7 +187,7 @@ bool SelectMenu::Draw()
 {
 	spring_msecs(10).sleep(true);
 	globalRendering->drawFrame = std::max(1U, globalRendering->drawFrame + 1);
-	ClearScreen();
+	GlobalDraw::Func::ClearScreen();
 	agui::gui->Draw();
 
 	return true;

@@ -6,8 +6,8 @@
 #include <deque>
 #include <memory>
 
-#include "TextWrap.h"
-#include "ustring.h"
+#include "newRendering/Fonts/TextWrap.h"
+#include "newRendering/Fonts/ustring.h"
 
 #include "Rendering/GL/RenderBuffers.h"
 #include "System/float4.h"
