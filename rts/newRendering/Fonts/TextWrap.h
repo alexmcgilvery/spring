@@ -6,7 +6,7 @@
 #include <string>
 #include <list>
 
-#include "CFontTexture.h"
+#include "Rendering/Fonts/CFontTexture.h"
 #include "ustring.h"
 #include "System/Color.h"
 

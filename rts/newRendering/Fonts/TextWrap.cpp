@@ -2,7 +2,7 @@
 /// REMEMBER TO PORT BAR105 CHANGES!!!
 
 #include "TextWrap.h"
-#include "glFont.h"
+//#include "glFont.h"
 #include "FontLogSection.h"
 #include "System/Log/ILog.h"
 #include "System/SpringMath.h"
