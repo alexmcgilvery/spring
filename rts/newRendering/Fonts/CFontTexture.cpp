@@ -1,8 +1,9 @@
 /* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
 
 #include "CFontTexture.h"
-#include "glFontRenderer.h"
+#include "Rendering/Fonts/glFontRenderer.h"
 #include "newRendering/Fonts/FontLogSection.h"
+#include "newRendering/GlobalDraw.h"
 
 #include <cstring> // for memset, memcpy
 #include <string>
@@ -18,7 +19,7 @@
 	#endif
 #endif // HEADLESS
 
-#include "Rendering/GL/myGL.h"
+//#include "Rendering/GL/myGL.h"
 #include "newRendering/GlobalRendering.h"
 #include "Rendering/Textures/Bitmap.h"
 #include "System/Config/ConfigHandler.h"
@@ -630,7 +631,7 @@ CFontTexture::~CFontTexture()
 	RECOIL_DETAILED_TRACY_ZONE;
 	CglFontRenderer::DeleteInstance(fontRenderer);
 #ifndef HEADLESS
-	glDeleteTextures(1, &glyphAtlasTextureID);
+	GlobalDraw::Resources::glDeleteTextures(1, &glyphAtlasTextureID);
 	glyphAtlasTextureID = 0;
 #endif
 }
@@ -956,22 +957,22 @@ void CFontTexture::CreateTexture(const int width, const int height)
 #ifdef SUPPORT_AMD_HACKS_HERE
 	constexpr GLint swizzleMaskF[] = { GL_ALPHA, GL_ALPHA, GL_ALPHA, GL_ALPHA };
 	constexpr GLint swizzleMaskD[] = { GL_RED, GL_GREEN, GL_BLUE, GL_ALPHA };
-	glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleMaskF);
+	GlobalDraw::Resources::glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleMaskF);
 #endif
-	glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+	GlobalDraw::Resources::glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
 
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+	GlobalDraw::Resources::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+	GlobalDraw::Resources::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
 
 #ifdef SUPPORT_AMD_HACKS_HERE
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, 1, 1, 0, GL_ALPHA, GL_UNSIGNED_BYTE, nullptr);
+	GlobalDraw::Resources::glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, 1, 1, 0, GL_ALPHA, GL_UNSIGNED_BYTE, nullptr);
 #else
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, 1, 1, 0, GL_RED, GL_UNSIGNED_BYTE, nullptr);
+	GlobalDraw::Resources::glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, 1, 1, 0, GL_RED, GL_UNSIGNED_BYTE, nullptr);
 #endif
 
-	glBindTexture(GL_TEXTURE_2D, 0);
+	GlobalDraw::Resources::glBindTexture(GL_TEXTURE_2D, 0);
 #ifdef SUPPORT_AMD_HACKS_HERE
-	glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleMaskD);
+	GlobalDraw::Resources::glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleMaskD);
 #endif
 
 	atlasUpdate = {};
@@ -1113,13 +1114,13 @@ void CFontTexture::UploadGlyphAtlasTextureImpl()
 		return;
 
 	// update texture atlas
-	glBindTexture(GL_TEXTURE_2D, glyphAtlasTextureID);
+	GlobalDraw::Resources::glBindTexture(GL_TEXTURE_2D, glyphAtlasTextureID);
 	#ifdef SUPPORT_AMD_HACKS_HERE
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, texWidth, texHeight, 0, GL_ALPHA, GL_UNSIGNED_BYTE, atlasUpdate.GetRawMem());
+		GlobalDraw::Resources::glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, texWidth, texHeight, 0, GL_ALPHA, GL_UNSIGNED_BYTE, atlasUpdate.GetRawMem());
 	#else
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, texWidth, texHeight, 0, GL_RED, GL_UNSIGNED_BYTE, atlasUpdate.GetRawMem());
+		GlobalDraw::Resources::glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, texWidth, texHeight, 0, GL_RED, GL_UNSIGNED_BYTE, atlasUpdate.GetRawMem());
 	#endif
-	glBindTexture(GL_TEXTURE_2D, 0);
+	GlobalDraw::Resources::glBindTexture(GL_TEXTURE_2D, 0);
 
 	needsTextureUpload = false;
 #endif

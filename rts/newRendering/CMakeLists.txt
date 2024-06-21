@@ -1,5 +1,6 @@
 set(sources_engine_newRendering
 		"${CMAKE_CURRENT_SOURCE_DIR}/Fonts/TextWrap.cpp"
+		"${CMAKE_CURRENT_SOURCE_DIR}/Fonts/CFontTexture.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/GlobalRendering.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/GlobalDraw.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Core/GBuffer.cpp"

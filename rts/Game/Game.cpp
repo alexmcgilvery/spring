@@ -34,7 +34,7 @@
 #include "Rendering/Env/IWater.h"
 #include "Rendering/Env/WaterRendering.h"
 #include "Rendering/Env/MapRendering.h"
-#include "Rendering/Fonts/CFontTexture.h"
+#include "newRendering/Fonts/CFontTexture.h"
 #include "Rendering/Fonts/glFont.h"
 #include "Rendering/CommandDrawer.h"
 #include "Rendering/LineDrawer.h"
