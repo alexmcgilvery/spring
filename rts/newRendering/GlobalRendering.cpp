@@ -46,6 +46,7 @@ CONFIG(bool, DebugGLStacktraces).defaultValue(false).description("Create a stack
 CONFIG(int, GLContextMajorVersion).defaultValue(3).minimumValue(3).maximumValue(4);
 CONFIG(int, GLContextMinorVersion).defaultValue(0).minimumValue(0).maximumValue(5);
 CONFIG(int, MSAALevel).defaultValue(0).minimumValue(0).maximumValue(32).description("Enables multisample anti-aliasing; 'level' is the number of samples used.");
+CONFIG(float, MinSampleShadingRate).defaultValue(0.0f).minimumValue(0.0f).maximumValue(1.0f).description("A value of 1.0 indicates that each sample in the framebuffer should be independently shaded. A value of 0.0 effectively allows the GL to ignore sample rate shading. Any value between 0.0 and 1.0 allows the GL to shade only a subset of the total samples within each covered fragment.");
 
 CONFIG(int, ForceDisablePersistentMapping).defaultValue(0).minimumValue(0).maximumValue(1);
 CONFIG(int, ForceDisableExplicitAttribLocs).defaultValue(0).minimumValue(0).maximumValue(1);
@@ -157,7 +158,9 @@ CR_REG_METADATA(CGlobalRendering, (
 	CR_IGNORED(forceSwapBuffers),
 
 	CR_IGNORED(msaaLevel),
+	CR_IGNORED(minSampleShadingRate),
 	CR_IGNORED(maxTextureSize),
+	CR_IGNORED(maxTexSlots),
 	CR_IGNORED(maxFragShSlots),
 	CR_IGNORED(maxCombShSlots),
 	CR_IGNORED(maxTexAnisoLvl),
@@ -260,7 +263,9 @@ CGlobalRendering::CGlobalRendering()
 	, forceSwapBuffers(configHandler->GetInt("ForceSwapBuffers"))
 
 	// fallback
+	, minSampleShadingRate(configHandler->GetFloat("MinSampleShadingRate"))
 	, maxTextureSize(2048)
+	, maxTexSlots(2)
 	, maxFragShSlots(8)
 	, maxCombShSlots(8)
 	, maxTexAnisoLvl(0.0f)
@@ -314,6 +319,7 @@ void CGlobalRendering::PreKill()
 {
 	UniformConstants::GetInstance().Kill(); //unsafe to kill in ~CGlobalRendering()
 	RenderBuffer::KillStatic();
+	GL::shapes.Kill();
 	CShaderHandler::FreeInstance();
 }
 

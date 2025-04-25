@@ -9,6 +9,7 @@
 #include "UnitDefHandler.h"
 #include "UnitDef.h"
 #include "Lua/LuaParser.h"
+#include "Sim/Features/FeatureDefHandler.h"
 #include "System/Exceptions.h"
 #include "System/Log/ILog.h"
 #include "System/StringUtil.h"
@@ -78,8 +79,6 @@ int CUnitDefHandler::PushNewUnitDef(const std::string& unitName, const LuaTable&
 		// force-initialize the real* members
 		newDef.SetNoCost(true);
 		newDef.SetNoCost(noCost);
-
-		numPushResistantUnitDefs += int(newDef.pushResistant);
 	} catch (const content_error& err) {
 		LOG_L(L_ERROR, "%s", err.what());
 		return 0;
@@ -231,3 +230,20 @@ void CUnitDefHandler::SetNoCost(bool value)
 	}
 }
 
+void CUnitDefHandler::SanitizeUnitDefs()
+{
+	for (auto &ud : unitDefsVector) {
+		// Factories cannot assist another builder
+		if (ud.IsFactoryUnit())
+			ud.canAssist = false;
+
+		// Make sure the wreck name refers to an existent feature
+		if (ud.wreckName != "") {
+			const auto* const wreckFeatureDef = featureDefHandler->GetFeatureDef(ud.wreckName);
+			if (wreckFeatureDef == nullptr) {
+				// warning message already produced by GetFeatureDef
+				ud.wreckName = "";
+			}
+		}
+	}
+}

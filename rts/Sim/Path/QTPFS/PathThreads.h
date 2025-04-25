@@ -51,6 +51,7 @@ namespace QTPFS {
 
         T& InsertINode(int nodeId) {
             assert(size_t(nodeId) < sparseIndex.size());
+            assert( sparseIndex[nodeId] == 0 );
             InsertAtIndex(T(nodeId), nodeId);
             return operator[](nodeId);
         }
@@ -64,10 +65,12 @@ namespace QTPFS {
 
         auto& operator[](const size_t i) {
             assert(i < sparseIndex.size());
+            assert( sparseIndex[i] != 0 );
             return denseData[sparseIndex[i]];
         }
         const auto& operator[](const size_t i) const {
             assert(i < sparseIndex.size());
+            assert( sparseIndex[i] != 0 );
             return denseData[sparseIndex[i]];
         }
 
@@ -87,12 +90,6 @@ namespace QTPFS {
     };
 
     struct SearchQueueNode {
-		bool operator <  (const SearchQueueNode& n) const { return (heapPriority <  n.heapPriority); }
-		bool operator >  (const SearchQueueNode& n) const { return (heapPriority >  n.heapPriority); }
-		bool operator == (const SearchQueueNode& n) const { return (heapPriority == n.heapPriority); }
-		bool operator <= (const SearchQueueNode& n) const { return (heapPriority <= n.heapPriority); }
-		bool operator >= (const SearchQueueNode& n) const { return (heapPriority >= n.heapPriority); }
-
         SearchQueueNode(int index, float newPriorty)
             : heapPriority(newPriorty)
             , nodeIndex(index)
@@ -102,9 +99,18 @@ namespace QTPFS {
         int nodeIndex;
     };
 
+    /// Functor to define node priority.
+    /// Needs to guarantee stable ordering, even if the sorting algorithm itself is not stable.
+    struct ShouldMoveTowardsBottomOfPriorityQueue {
+        inline bool operator() (const SearchQueueNode& lhs, const SearchQueueNode& rhs) const {
+            return std::tie(lhs.heapPriority, lhs.nodeIndex) > std::tie(rhs.heapPriority, rhs.nodeIndex);
+        }
+    };
+
+
     // Reminder that std::priority does comparisons to push element back to the bottom. So using
-    // std::greater here means the smallest value will be top()
-    typedef std::priority_queue<SearchQueueNode, std::vector<SearchQueueNode>, std::greater<SearchQueueNode>> SearchPriorityQueue;
+    // ShouldMoveTowardsBottomOfPriorityQueue here means the smallest value will be top()
+    typedef std::priority_queue<SearchQueueNode, std::vector<SearchQueueNode>, ShouldMoveTowardsBottomOfPriorityQueue> SearchPriorityQueue;
 
 	struct SearchThreadData {
 
@@ -153,7 +159,6 @@ namespace QTPFS {
     struct UpdateThreadData {
         std::vector<std::uint8_t> maxBlockBits;
         std::vector<INode*> relinkNodeGrid;
-        SRectangle areaUpdated;
         SRectangle areaRelinkedInner;
         SRectangle areaRelinked;
         SRectangle areaMaxBlockBits;
@@ -165,7 +170,6 @@ namespace QTPFS {
             moveDef = &md;
             auto mapRect = MapToRectangle();
             
-            areaUpdated = area;
             areaRelinkedInner = SRectangle  ( topNode.xmin()
                                             , topNode.zmin()
                                             , topNode.xmax()
@@ -174,10 +178,10 @@ namespace QTPFS {
                                         , topNode.zmin() - 1
                                         , topNode.xmax() + 1
                                         , topNode.zmax() + 1);
-            areaMaxBlockBits = SRectangle   ( area.x1 - md.xsizeh
-                                            , area.z1 - md.zsizeh
-                                            , area.x2 + md.xsizeh
-                                            , area.z2 + md.zsizeh);
+            areaMaxBlockBits = SRectangle   ( topNode.xmin() - md.xsizeh
+                                            , topNode.zmin() - md.zsizeh
+                                            , topNode.xmax() + md.xsizeh
+                                            , topNode.zmax() + md.zsizeh);
             areaRelinked.ClampIn(mapRect);
             areaMaxBlockBits.ClampIn(mapRect);
 
@@ -206,10 +210,9 @@ namespace QTPFS {
         }
 
         void Reset() {
-            areaUpdated = SRectangle(0, 0, 0, 0);
-            areaRelinked = areaUpdated;
-            areaMaxBlockBits = areaUpdated;
-            areaRelinkedInner = areaUpdated;
+            areaRelinked = SRectangle(0, 0, 0, 0);
+            areaMaxBlockBits = areaRelinked;
+            areaRelinkedInner = areaRelinked;
             relinkNodeGrid.resize(0);
             relinkNodeGrid.shrink_to_fit();
             maxBlockBits.resize(0);

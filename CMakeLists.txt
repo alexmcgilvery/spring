@@ -1,6 +1,10 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.27)
 cmake_policy(SET CMP0060 OLD) #causes link errors on Linux otherwise
 cmake_policy(SET CMP0065 OLD) #we need binaries compiled with -rdynamic for BARb to work (cause unknown https://github.com/beyond-all-reason/spring/issues/405)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_MODULES_SPRING "${CMAKE_CURRENT_SOURCE_DIR}/rts/build/cmake")
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_MODULES_SPRING}")
@@ -12,8 +16,10 @@ project(Spring)
 
 add_definitions(-DFMT_HEADER_ONLY) #for fmt lib
 
-option(INSTALL_PORTABLE "Make a portable installation (instead of regular system installation)" FALSE)
-option(WITH_MAPCOMPILER "Include map compiler" TRUE)
+option(INSTALL_PORTABLE "Make a portable installation (instead of regular system installation)" TRUE)
+
+# Allow to set PREFER_STATIC_LIBS from env, defaults to false
+option(PREFER_STATIC_LIBS "Prefer static libraries when linking deps" $ENV{PREFER_STATIC_LIBS})
 
 # dummy so that qtcreator shows all files (even those of windows)
 if(CMAKE_VERSION VERSION_GREATER 3.1.2)
@@ -70,6 +76,9 @@ else()
 	set(JAVA_COMPILE_FLAG_CONDITIONAL "-g:lines,source")
 endif()
 
+# By default, the libraries that don't explicitly specify SHARED/STATIC are build statically.
+# See https://cmake.org/cmake/help/latest/variable/BUILD_SHARED_LIBS.html
+option(BUILD_SHARED_LIBS "Build shared (dynamic) libraries" OFF)
 
 # Tell windows to pass arguments around in @response files
 # (32k arg limit workaround)
@@ -108,11 +117,17 @@ message(STATUS "Targetting ${BUILD_BITS}bit")
 
 ### Install paths (relative to CMAKE_INSTALL_PREFIX)
 if    (UNIX AND NOT MINGW)
-	set(BINDIR  "bin"                CACHE STRING "Where to install binaries")
-	set(LIBDIR  "lib"                CACHE STRING "Where to install libraries")
-	set(MANDIR  "share/man"          CACHE STRING "Where to install man pages")
-	set(DOCDIR  "share/doc/spring-VERSION" CACHE STRING "Where to install basic project documentation (README, LICENSE, etc.)") # TODO set correct version here, and re-enable userdocs in doc/CMakeLists.txt
-	set(DATADIR "share/games/spring" CACHE STRING "Where to install game content")
+	if (INSTALL_PORTABLE)
+		set(BINDIR  "."   CACHE STRING "Where to install binaries")
+		set(LIBDIR  "."   CACHE STRING "Where to install libraries")
+		set(DATADIR "."   CACHE STRING "Where to install game content")
+		set(DOCDIR "doc" CACHE STRING "Where to install basic project documentation (README, LICENSE, etc.)")
+	else()
+		set(BINDIR  "bin"                CACHE STRING "Where to install binaries")
+		set(LIBDIR  "lib"                CACHE STRING "Where to install libraries")
+		set(DATADIR "share/games/spring" CACHE STRING "Where to install game content")
+		set(DOCDIR  "share/doc/spring-VERSION" CACHE STRING "Where to install basic project documentation (README, LICENSE, etc.)") # TODO set correct version here, and re-enable userdocs in doc/CMakeLists.txt
+	endif()
 
 	set(APPLICATIONS_DIR "share/applications" CACHE STRING "Where to install desktop files")
 	set(PIXMAPS_DIR      "share/pixmaps"      CACHE STRING "Where to install icons")
@@ -124,19 +139,21 @@ else  (UNIX AND NOT MINGW)
 	set(DATADIR "." CACHE STRING "Where to install game content")
 
 	if    (NOT MINGWLIBS)
-		if(MSVC)
+		if (DEFINED ENV{MINGWLIBS})
+			set(MINGWLIBS $ENV{MINGWLIBS} CACHE PATH "Location of the mingwlibs package")
+		elseif(MSVC)
 			if(BUILD_BITS EQUAL 32)
 				set(MINGWLIBS ${CMAKE_SOURCE_DIR}/vclibs CACHE PATH "Location of the vclibs package")
 			else(BUILD_BITS EQUAL 32)
 				set(MINGWLIBS ${CMAKE_SOURCE_DIR}/vclibs64 CACHE PATH "Location of the vclibs package")
 			endif(BUILD_BITS EQUAL 32)
-		else(MSVC)
+		else()
 			if(BUILD_BITS EQUAL 32)
 				set(MINGWLIBS ${CMAKE_SOURCE_DIR}/mingwlibs CACHE PATH "Location of the mingwlibs package")
 			else(BUILD_BITS EQUAL 32)
 				set(MINGWLIBS ${CMAKE_SOURCE_DIR}/mingwlibs64 CACHE PATH "Location of the mingwlibs package")
 			endif(BUILD_BITS EQUAL 32)
-		endif(MSVC)
+		endif()
 	endif ()
 	if    (EXISTS "${MINGWLIBS}" AND IS_DIRECTORY "${MINGWLIBS}")
 		if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.17.0")
@@ -164,7 +181,7 @@ else  (UNIX AND NOT MINGW)
 	endif ()
 
 
-	add_definitions(-D_WIN32_WINNT=0x0601) ## Win7 is minimum due to cpuid processor group affinity
+	add_definitions(-D_WIN32_WINNT=0x0601) ## Win7 is minimum due to processor group affinity
 	add_definitions(-D__USE_MINGW_ANSI_STDIO=1) ## use __mingw_sprintf instead of __builtin_sprintf (it's used by lua in a synced way, and builtin doesn't sync)
 
 	if(${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")
@@ -175,7 +192,7 @@ else  (UNIX AND NOT MINGW)
 		set (CMAKE_VS_JUST_MY_CODE_DEBUGGING 1)
 		add_definitions(-D_ENABLE_EXTENDED_ALIGNED_STORAGE)
 		add_definitions(-DNOMINMAX -DWIN32_LEAN_AND_MEAN)
-		set(GLEW_STATIC ON)
+		add_compile_options(/bigobj)
 		#set(EXE_FLAGS WIN32)
 	endif()
 endif (UNIX AND NOT MINGW)
@@ -277,16 +294,9 @@ endif (RECOIL_DETAILED_TRACY_ZONING)
 
 # Note the missing REQUIRED, as headless & dedi may not depend on those.
 #  So req. checks are done in the build target's CMakeLists.txt.
-find_package(SDL2)
+find_package(SDL2 MODULE)
 
-find_package_static(DevIL)
-if    (PREFER_STATIC_LIBS)
-	# dependencies of DevIL
-	find_package_static(JPEG REQUIRED)
-	find_package_static(PNG REQUIRED)
-	find_package_static(TIFF REQUIRED)
-	find_package_static(GIF REQUIRED)
-endif (PREFER_STATIC_LIBS)
+find_package_static(DevIL 1.8.0 REQUIRED)
 
 if    (WIN32)
 	find_package(Windres REQUIRED)
@@ -356,13 +366,6 @@ else  (LDGOLD_FOUND)
 	message(WARNING "You are using ld.bfd, it's much slower than ld.gold.")
 endif (LDGOLD_FOUND)
 
-message(STATUS "Compiling with C++20")
-if(MSVC)
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++20 /permissive- /Zc:__cplusplus")
-else (MSVC)
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20")
-endif(MSVC)
-
 add_definitions(-D_GLIBCXX_USE_NANOSLEEP) # issue in std::chrono with gentoo and few other distros
 
 
@@ -396,15 +399,9 @@ if(NOT MSVC)
 endif(NOT MSVC)
 
 
-if(DEBUG_BUILD)
-        set(DEBUG_LUANAN_DEFAULT TRUE)
-else()
-        set(DEBUG_LUANAN_DEFAULT FALSE)
-endif()
-
-option(DEBUG_LUANAN "check for nans in lua" ${DEBUG_LUANAN_DEFAULT})
-if(DEBUG_LUANAN)
-        add_definitions(-DDEBUG_LUANAN)
+option(REPORT_LUANAN "report nans/infinities in lua" TRUE)
+if(REPORT_LUANAN)
+        add_definitions(-DREPORT_LUANAN)
 endif()
 
 
@@ -584,38 +581,18 @@ set_source_files_properties(
 # This is always executed (on every run of "make"),
 # but the actual version files are only written in case of a change
 # in the version info they use, or in the template file content.
-if (MSVC)
-	add_custom_command(
-		OUTPUT ${VERSION_GENERATE_SOURCES}
-		COMMAND "${CMAKE_COMMAND}"
-			"-DSOURCE_ROOT=${CMAKE_SOURCE_DIR}"
-			"-DCMAKE_MODULES_SPRING=${CMAKE_MODULES_SPRING}"
-			"-DGENERATE_DIR=${VERSION_GENERATE_DIR}"
-			"-DVERSION_ADDITIONAL=${VERSION_ADDITIONAL}"
-			-P "${CMAKE_MODULES_SPRING}/ConfigureVersion.cmake"
-			"${VERSION_GENERATE_DIR}"
-		COMMENT
-			"  Configuring Version files ..." VERBATIM
-		)
-	add_custom_target(generateVersionFiles DEPENDS ${VERSION_GENERATE_SOURCES})
-else (MSVC)
-	# This is always executed (on every run of "make"),
-	# but the actual version files are only written in case of a change
-	# in the version info they use, or in the template file content.
-	add_custom_target(generateVersionFiles)
-	add_custom_command(TARGET generateVersionFiles
-		COMMAND "${CMAKE_COMMAND}"
-			"-DSOURCE_ROOT=${CMAKE_SOURCE_DIR}"
-			"-DCMAKE_MODULES_SPRING=${CMAKE_MODULES_SPRING}"
-			"-DGENERATE_DIR=${VERSION_GENERATE_DIR}"
-			"-DVERSION_ADDITIONAL=${VERSION_ADDITIONAL}"
-			-P "${CMAKE_MODULES_SPRING}/ConfigureVersion.cmake"
-			"${VERSION_GENERATE_DIR}"
-		COMMENT
-			"  Configuring Version files ..." VERBATIM
-	)
-
-endif (MSVC)
+add_custom_target(generateVersionFiles)
+add_custom_command(TARGET generateVersionFiles
+	COMMAND "${CMAKE_COMMAND}"
+		"-DSOURCE_ROOT=${CMAKE_SOURCE_DIR}"
+		"-DCMAKE_MODULES_SPRING=${CMAKE_MODULES_SPRING}"
+		"-DGENERATE_DIR=${VERSION_GENERATE_DIR}"
+		"-DVERSION_ADDITIONAL=${VERSION_ADDITIONAL}"
+		-P "${CMAKE_MODULES_SPRING}/ConfigureVersion.cmake"
+		"${VERSION_GENERATE_DIR}"
+	COMMENT
+		"  Configuring Version files ..." VERBATIM
+)
 
 add_dependencies(generateSources generateVersionFiles)
 

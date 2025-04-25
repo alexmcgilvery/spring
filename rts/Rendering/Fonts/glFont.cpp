@@ -26,7 +26,7 @@ CONFIG(std::string, SmallFontFile).defaultValue("fonts/FreeSansBold.otf").descri
 
 CONFIG(int,      FontSize).defaultValue(23).description("Sets the font size (in pixels) of the MainMenu and more.");
 CONFIG(int, SmallFontSize).defaultValue(14).description("Sets the font size (in pixels) of the engine GUIs and more.");
-CONFIG(int,      FontOutlineWidth).defaultValue(3).description("Sets the width of the black outline around Spring engine text, such as the title screen version number, clock, and basic UI. Does not affect LuaUI elements.");
+CONFIG(int,      FontOutlineWidth).defaultValue(2).description("Sets the width of the black outline around Spring engine text, such as the title screen version number, clock, and basic UI. Does not affect LuaUI elements.");
 CONFIG(int, SmallFontOutlineWidth).defaultValue(2).description("see FontOutlineWidth");
 CONFIG(float,      FontOutlineWeight).defaultValue(25.0f).description("Sets the opacity of Spring engine text, such as the title screen version number, clock, and basic UI. Does not affect LuaUI elements.");
 CONFIG(float, SmallFontOutlineWeight).defaultValue(10.0f).description("see FontOutlineWeight");
@@ -63,16 +63,18 @@ bool CglFont::LoadConfigFonts()
 bool CglFont::LoadCustomFonts(const std::string& smallFontFile, const std::string& largeFontFile)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
-	auto newLargeFont = CglFont::LoadFont(largeFontFile, false);
-	auto newSmallFont = CglFont::LoadFont(smallFontFile,  true);
+	if (auto newFont = CglFont::LoadFont(largeFontFile, false); newFont) {
+		font = newFont;
 
-	if (newLargeFont != nullptr && newSmallFont != nullptr) {
-		font = newLargeFont;
-		smallFont = newSmallFont;
+		LOG("[%s] loaded large font \"%s\"", __func__, newFont->GetFilePath().c_str());
+		configHandler->SetString(     "FontFile", newFont->GetFilePath());
+	}
 
-		LOG("[%s] loaded fonts \"%s\" and \"%s\"", __func__, smallFontFile.c_str(), largeFontFile.c_str());
-		configHandler->SetString(     "FontFile", largeFontFile);
-		configHandler->SetString("SmallFontFile", smallFontFile);
+	if (auto newFont = CglFont::LoadFont(smallFontFile, false); newFont) {
+		smallFont = newFont;
+
+		LOG("[%s] loaded small font \"%s\"", __func__, newFont->GetFilePath().c_str());
+		configHandler->SetString("SmallFontFile", newFont->GetFilePath());
 	}
 
 	return true;

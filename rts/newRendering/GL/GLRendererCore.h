@@ -47,6 +47,8 @@ private:
 
 	void UpdateDualViewport();
 
+	bool IsExtensionSupported(const char* ext) const;
+
 	bool CheckGLMultiSampling() const;
 	bool CheckGLContextVersion(const int2& minCtx) const;
 	
@@ -66,9 +68,9 @@ public:
 	static constexpr uint32_t FRAME_END_TIME_QUERY_IDX = NUM_OPENGL_TIMER_QUERIES - 1;
 
 private:
+	spring::unordered_set<std::string> glExtensions;
 	// double-buffered; results from frame N become available on frame N+1
 	std::array<uint32_t, NUM_OPENGL_TIMER_QUERIES * 2> glTimerQueries;
-
 };
 
 extern CGLRendererCore* glRenderer;

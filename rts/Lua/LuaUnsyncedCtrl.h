@@ -25,6 +25,11 @@ class LuaUnsyncedCtrl {
 		static int SendMessageToAllyTeam(lua_State* L);
 		static int SendMessageToSpectators(lua_State* L);
 
+		static int SendPublicChat(lua_State* L);
+		static int SendAllyChat(lua_State* L);
+		static int SendSpectatorChat(lua_State* L);
+		static int SendPrivateChat(lua_State* L);
+
 		static int LoadSoundDef(lua_State* L);
 		static int PlaySoundFile(lua_State* L);
 		static int PlaySoundStream(lua_State* L);
@@ -34,6 +39,16 @@ class LuaUnsyncedCtrl {
 
 		static int SetCameraState(lua_State* L);
 		static int SetCameraTarget(lua_State* L);
+		static int RunDollyCamera(lua_State* L);
+		static int PauseDollyCamera(lua_State* L);
+		static int ResumeDollyCamera(lua_State* L);
+		static int SetDollyCameraPosition(lua_State* L);
+		static int SetDollyCameraMode(lua_State* L);
+		static int SetDollyCameraCurve(lua_State* L);
+		static int SetDollyCameraLookPosition(lua_State* L);
+		static int SetDollyCameraLookUnit(lua_State* L);
+		static int SetDollyCameraLookCurve(lua_State* L);
+		static int SetDollyCameraRelativeMode(lua_State* L);
 
 		static int DeselectUnit(lua_State* L);
 		static int DeselectUnitMap(lua_State* L);
@@ -56,6 +71,7 @@ class LuaUnsyncedCtrl {
 
 		static int SetCustomCommandDrawData(lua_State* L);
 
+		static int SetAutoShowMetal(lua_State* L);
 		static int SetDrawSky(lua_State* L);
 		static int SetDrawWater(lua_State* L);
 		static int SetDrawGround(lua_State* L);
@@ -82,6 +98,8 @@ class LuaUnsyncedCtrl {
 		static int SetUnitEngineDrawMask(lua_State* L);
 		static int SetUnitAlwaysUpdateMatrix(lua_State* L);
 		static int SetUnitNoMinimap(lua_State* L);
+		static int SetMiniMapRotation(lua_State* L);
+		static int SetUnitNoGroup(lua_State* L);
 		static int SetUnitNoSelect(lua_State* L);
 		static int SetUnitLeaveTracks(lua_State* L);
 		static int SetUnitSelectionVolumeData(lua_State* L);
@@ -93,6 +111,7 @@ class LuaUnsyncedCtrl {
 
 		static int AddUnitIcon(lua_State* L);
 		static int FreeUnitIcon(lua_State* L);
+		static int SetUnitIconDraw(lua_State* L);
 		static int UnitIconSetDraw(lua_State* L);
 
 		static int ExtractModArchiveFile(lua_State* L);

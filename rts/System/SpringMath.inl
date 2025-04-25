@@ -144,7 +144,7 @@ inline int2 IdxToCoord(unsigned x, unsigned array_width)
 
 inline float ClampRad(float f)
 {
-	// handle a special case of f==-0.0f, it can be elliminated by adding 0.0f
+	// handle a special case of f==-0.0f, it can be eliminated by adding 0.0f
 	f += 0.0f;
 	// fmod is not good here because it calculates the remainder, but we need the arithmetic modulus
 	/*
@@ -165,6 +165,17 @@ inline float3 ClampRad(float3 v)
 	v.x = ClampRad(v.x);
 	v.y = ClampRad(v.y);
 	v.z = ClampRad(v.z);
+	return v;
+}
+
+inline float3 ClampRadPrincipal(float3 v)
+{
+	v.x = ClampRad(v.x);
+	v.y = ClampRad(v.y);
+	v.z = ClampRad(v.z);
+	v.x -= (v.x > math::PI) * math::TWOPI;
+	v.y -= (v.y > math::PI) * math::TWOPI;
+	v.z -= (v.z > math::PI) * math::TWOPI;
 	return v;
 }
 

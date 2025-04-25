@@ -34,7 +34,7 @@ local SELECTOR_BASENAME = 'selector.lua'
 
 local SAFEWRAP = 1
 -- 0: disabled
--- 1: enabled, but can be overriden by widget.GetInfo().unsafe
+-- 1: enabled, but can be overridden by widget.GetInfo().unsafe
 -- 2: always enabled
 
 local SAFEDRAW = false  -- requires SAFEWRAP to work
@@ -123,6 +123,7 @@ local flexCallIns = {
   'UnitFinished',
   'UnitFromFactory',
   'UnitReverseBuilt',
+  'UnitConstructionDecayed',
   'UnitDestroyed',
   'RenderUnitDestroyed',
   'UnitTaken',
@@ -168,6 +169,7 @@ local flexCallIns = {
   'DrawScreenEffects',
   'DrawScreenPost',
   'DrawInMiniMap',
+  'FontsChanged',
   'SunChanged',
   'RecvSkirmishAIMessage',
 }
@@ -182,6 +184,9 @@ local callInLists = {
   'Shutdown',
   'Update',
   'TextCommand',
+  'ActiveCommandChanged',
+  'CameraRotationChanged',
+  'CameraPositionChanged',
   'CommandNotify',
   'AddConsoleLine',
   'ViewResize',
@@ -1180,6 +1185,24 @@ function widgetHandler:ConfigureLayout(command)
 end
 
 
+function widgetHandler:ActiveCommandChanged(id, cmdType)
+  for _,w in ipairs(self.ActiveCommandChangedList) do
+    w:ActiveCommandChanged(id, cmdType)
+  end
+end
+
+function widgetHandler:CameraRotationChanged(rotx, roty, rotz)
+  for _,w in ipairs(self.CameraRotationChangedList) do
+    w:CameraRotationChanged(rotx, roty, rotz)
+  end
+end
+
+function widgetHandler:CameraPositionChanged(posx, posy, posz)
+  for _,w in ipairs(self.CameraPositionChangedList) do
+    w:CameraPositionChanged(posx, posy, posz)
+  end
+end
+
 function widgetHandler:CommandNotify(id, params, options)
   for _,w in ipairs(self.CommandNotifyList) do
     if (w:CommandNotify(id, params, options)) then
@@ -1853,6 +1876,14 @@ function widgetHandler:UnitReverseBuilt(unitID, unitDefID, unitTeam)
 end
 
 
+function widgetHandler:UnitConstructionDecayed(unitID, unitDefID, unitTeam, timeSinceLastBuild, iterationPeriod, part)
+  for _,w in ipairs(self.UnitConstructionDecayedList) do
+    w:UnitConstructionDecayed(unitID, unitDefID, unitTeam, timeSinceLastBuild, iterationPeriod, part)
+  end
+  return
+end
+
+
 function widgetHandler:UnitDestroyed(unitID, unitDefID, unitTeam)
   for _,w in ipairs(self.UnitDestroyedList) do
     w:UnitDestroyed(unitID, unitDefID, unitTeam)
@@ -2155,6 +2186,18 @@ end
 function widgetHandler:DownloadProgress(id, downloaded, total)
   for _,w in ipairs(self.DownloadProgressList) do
     w:DownloadProgress(id, downloaded, total)
+  end
+end
+
+
+--------------------------------------------------------------------------------
+--
+--  Font call-ins
+--
+
+function widgetHandler:FontsChanged()
+  for _,w in ripairs(self.FontsChangedList) do
+    w:FontsChanged()
   end
 end
 

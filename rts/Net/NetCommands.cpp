@@ -604,7 +604,7 @@ void CGame::ClientReadNet()
 				}
 			}
 			case NETMSG_NEWFRAME: {
-				// This is alredy well covered in SimFrame so not adding scope.
+				// This is already well covered in SimFrame so not adding scope.
 				// ZoneScopedN("Net::NewFrame");
 
 				// Just a checkpoint for the speed factors plots.
@@ -863,7 +863,8 @@ void CGame::ClientReadNet()
 						commands.push_back(cmd);
 					}
 
-					assert(aiInstID == MAX_AIS);
+					if (aiInstID != MAX_AIS)
+						throw netcode::UnpackPacketException("Invalid AI instance ID");
 
 					// apply the "AI" commands (which actually originate from LuaUnsyncedCtrl)
 					if (pairwise) {

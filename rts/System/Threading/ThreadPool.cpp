@@ -14,7 +14,7 @@
 	#include "System/Config/ConfigHandler.h"
 #endif
 #include "System/Log/ILog.h"
-#include "System/Platform/CpuID.h"
+#include "System/Platform/CpuTopology.h"
 #include "System/Platform/Threading.h"
 #include "System/Threading/SpringThreading.h"
 
@@ -112,7 +112,7 @@ static int GetDefaultNumWorkers() {
 	const int cfgNumWorkers = GetConfigNumWorkers();
 
 	if (cfgNumWorkers < 0) {
-		return Threading::GetPhysicalCpuCores();
+		return Threading::GetPerformanceCpuCores();
 	}
 
 	if (cfgNumWorkers > maxNumThreads) {
@@ -586,11 +586,19 @@ void SetMaximumThreadCount()
 
 void SetDefaultThreadCount()
 {
-	std::uint32_t systemCores  = springproc::CPUID::GetInstance().GetAvailableProceesorAffinityMask();
+	#if !defined(THREADPOOL)
+	return;
+	#endif
+	std::uint32_t systemCores = Threading::GetSystemAffinityMask();
 	std::uint32_t mainAffinity = systemCores;
 
 	#ifndef UNIT_TEST
-	mainAffinity &= configHandler->GetUnsigned("SetCoreAffinity");
+	std::uint32_t configAffinity = configHandler->GetUnsigned("SetCoreAffinity");
+	mainAffinity &= (configAffinity != 0) ? configAffinity
+		: (cpu_topology::GetThreadPinPolicy() == cpu_topology::THREAD_PIN_POLICY_PER_PERF_CORE)
+			? Threading::GetPreferredMainThreadMask()
+			: 0;
+	LOG("[ThreadPool] Main thread affinity requested as 0x%08x", mainAffinity);
 	#endif
 
 	std::uint32_t workerAvailCores = systemCores & ~mainAffinity;
@@ -600,7 +608,7 @@ void SetDefaultThreadCount()
 	{
 		// parallel_reduce now folds over shared_ptrs to futures
 		// const auto ReduceFunc = [](std::uint32_t a, std::future<std::uint32_t>& b) -> std::uint32_t { return (a | b.get()); };
-		const auto ReduceFunc = [](std::uint32_t a, std::shared_ptr< std::future<std::uint32_t> >& b) -> std::uint32_t { return (a | (b.get())->get()); };
+		const auto ReduceFunc = [](std::uint32_t a, std::shared_future<std::uint32_t> b) -> std::uint32_t { return (a | (b.get())); };
 		const auto AffinityFunc = [&]() -> std::uint32_t {
 			const int i = ThreadPool::GetThreadNum();
 
@@ -608,8 +616,10 @@ void SetDefaultThreadCount()
 			if (i == 0)
 				return 0;
 
-			const std::uint32_t workerCore = FindWorkerThreadCore(i - 1, workerAvailCores, mainAffinity);
-			// const std::uint32_t workerCore = workerAvailCores;
+			const std::uint32_t workerCore =
+				 (cpu_topology::GetThreadPinPolicy() == cpu_topology::THREAD_PIN_POLICY_PER_PERF_CORE)
+				 ? FindWorkerThreadCore(i - 1, workerAvailCores, mainAffinity)
+				 : workerAvailCores;
 
 			char threadName[20];
 			std::snprintf(threadName, sizeof(threadName), "Worker %d", i);
@@ -619,12 +629,15 @@ void SetDefaultThreadCount()
 		};
 
 		const std::uint32_t poolCoreAffinity = parallel_reduce(AffinityFunc, ReduceFunc);
-		const std::uint32_t mainCoreAffinity = Threading::HasHyperThreading() ? ~poolCoreAffinity : ~0;
+		const std::uint32_t mainCoreAffinity = ~poolCoreAffinity & systemCores;
 
 		if (mainAffinity == 0)
 			mainAffinity = systemCores;
 
-		Threading::SetAffinityHelper("Main", mainAffinity & mainCoreAffinity);
+		if (cpu_topology::GetThreadPinPolicy() == cpu_topology::THREAD_PIN_POLICY_PER_PERF_CORE)
+			mainAffinity &= mainCoreAffinity;
+
+		Threading::SetAffinityHelper("Main", mainAffinity);
 	}
 }
 

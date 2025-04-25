@@ -15,7 +15,9 @@
 
 #include "Map/MapInfo.h"
 #include "Map/ReadMap.h"
+#include "Sim/Misc/YardmapStatusEffectsMap.h"
 #include "Sim/Misc/GlobalConstants.h"
+#include "Sim/MoveTypes/MoveMath/MoveMath.h"
 
 #include "System/Misc/TracyDefs.h"
 
@@ -205,7 +207,7 @@ void QTPFS::QTNode::InitStatic() {
 }
 
 void QTPFS::QTNode::Init(
-	const QTNode* /*parent*/,
+	const QTNode* parent,
 	unsigned int nn,
 	unsigned int x1, unsigned int z1,
 	unsigned int x2, unsigned int z2,
@@ -231,7 +233,8 @@ void QTPFS::QTNode::Init(
 	assert(zsize() != 0);
 
 	moveCostAvg = -1.0f;
-	index = idx;
+	uint32_t depth = (parent != nullptr) ? (parent->GetDepth() + 1) : 0;
+	index = (idx & NODE_INDEX_MASK) + ((depth << DEPTH_BIT_OFFSET) & DEPTH_MASK);
 
 	neighbours.clear();
 }
@@ -498,6 +501,9 @@ void QTPFS::QTNode::Tesselate(NodeLayer& nl, const SRectangle& r, unsigned int d
 	// when ALL squares in <r> changed bins in unison
 	//
 	UpdateMoveCost(threadData, nl, r, numNewBinSquares, numDifBinSquares, numClosedSquares, wantSplit, needSplit);
+	if (!needSplit && !AllSquaresImpassable()) {
+		UpdateExitOnly(nl, needSplit);
+	}
 
 	if ((wantSplit && Split(nl, depth, false)) || (needSplit && Split(nl, depth, true))) {
 		for (unsigned int i = 0; i < QTNODE_CHILD_COUNT; i++) {
@@ -530,7 +536,8 @@ bool QTPFS::QTNode::UpdateMoveCost(
 	assert(int(zmin()) >= r.z1);
 	assert(int(zmax()) <= r.z2);
 
-	const SpeedBinType refSpeedBin = curSpeedBins[zmin() * mapDims.mapx + xmin()];
+	const int rw = r.GetWidth();
+	const SpeedBinType refSpeedBin = curSpeedBins[(zmin() - r.z1) * rw + (xmin() - r.x1)];
 
 	// <this> can either just have been merged or added as
 	// new child of split parent; in the former case we can
@@ -543,7 +550,7 @@ bool QTPFS::QTNode::UpdateMoveCost(
 
 	for (unsigned int hmz = zmin(); hmz < zmax(); hmz++) {
 		for (unsigned int hmx = xmin(); hmx < xmax(); hmx++) {
-			const unsigned int sqrIdx = hmz * mapDims.mapx + hmx;
+			const unsigned int sqrIdx = (hmz - r.z1) * rw + (hmx - r.x1);
 
 			assert(sqrIdx >= 0);
 			assert(sqrIdx < curSpeedBins.size());
@@ -562,7 +569,7 @@ bool QTPFS::QTNode::UpdateMoveCost(
 	assert(speedModSum >= 0.0f);
 
 	float speedModAvg = speedModSum / area();
-	moveCostAvg = (speedModAvg <= 0.001f) ? QTPFS_POSITIVE_INFINITY : (1.0f / speedModAvg);
+	moveCostAvg = (speedModAvg <= 0.001f) ? QTPFS_POSITIVE_INFINITY : (nl.UseShortestPath() ? 1.f : (1.f /  speedModAvg));
 
 	// no node can have ZERO traversal cost
 	assert(moveCostAvg > 0.0f);
@@ -602,19 +609,47 @@ bool QTPFS::QTNode::UpdateMoveCost(
 		nl.IncreaseOpenNodeCounter();
 	}
 
-	// Impassable squares don't impact search performance, but the larger they are the bigger the
-	// impact on updating. For example, sea units will often have large impassable areas for the
-	// land and we'll be recalculating across these larger areas every time those areas are damaged
-	// despite it not changing the impassability as far as ships are concerned. So make these areas
-	// as small as possible (i.e. same size as the damage quads) to minimize update performance
-	// impact.
-	needSplit |= (AllSquaresImpassable() && xsize() > 16); // TODO: magic number for size of damage quads
+	// For performance reasons, the maximum node size should match the damage size because mutliple damaged regions
+	// that doesn't result in a subdivision will cause the entire node to be re-evaluated over several frames. The
+	// larger the node, the larger the performance impact. This often occurs for impassable terrain or hard terrain
+	// such as metal.
+	needSplit |= (xsize() > QTPFS_MAP_DAMAGE_SIZE);
 
 	wantSplit &= (xsize() > 16); // try not to split below 16 if possible.
+	wantSplit &= !(nl.UseShortestPath());
 
 	return (wantSplit || needSplit);
 }
 
+
+bool QTPFS::QTNode::UpdateExitOnly(NodeLayer& nl, bool& needSplit) {
+	bool exitOnlyStatePresent[2] = {false, false};
+
+	auto checkRangeForSplit = [this, &nl, &exitOnlyStatePresent]() {
+		MoveDef *md = moveDefHandler.GetMoveDefByPathType(nl.GetNodelayer());
+
+		for (int z = zmin(); z < zmax(); ++z) {
+			for (int x = xmin(); x < xmax(); ++x) {
+				bool isExitOnlyZone = md->IsInExitOnly(x, z);
+				exitOnlyStatePresent[isExitOnlyZone] = true;
+
+				// if the other state is also true, then multiple exitOnly states are present and a split is
+				// needed.
+				if (exitOnlyStatePresent[!isExitOnlyZone] == true)
+					return true;
+			}
+		}
+		return false;
+	};
+	needSplit = checkRangeForSplit();
+
+	if (!needSplit) {
+		bool isExitOnlyZone = exitOnlyStatePresent[true];
+		index |= uint32_t(isExitOnlyZone)<<EXIT_ONLY_BIT_OFFSET;
+	}
+
+	return needSplit;
+}
 
 // get the maximum number of neighbors this node
 // can have, based on its position / size and the
@@ -692,6 +727,10 @@ bool QTPFS::QTNode::UpdateNeighborCache(NodeLayer& nodeLayer, UpdateThreadData& 
 	constexpr size_t maxNumberOfNeighbours = QTPFS_MAX_NODE_SIZE*4 + 4;
 	std::array<INode*, maxNumberOfNeighbours> neighborCache;
 
+	auto allowExitLink = [this](INode* ngb) {
+		return IsExitOnly() || !ngb->IsExitOnly();
+	};
+
 	// if (gs->frameNum > -1 && nodeLayer == 2)
 	// 	LOG("%s: [%d] maxNgbs = %d", __func__, index, maxNgbs);
 
@@ -737,7 +776,7 @@ bool QTPFS::QTNode::UpdateNeighborCache(NodeLayer& nodeLayer, UpdateThreadData& 
 				// }
 				hmz = ngb->zmax();
 
-				if (!ngb->AllSquaresImpassable())
+				if (!ngb->AllSquaresImpassable() && allowExitLink(ngb))
 					neighborCache[newNeighbors++] = ngb;
 
 				assert(GetNeighborRelation(ngb) != 0);
@@ -769,7 +808,7 @@ bool QTPFS::QTNode::UpdateNeighborCache(NodeLayer& nodeLayer, UpdateThreadData& 
 				// }
 				hmz = ngb->zmax();
 
-				if (!ngb->AllSquaresImpassable())
+				if (!ngb->AllSquaresImpassable() && allowExitLink(ngb))
 					neighborCache[newNeighbors++] = ngb;
 
 				assert(GetNeighborRelation(ngb) != 0);
@@ -802,7 +841,7 @@ bool QTPFS::QTNode::UpdateNeighborCache(NodeLayer& nodeLayer, UpdateThreadData& 
 				// }
 				hmx = ngb->xmax();
 
-				if (!ngb->AllSquaresImpassable())
+				if (!ngb->AllSquaresImpassable() && allowExitLink(ngb))
 					neighborCache[newNeighbors++] = ngb;
 
 				assert(GetNeighborRelation(ngb) != 0);
@@ -834,7 +873,7 @@ bool QTPFS::QTNode::UpdateNeighborCache(NodeLayer& nodeLayer, UpdateThreadData& 
 				// }
 				hmx = ngb->xmax();
 
-				if (!ngb->AllSquaresImpassable())
+				if (!ngb->AllSquaresImpassable() && allowExitLink(ngb))
 					neighborCache[newNeighbors++] = ngb;
 
 				assert(GetNeighborRelation(ngb) != 0);
@@ -866,7 +905,7 @@ bool QTPFS::QTNode::UpdateNeighborCache(NodeLayer& nodeLayer, UpdateThreadData& 
 				// VERT_TL ngb must be distinct from EDGE_L and EDGE_T ngbs
 				if (ngbC != ngbL && ngbC != ngbT) {
 					if (ngbL->AllSquaresAccessible() && ngbT->AllSquaresAccessible()) {
-						if (!ngbC->AllSquaresImpassable())
+						if (!ngbC->AllSquaresImpassable() && allowExitLink(ngbC))
 							neighborCache[newNeighbors++] = ngbC;
 
 						assert(GetNeighborRelation(ngbC) != 0);
@@ -888,7 +927,7 @@ bool QTPFS::QTNode::UpdateNeighborCache(NodeLayer& nodeLayer, UpdateThreadData& 
 				// VERT_BL ngb must be distinct from EDGE_L and EDGE_B ngbs
 				if (ngbC != ngbL && ngbC != ngbB) {
 					if (ngbL->AllSquaresAccessible() && ngbB->AllSquaresAccessible()) {
-						if (!ngbC->AllSquaresImpassable())
+						if (!ngbC->AllSquaresImpassable() && allowExitLink(ngbC))
 							neighborCache[newNeighbors++] = ngbC;
 
 						assert(GetNeighborRelation(ngbC) != 0);
@@ -916,7 +955,7 @@ bool QTPFS::QTNode::UpdateNeighborCache(NodeLayer& nodeLayer, UpdateThreadData& 
 					if (ngbR->AllSquaresAccessible() && ngbT->AllSquaresAccessible()) {
 						// neighbours.push_back(ngbC);
 						// neighbours.push_back(ngbC->GetIndex());
-						if (!ngbC->AllSquaresImpassable())
+						if (!ngbC->AllSquaresImpassable() && allowExitLink(ngbC))
 							neighborCache[newNeighbors++] = ngbC;
 
 						assert(GetNeighborRelation(ngbC) != 0);
@@ -938,7 +977,7 @@ bool QTPFS::QTNode::UpdateNeighborCache(NodeLayer& nodeLayer, UpdateThreadData& 
 				// VERT_BR ngb must be distinct from EDGE_R and EDGE_B ngbs
 				if (ngbC != ngbR && ngbC != ngbB) {
 					if (ngbR->AllSquaresAccessible() && ngbB->AllSquaresAccessible()) {
-						if (!ngbC->AllSquaresImpassable())
+						if (!ngbC->AllSquaresImpassable() && allowExitLink(ngbC))
 							neighborCache[newNeighbors++] = ngbC;
 
 						assert(GetNeighborRelation(ngbC) != 0);

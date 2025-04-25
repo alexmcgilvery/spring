@@ -20,6 +20,7 @@
 #include "CommandAI/CommandAI.h"
 #include "CommandAI/FactoryCAI.h"
 #include "CommandAI/MobileCAI.h"
+#include "CommandAI/BuilderCaches.h"
 
 #include "ExternalAI/EngineOutHandler.h"
 #include "Game/GameHelper.h"
@@ -71,19 +72,12 @@
 
 #include "System/Misc/TracyDefs.h"
 
+GlobalUnitParams globalUnitParams;
 
 // See end of source for member bindings
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
-
-float CUnit::empDeclineRate = 0.0f;
-float CUnit::expMultiplier  = 0.0f;
-float CUnit::expPowerScale  = 0.0f;
-float CUnit::expHealthScale = 0.0f;
-float CUnit::expReloadScale = 0.0f;
-float CUnit::expGrade       = 0.0f;
-
 
 CUnit::CUnit(): CSolidObject()
 {
@@ -157,15 +151,14 @@ CUnit::~CUnit()
 void CUnit::InitStatic()
 {
 	RECOIL_DETAILED_TRACY_ZONE;
-	// numerator was 2*UNIT_SLOWUPDATE_RATE/GAME_SPEED which equals 1 since 99.0
-	SetEmpDeclineRate(1.0f / modInfo.paralyzeDeclineRate);
-	SetExpMultiplier(modInfo.unitExpMultiplier);
-	SetExpPowerScale(modInfo.unitExpPowerScale);
-	SetExpHealthScale(modInfo.unitExpHealthScale);
-	SetExpReloadScale(modInfo.unitExpReloadScale);
-	SetExpGrade(0.0f);
+	globalUnitParams.empDeclineRate = 1.0f / modInfo.paralyzeDeclineRate;
+	globalUnitParams.expMultiplier = modInfo.unitExpMultiplier;
+	globalUnitParams.expPowerScale = modInfo.unitExpPowerScale;
+	globalUnitParams.expHealthScale = modInfo.unitExpHealthScale;
+	globalUnitParams.expReloadScale = modInfo.unitExpReloadScale;
+	globalUnitParams.expGrade = modInfo.unitExpGrade;
 
-	CBuilderCAI::InitStatic();
+	CBuilderCaches::InitStatic();
 	unitToolTipMap.Clear();
 }
 
@@ -246,6 +239,7 @@ void CUnit::PreInit(const UnitLoadParams& params)
 
 	SetVelocity(params.speed);
 	Move(preFramePos = params.pos.cClampInMap(), false);
+
 	UpdateDirVectors(!upright && IsOnGround(), false, 0.0f);
 	SetMidAndAimPos(model->relMidPos, model->relMidPos, true);
 	SetRadiusAndHeight(model);
@@ -337,6 +331,8 @@ void CUnit::PostInit(const CUnit* builder)
 	UpdateCollidableStateBit(CSolidObject::CSTATE_BIT_SOLIDOBJECTS, unitDef->collidable && (!immobile || !unitDef->canKamikaze));
 	Block();
 
+	// done once again in UnitFinished() too
+	// but keep the old behavior for compatibility purposes
 	if (unitDef->windGenerator > 0.0f)
 		envResHandler.AddGenerator(this);
 
@@ -402,7 +398,6 @@ void CUnit::PostLoad()
 	eventHandler.RenderUnitCreated(this, isCloaked);
 }
 
-
 //////////////////////////////////////////////////////////////////////
 //
 
@@ -421,6 +416,9 @@ void CUnit::FinishedBuilding(bool postInit)
 		soloBuilder = nullptr;
 	}
 
+	if (isDead) // Lua can kill a freshy spawned unit in UnitCreated
+		return;
+
 	ChangeLos(realLosRadius, realAirLosRadius);
 
 	if (unitDef->activateWhenBuilt)
@@ -430,6 +428,13 @@ void CUnit::FinishedBuilding(bool postInit)
 
 	// Sets the frontdir in sync with heading.
 	UpdateDirVectors(!upright && IsOnGround(), false, 0.0f);
+
+	if (unitDef->windGenerator > 0.0f) {
+		// trigger sending the wind update by removing
+		envResHandler.DelGenerator(this);
+		//  and adding back this windgen
+		envResHandler.AddGenerator(this);
+	}
 
 	eventHandler.UnitFinished(this);
 	eoh->UnitFinished(*this);
@@ -446,21 +451,21 @@ void CUnit::FinishedBuilding(bool postInit)
 		f->blockHeightChanges = true;
 
 		UnBlock();
-		KillUnit(nullptr, false, true);
+		KillUnit(nullptr, false, true, -CSolidObject::DAMAGE_TURNED_INTO_FEATURE);
 	}
 }
 
 
-void CUnit::KillUnit(CUnit* attacker, bool selfDestruct, bool reclaimed)
+void CUnit::KillUnit(CUnit* attacker, bool selfDestruct, bool reclaimed, int weaponDefID)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
 	if (IsCrashing() && !beingBuilt)
 		return;
 
-	ForcedKillUnit(attacker, selfDestruct, reclaimed);
+	ForcedKillUnit(attacker, selfDestruct, reclaimed, weaponDefID);
 }
 
-void CUnit::ForcedKillUnit(CUnit* attacker, bool selfDestruct, bool reclaimed)
+void CUnit::ForcedKillUnit(CUnit* attacker, bool selfDestruct, bool reclaimed, int weaponDefID)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
 	if (isDead)
@@ -472,11 +477,8 @@ void CUnit::ForcedKillUnit(CUnit* attacker, bool selfDestruct, bool reclaimed)
 	ReleaseTransportees(attacker, selfDestruct, reclaimed);
 
 	// pre-destruction event; unit may be kept around for its death sequence
-	eventHandler.UnitDestroyed(this, attacker);
-	eoh->UnitDestroyed(*this, attacker);
-
-	// Will be called in the destructor again, but this can not hurt
-	SetGroup(nullptr);
+	eventHandler.UnitDestroyed(this, attacker, weaponDefID);
+	eoh->UnitDestroyed(*this, attacker, weaponDefID);
 
 	if (unitDef->windGenerator > 0.0f)
 		envResHandler.DelGenerator(this);
@@ -673,8 +675,6 @@ void CUnit::Update()
 	}
 
 	restTime += 1;
-	outOfMapTime += 1;
-	outOfMapTime *= (!pos.IsInBounds());
 }
 
 void CUnit::UpdateWeaponVectors()
@@ -762,9 +762,9 @@ void CUnit::ReleaseTransportees(CUnit* attacker, bool selfDestruct, bool reclaim
 		if (!unitDef->releaseHeld) {
 			// we don't want transportees to leave a corpse
 			if (!selfDestruct)
-				transportee->DoDamage(DamageArray(1e6f), ZeroVector, nullptr, -DAMAGE_EXTSOURCE_KILLED, -1);
+				transportee->DoDamage(DamageArray(1e6f), ZeroVector, nullptr, -CSolidObject::DAMAGE_TRANSPORT_KILLED, -1);
 
-			transportee->KillUnit(attacker, selfDestruct, reclaimed);
+			transportee->KillUnit(attacker, selfDestruct, reclaimed, -CSolidObject::DAMAGE_TRANSPORT_KILLED);
 		} else {
 			// NOTE: game's responsibility to deal with edge-cases now
 			transportee->Move(transportee->pos.cClampInBounds(), false);
@@ -955,7 +955,7 @@ void CUnit::SlowUpdate()
 	DoWaterDamage();
 
 	if (health < 0.0f) {
-		KillUnit(nullptr, false, true);
+		KillUnit(nullptr, false, true, -CSolidObject::DAMAGE_NEGATIVE_HEALTH);
 		return;
 	}
 
@@ -967,7 +967,7 @@ void CUnit::SlowUpdate()
 		// DoDamage) we potentially start decaying from a lower damage
 		// level and would otherwise be de-paralyzed more quickly than
 		// specified by <paralyzeTime>
-		paralyzeDamage -= ((modInfo.paralyzeOnMaxHealth? maxHealth: health) * (UNIT_SLOWUPDATE_RATE / float(GAME_SPEED)) * CUnit::empDeclineRate);
+		paralyzeDamage -= ((modInfo.paralyzeOnMaxHealth? maxHealth: health) * (UNIT_SLOWUPDATE_RATE * INV_GAME_SPEED) * globalUnitParams.empDeclineRate);
 		paralyzeDamage = std::max(paralyzeDamage, 0.0f);
 	}
 
@@ -992,7 +992,7 @@ void CUnit::SlowUpdate()
 	if (selfDCountdown > 0) {
 		if ((selfDCountdown -= 1) == 0) {
 			// avoid unfinished buildings making an explosion
-			KillUnit(nullptr, !beingBuilt, beingBuilt);
+			KillUnit(nullptr, !beingBuilt, beingBuilt, -CSolidObject::DAMAGE_SELFD_EXPIRED);
 			return;
 		}
 
@@ -1001,7 +1001,8 @@ void CUnit::SlowUpdate()
 	}
 
 	if (beingBuilt) {
-		if (modInfo.constructionDecay && (lastNanoAdd < (gs->frameNum - modInfo.constructionDecayTime))) {
+		const auto framesSinceLastNanoAdd = gs->frameNum - lastNanoAdd;
+		if (modInfo.constructionDecay && (modInfo.constructionDecayTime < framesSinceLastNanoAdd)) {
 			float buildDecay = buildTime * modInfo.constructionDecaySpeed;
 
 			buildDecay = 1.0f / std::max(0.001f, buildDecay);
@@ -1012,16 +1013,24 @@ void CUnit::SlowUpdate()
 
 			AddMetal(cost.metal * buildDecay, false);
 
+			eventHandler.UnitConstructionDecayed(this
+				, INV_GAME_SPEED * framesSinceLastNanoAdd
+				, INV_GAME_SPEED * UNIT_SLOWUPDATE_RATE
+				, buildDecay
+			);
+
 			if (health <= 0.0f || buildProgress <= 0.0f)
-				KillUnit(nullptr, false, true);
+				KillUnit(nullptr, false, true, -CSolidObject::DAMAGE_CONSTRUCTION_DECAY);
 		}
+		moveType->SlowUpdate();
 
 		ScriptDecloak(nullptr, nullptr);
 		return;
 	}
 
-	// below is stuff that should not be run while being built
+	// should not be run while being built
 	commandAI->SlowUpdate();
+
 	moveType->SlowUpdate();
 
 
@@ -1109,7 +1118,7 @@ void CUnit::SlowUpdateKamikaze(bool scanForTargets)
 				continue;
 
 			// (by default) self-destruct when target starts moving away from us, should maximize damage
-			KillUnit(nullptr, true, false);
+			KillUnit(nullptr, true, false, -CSolidObject::DAMAGE_KAMIKAZE_ACTIVATED);
 			return;
 		}
 	}
@@ -1133,7 +1142,7 @@ void CUnit::SlowUpdateKamikaze(bool scanForTargets)
 	if (!kill)
 		return;
 
-	KillUnit(nullptr, true, false);
+	KillUnit(nullptr, true, false, -CSolidObject::DAMAGE_KAMIKAZE_ACTIVATED);
 }
 
 
@@ -1237,7 +1246,7 @@ void CUnit::ApplyDamage(CUnit* attacker, const DamageArray& damages, float& base
 		// rate of paralysis-damage reduction is lower if the unit has less than
 		// maximum health to ensure stun-time is always equal to <paralyzeTime>
 		const float baseHealth = (modInfo.paralyzeOnMaxHealth? maxHealth: health);
-		const float paralysisDecayRate = baseHealth * CUnit::empDeclineRate;
+		const float paralysisDecayRate = baseHealth * globalUnitParams.empDeclineRate;
 		const float sumParalysisDamage = paralysisDecayRate * damages.paralyzeDamageTime;
 		const float maxParalysisDamage = std::max(baseHealth + sumParalysisDamage - paralyzeDamage, 0.0f);
 
@@ -1282,7 +1291,7 @@ void CUnit::DoDamage(
 		return;
 
 	float baseDamage = damages.Get(armorType);
-	float experienceMod = expMultiplier;
+	float experienceMod = globalUnitParams.expMultiplier;
 	float impulseMult = 1.0f;
 
 	const bool isCollision = (weaponDefID == -CSolidObject::DAMAGE_COLLISION_OBJECT || weaponDefID == -CSolidObject::DAMAGE_COLLISION_GROUND);
@@ -1333,7 +1342,7 @@ void CUnit::DoDamage(
 	if (health > 0.0f)
 		return;
 
-	KillUnit(attacker, false, false);
+	KillUnit(attacker, false, false, weaponDefID);
 
 	if (!isDead)
 		return;
@@ -1405,22 +1414,22 @@ void CUnit::AddExperience(float exp)
 	experience += exp;
 	limExperience = experience / (experience + 1.0f);
 
-	if (expGrade != 0.0f) {
-		const int oldGrade = (int)(oldExperience / expGrade);
-		const int newGrade = (int)(   experience / expGrade);
+	if (globalUnitParams.expGrade != 0.0f) {
+		const int oldGrade = (int)(oldExperience / globalUnitParams.expGrade);
+		const int newGrade = (int)(   experience / globalUnitParams.expGrade);
 		if (oldGrade != newGrade) {
 			eventHandler.UnitExperience(this, oldExperience);
 		}
 	}
 
-	if (expPowerScale > 0.0f)
-		power = unitDef->power * (1.0f + (limExperience * expPowerScale));
+	if (globalUnitParams.expPowerScale > 0.0f)
+		power = unitDef->power * (1.0f + (limExperience * globalUnitParams.expPowerScale));
 
-	if (expReloadScale > 0.0f)
-		reloadSpeed = (1.0f + (limExperience * expReloadScale));
+	if (globalUnitParams.expReloadScale > 0.0f)
+		reloadSpeed = (1.0f + (limExperience * globalUnitParams.expReloadScale));
 
-	if (expHealthScale > 0.0f) {
-		maxHealth = std::max(0.1f, unitDef->health * (1.0f + (limExperience * expHealthScale)));
+	if (globalUnitParams.expHealthScale > 0.0f) {
+		maxHealth = std::max(0.1f, unitDef->health * (1.0f + (limExperience * globalUnitParams.expHealthScale)));
 		health *= (maxHealth / oldMaxHealth);
 	}
 }
@@ -1924,6 +1933,22 @@ const CGroup* CUnit::GetGroup() const { return uiGroupHandlers[team].GetUnitGrou
 /******************************************************************************/
 /******************************************************************************/
 
+void CUnit::TurnIntoNanoframe()
+{
+	if (beingBuilt)
+		return;
+
+	beingBuilt = true;
+	SetStorage(0.0f);
+
+	// make sure neighbor extractors update
+	const auto extractor = dynamic_cast <CExtractorBuilding*> (this);
+	if (extractor != nullptr)
+		extractor->ResetExtraction();
+
+	eventHandler.UnitReverseBuilt(this);
+}
+
 bool CUnit::AddBuildPower(CUnit* builder, float amount)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -2034,17 +2059,8 @@ bool CUnit::AddBuildPower(CUnit* builder, float amount)
 		}
 
 		// turn reclaimee into nanoframe (even living units)
-		if ((modInfo.reclaimUnitMethod == 0) && !beingBuilt) {
-			beingBuilt = true;
-			SetStorage(0.0f);
-
-			// make sure neighbor extractors update
-			CExtractorBuilding* extractor = dynamic_cast<CExtractorBuilding*>(this);
-			if (extractor != nullptr)
-				extractor->ResetExtraction();
-
-			eventHandler.UnitReverseBuilt(this);
-		}
+		if (modInfo.reclaimUnitMethod == 0)
+			TurnIntoNanoframe();
 
 		// reduce health & resources
 		health = postHealth;
@@ -2054,7 +2070,7 @@ bool CUnit::AddBuildPower(CUnit* builder, float amount)
 		if (killMe || buildProgress <= 0.0f || health <= 0.0f) {
 			health = 0.0f;
 			buildProgress = 0.0f;
-			KillUnit(nullptr, false, true);
+			KillUnit(builder, false, true, -CSolidObject::DAMAGE_RECLAIMED);
 			return false;
 		}
 
@@ -2840,7 +2856,6 @@ short CUnit::GetTransporteeWantedHeading(const CUnit* unit) const {
 /******************************************************************************/
 /******************************************************************************/
 
-
 CR_BIND_DERIVED_POOL(CUnit, CSolidObject, , unitMemPool.allocMem, unitMemPool.freeMem)
 CR_REG_METADATA(CUnit, (
 	CR_MEMBER(unitDef),
@@ -2916,7 +2931,6 @@ CR_REG_METADATA(CUnit, (
 	CR_MEMBER(delayedWreckLevel),
 
 	CR_MEMBER(restTime),
-	CR_MEMBER(outOfMapTime),
 
 	CR_MEMBER(reloadSpeed),
 	CR_MEMBER(maxRange),
@@ -3017,6 +3031,7 @@ CR_REG_METADATA(CUnit, (
 	CR_MEMBER(iconRadius),
 
 	CR_MEMBER(stunned),
+	CR_MEMBER_UN(noGroup),
 
 //	CR_MEMBER(expMultiplier),
 //	CR_MEMBER(expPowerScale),
@@ -3034,4 +3049,14 @@ CR_BIND(CUnit::TransportedUnit,)
 CR_REG_METADATA_SUB(CUnit, TransportedUnit, (
 	CR_MEMBER(unit),
 	CR_MEMBER(piece)
+))
+
+CR_BIND(GlobalUnitParams, )
+CR_REG_METADATA(GlobalUnitParams, (
+	CR_MEMBER(empDeclineRate),
+	CR_MEMBER(expMultiplier	),
+	CR_MEMBER(expPowerScale	),
+	CR_MEMBER(expHealthScale),
+	CR_MEMBER(expReloadScale),
+	CR_MEMBER(expGrade      )
 ))

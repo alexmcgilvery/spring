@@ -5,11 +5,14 @@
 
 #include <cassert>
 #include <array>
+#include <utility>
+#include <format>
 
 #include "System/BranchPrediction.h"
 #include "lib/streflop/streflop_cond.h"
 #include "System/creg/creg_cond.h"
 #include "System/FastMath.h"
+#include "System/type2.h"
 #ifdef _MSC_VER
 #include "System/Platform/Win/win32.h"
 #endif
@@ -503,6 +506,23 @@ public:
 		return math::sqrt(dx*dx + dz*dz);
 	}
 
+	/**
+	 * @brief distance2D between float3 and float2 (only x and z)
+	 * @param f float2 to compare against
+	 * @return 2D distance between float3s
+	 *
+	 * Calculates the distance between this float3
+	 * and another float2 2-dimensionally (that is,
+	 * only using the x and z components).  Sums the
+	 * differences in the x and z components, square
+	 * root for pythagorean theorem
+	 */
+	float distance2D(const float2& f) const {
+		const float dx = x - f.x;
+		const float dz = z - f.y;
+		return math::sqrt(dx*dx + dz*dz);
+	}
+
 
 	/**
 	 * @brief SqDistance between float3s squared
@@ -595,6 +615,14 @@ public:
 		y = 0.0f; return LengthNormalize();
 	}
 
+	/**
+	 * Decomposes into normalized dir and length
+	 */
+	std::pair <float3, float> GetNormalized() const {
+		float3 copy = *this;
+		const float length = copy.LengthNormalize();
+		return {std::move(copy), length};
+	}
 
 	/**
 	 * @brief normalizes the vector using one of Normalize implementations
@@ -718,6 +746,7 @@ public:
 		y = 0.0f; return SafeANormalize();
 	}
 
+	/*
 	// Un must be Normalized()
 	float3& PickNonParallel(const float3 Un) {
 		float d2 = Un.SqLength2D();
@@ -738,7 +767,12 @@ public:
 		*this = float3(Un.z, Un.y, -Un.x); //y component of Un X (*this) is x1^2 + z1^2, which is non-zero
 		return (*this);
 	}
+	*/
 
+	// deterministically pick a non-parallel vector to the current one
+	float3 PickNonParallel() const;
+
+	bool Normalized() const { return math::fabs(1.0f - SqLength()) <= cmp_eps(); }
 	static bool CheckNaN(float c) { return (!math::isnan(c) && !math::isinf(c)); }
 
 	bool CheckNaNs() const { return (CheckNaN(x) && CheckNaN(y) && CheckNaN(z)); }
@@ -794,6 +828,10 @@ public:
 
 	static constexpr float cmp_eps() { return 1e-04f; }
 	static constexpr float nrm_eps() { return 1e-12f; }
+
+	std::string str() const {
+		return std::format("float3({:.3f}, {:.3f}, {:.3f})", x, y, z);
+	}
 
 	/**
 	 * @brief max x pos

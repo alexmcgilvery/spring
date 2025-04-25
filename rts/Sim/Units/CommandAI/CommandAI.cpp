@@ -73,9 +73,9 @@ CR_REG_METADATA(CCommandAI, (
 
 	CR_MEMBER(orderTarget),
 	CR_MEMBER(targetDied),
-	CR_MEMBER(inCommand),
 	CR_MEMBER(repeatOrders),
 	CR_MEMBER(lastSelectedCommandPage),
+	CR_MEMBER(inCommand),
 	CR_MEMBER(commandDeathDependences),
 	CR_MEMBER(targetLostTimer),
 
@@ -90,7 +90,7 @@ CCommandAI::CCommandAI():
 	owner(NULL),
 	orderTarget(0),
 	targetDied(false),
-	inCommand(false),
+	inCommand(CMD_STOP),
 	repeatOrders(false),
 	lastSelectedCommandPage(0),
 	targetLostTimer(TARGET_LOST_TIMER)
@@ -104,7 +104,7 @@ CCommandAI::CCommandAI(CUnit* owner):
 	owner(owner),
 	orderTarget(0),
 	targetDied(false),
-	inCommand(false),
+	inCommand(CMD_STOP),
 	repeatOrders(false),
 	lastSelectedCommandPage(0),
 	targetLostTimer(TARGET_LOST_TIMER)
@@ -506,9 +506,9 @@ bool CCommandAI::HandleBuildOptionInsertion(int cmdId)
 		return false;
 
 	if (auto* bcai = dynamic_cast<CBuilderCAI*>(this); bcai != nullptr)
-		bcai->buildOptions.insert(cmdId);
+		bcai->buildOptions.emplace(cmdId);
 	else if (auto* fcai = dynamic_cast<CFactoryCAI*>(this); fcai != nullptr)
-		fcai->buildOptions.insert(cmdId, 0);
+		fcai->buildOptions.emplace(cmdId, 0);
 
 	return true;
 }
@@ -640,7 +640,6 @@ bool CCommandAI::AllowedCommand(const Command& c, bool fromSynced)
 	// TODO check if the command is in the map first, for more commands
 	switch (cmdID) {
 		case CMD_MOVE:
-		case CMD_ATTACK:
 		case CMD_AREA_ATTACK:
 		case CMD_RECLAIM:
 		case CMD_REPAIR:
@@ -701,9 +700,12 @@ bool CCommandAI::AllowedCommand(const Command& c, bool fromSynced)
 
 				if (attackee == nullptr)
 					return false;
-				if (!attackee->pos.IsInBounds())
-					return false;
 			} else {
+				const bool isGroundTargeted = (c.GetNumParams() > 3 && c.GetParam(3) == 0)
+							      || c.GetNumParams() == 3;
+				if (isGroundTargeted && !IsCommandInMap(c))
+					return false; // don't allow direct ground attack out of map
+
 				AdjustGroundAttackCommand(c, fromSynced, aiOrder);
 			}
 		} break;
@@ -717,13 +719,7 @@ bool CCommandAI::AllowedCommand(const Command& c, bool fromSynced)
 				return false;
 		} break;
 		case CMD_GUARD: {
-			const CUnit* guardee = GetCommandUnit(c, 0);
-
 			if (!ud->canGuard)
-				return false;
-			if (owner && !owner->pos.IsInBounds())
-				return false;
-			if (guardee && !guardee->pos.IsInBounds())
 				return false;
 		} break;
 
@@ -1011,7 +1007,7 @@ void CCommandAI::GiveAllowedCommand(const Command& c, bool fromSynced)
 		commandQue.clear();
 		assert(commandQue.empty());
 
-		inCommand = false;
+		inCommand = CMD_STOP;
 	}
 
 	AddCommandDependency(c);
@@ -1099,7 +1095,7 @@ void CCommandAI::GiveWaitCommand(const Command& c)
 		owner->DropCurrentAttackTarget();
 		StopMove();
 
-		inCommand = false;
+		inCommand = CMD_STOP;
 		targetDied = false;
 
 		commandQue.push_front(c);
@@ -1198,7 +1194,7 @@ void CCommandAI::ExecuteInsert(const Command& c, bool fromSynced)
 
 	// shutdown the current order if the insertion is at the beginning
 	if (!queue->empty() && (insertIt == queue->begin())) {
-		inCommand = false;
+		inCommand = CMD_STOP;
 		targetDied = false;
 
 		SetOrderTarget(nullptr);
@@ -1495,7 +1491,7 @@ void CCommandAI::ExecuteAttack(Command& c)
 	RECOIL_DETAILED_TRACY_ZONE;
 	assert(owner->unitDef->canAttack);
 
-	if (inCommand) {
+	if (inCommand == CMD_ATTACK) {
 		if (targetDied || (c.GetNumParams() == 1 && UpdateTargetLostTimer(int(c.GetParam(0))) == 0)) {
 			FinishCommand();
 			return;
@@ -1523,10 +1519,10 @@ void CCommandAI::ExecuteAttack(Command& c)
 
 			SetOrderTarget(targetUnit);
 			owner->AttackUnit(targetUnit, !c.IsInternalOrder(), c.GetID() == CMD_MANUALFIRE);
-			inCommand = true;
+			inCommand = CMD_ATTACK;
 		} else {
 			owner->AttackGround(c.GetPos(0), !c.IsInternalOrder(), c.GetID() == CMD_MANUALFIRE);
-			inCommand = true;
+			inCommand = CMD_ATTACK;
 		}
 	}
 }
@@ -1676,7 +1672,7 @@ void CCommandAI::FinishCommand()
 
 	commandQue.pop_front();
 
-	inCommand = false;
+	inCommand = CMD_STOP;
 	targetDied = false;
 
 	SetOrderTarget(nullptr);
@@ -1744,10 +1740,10 @@ void CCommandAI::UpdateStockpileIcon()
 	}
 }
 
-void CCommandAI::WeaponFired(CWeapon* weapon, const bool searchForNewTarget)
+void CCommandAI::WeaponFired(CWeapon* weapon, const bool searchForNewTarget, bool raiseEvent)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
-	if (!inCommand || commandQue.empty())
+	if (inCommand != CMD_ATTACK || commandQue.empty())
 		return;
 
 	const Command& c = commandQue.front();
@@ -1786,7 +1782,8 @@ void CCommandAI::WeaponFired(CWeapon* weapon, const bool searchForNewTarget)
 	// if this fails, we need to take a copy at top instead of a reference
 	assert(&c == &commandQue.front());
 
-	eoh->WeaponFired(*owner, *(weapon->weaponDef));
+	if (raiseEvent)
+		eoh->WeaponFired(*owner, *(weapon->weaponDef));
 
 	if (!orderFinished)
 		return;

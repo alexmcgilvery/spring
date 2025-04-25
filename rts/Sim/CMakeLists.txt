@@ -38,6 +38,7 @@ add_library(engineSim STATIC
 		"${CMAKE_CURRENT_SOURCE_DIR}/Misc/TeamHandler.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Misc/TeamStatistics.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Misc/Wind.cpp"
+		"${CMAKE_CURRENT_SOURCE_DIR}/Misc/YardmapStatusEffectsMap.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/MoveTypes/AAirMoveType.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/MoveTypes/StrafeAirMoveType.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/MoveTypes/GroundMoveType.cpp"
@@ -109,6 +110,7 @@ add_library(engineSim STATIC
 		"${CMAKE_CURRENT_SOURCE_DIR}/Units/CommandAI/CommandDescription.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Units/CommandAI/FactoryCAI.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Units/CommandAI/MobileCAI.cpp"
+		"${CMAKE_CURRENT_SOURCE_DIR}/Units/CommandAI/BuilderCaches.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Units/Scripts/CobEngine.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Units/Scripts/CobFile.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Units/Scripts/CobFileHandler.cpp"
@@ -153,9 +155,7 @@ add_library(engineSim STATIC
 		"${CMAKE_CURRENT_SOURCE_DIR}/Weapons/WeaponTarget.cpp"
 	)
 
-target_include_directories(engineSim
-	PRIVATE ${GLEW_INCLUDE_DIR} ${SDL2_INCLUDE_DIR})
-target_link_libraries(engineSim Tracy::TracyClient)
+target_link_libraries(engineSim SDL2::SDL2 Tracy::TracyClient)
 
 if( CMAKE_COMPILER_IS_GNUCXX)
 	# FIXME: hack to avoid linkers to remove not referenced symbols. required because of

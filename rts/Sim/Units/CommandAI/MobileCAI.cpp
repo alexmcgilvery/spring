@@ -15,6 +15,7 @@
 #include "Sim/MoveTypes/AAirMoveType.h"
 #include "Sim/MoveTypes/HoverAirMoveType.h"
 #include "Sim/MoveTypes/MoveDefHandler.h"
+#include "Sim/MoveTypes/MoveMath/MoveMath.h"
 #include "Sim/Units/UnitDef.h"
 #include "Sim/Units/Unit.h"
 #include "Sim/Units/UnitHandler.h"
@@ -439,8 +440,8 @@ void CMobileCAI::ExecuteLoadOnto(Command& c) {
 		return;
 	}
 
-	if (!inCommand) {
-		inCommand = true;
+	if (inCommand == CMD_STOP) {
+		inCommand = CMD_LOAD_UNITS;
 		// order transport to load <owner> before resuming its own queue
 		transport->commandAI->commandQue.push_front(Command(CMD_LOAD_UNITS, INTERNAL_ORDER | SHIFT_KEY, owner->id));
 	}
@@ -498,7 +499,7 @@ void CMobileCAI::ExecuteFight(Command& c)
 			if ((newTarget != nullptr) && w->Attack(SWeaponTarget(newTarget, false))) {
 				c.SetParam(0, newTarget->id);
 
-				inCommand = false;
+				inCommand = CMD_STOP;
 			}
 		}
 
@@ -507,7 +508,7 @@ void CMobileCAI::ExecuteFight(Command& c)
 	}
 
 	if (tempOrder) {
-		inCommand = true;
+		inCommand = CMD_FIGHT;
 		tempOrder = false;
 	}
 	if (c.GetNumParams() < 3) {
@@ -515,7 +516,7 @@ void CMobileCAI::ExecuteFight(Command& c)
 		return;
 	}
 	if (c.GetNumParams() >= 6) {
-		if (!inCommand)
+		if (inCommand == CMD_STOP)
 			commandPos1 = c.GetPos(3);
 
 	} else {
@@ -532,8 +533,8 @@ void CMobileCAI::ExecuteFight(Command& c)
 
 	float3 cmdPos = c.GetPos(0);
 
-	if (!inCommand) {
-		inCommand = true;
+	if (inCommand == CMD_STOP) {
+		inCommand = CMD_FIGHT;
 		commandPos2 = cmdPos;
 		lastUserGoal = commandPos2;
 	}
@@ -555,7 +556,7 @@ void CMobileCAI::ExecuteFight(Command& c)
 			// NOTE: see AirCAI::ExecuteFight why we do not set INTERNAL_ORDER
 			commandQue.push_front(Command(CMD_ATTACK, c.GetOpts(), enemy->id));
 
-			inCommand = false;
+			inCommand = CMD_STOP;
 			tempOrder = true;
 
 			if (lastCommandFrame == gs->frameNum)
@@ -618,10 +619,6 @@ void CMobileCAI::ExecuteGuard(Command& c)
 		return;
 	}
 	if (UpdateTargetLostTimer(guardee->id) == 0) {
-		StopMoveAndFinishCommand();
-		return;
-	}
-	if (guardee->outOfMapTime > (GAME_SPEED * 5)) {
 		StopMoveAndFinishCommand();
 		return;
 	}
@@ -867,7 +864,7 @@ void CMobileCAI::ExecuteAttack(Command& c)
 		}
 	}
 
-	if (!inCommand) {
+	if (inCommand == CMD_STOP) {
 		switch (c.GetNumParams()) {
 			case 0: {
 			} break;
@@ -897,7 +894,7 @@ void CMobileCAI::ExecuteAttack(Command& c)
 				SetOrderTarget(targetUnit);
 				owner->AttackUnit(targetUnit, !c.IsInternalOrder(), c.GetID() == CMD_MANUALFIRE);
 
-				inCommand = true;
+				inCommand = CMD_ATTACK;
 			} break;
 
 			case 2: {
@@ -907,7 +904,7 @@ void CMobileCAI::ExecuteAttack(Command& c)
 				// user gave force-fire attack command
 				SetGoal(c.GetPos(0), owner->pos);
 
-				inCommand = true;
+				inCommand = CMD_ATTACK;
 			} break;
 		}
 	}
@@ -1050,6 +1047,12 @@ void CMobileCAI::NonMoving()
 	// increase the target distance if continuing to fail to clear
 	float targetDistance = buggerOffRadius + owner->radius * (1.0f + 0.4f * buggerOffAttempts);
 
+	MoveTypes::CheckCollisionQuery colliderInfo(owner);
+	const bool isSubmersible = (owner->moveDef->isSubmarine ||
+								(owner->moveDef->followGround && owner->moveDef->depth > owner->moveDef->height));
+	if (!isSubmersible)
+		colliderInfo.DisableHeightChecks();
+
 	if (buggerOffAttempts < 4) {
 		// head in the opposite direction of the center. since the buggeroff is a circle,
 		// this is the shortest distance out. future optimization would be to make rectangular buggerOffs
@@ -1064,7 +1067,13 @@ void CMobileCAI::NonMoving()
 		constexpr float3 rotation45deg = {0.7071067811865475, 0, 0.7071067811865475};
 		for (int i = 0; i < 10; i++) {
 			buggerPos = buggerOffPos + buggerDirection * targetDistance;
-			if (owner->moveDef->TestMoveSquare(nullptr, buggerPos, buggerVec) && buggerPos.IsInMap()) {
+
+			// Height affects whether units in water collide or not, so the new y positions need
+			// to be considered or else we will get incorrect results.
+			if (isSubmersible)
+				colliderInfo.UpdateElevationForPos(buggerPos);
+
+			if (owner->moveDef->TestMoveSquare(colliderInfo, buggerPos, buggerVec) && buggerPos.IsInMap()) {
 				break;
 			}
 			if (i == 0) {
@@ -1344,7 +1353,7 @@ void CMobileCAI::ExecuteLoadUnits(Command& c)
 				}
 			}
 
-			if (inCommand) {
+			if (inCommand == CMD_LOAD_UNITS) {
 				if (!owner->script->IsBusy())
 					StopMoveAndFinishCommand();
 
@@ -1411,7 +1420,7 @@ void CMobileCAI::ExecuteLoadUnits(Command& c)
 						if (!eventHandler.AllowUnitTransportLoad(owner, unit, wantedPos, true))
 							return;
 
-						inCommand = true;
+						inCommand = CMD_LOAD_UNITS;
 
 						StopMove();
 						owner->script->TransportPickup(unit);
@@ -1444,7 +1453,7 @@ void CMobileCAI::ExecuteLoadUnits(Command& c)
 
 			if (unit != nullptr && owner->CanTransport(unit)) {
 				commandQue.push_front(Command(CMD_LOAD_UNITS, c.GetOpts() | INTERNAL_ORDER, unit->id));
-				inCommand = false;
+				inCommand = CMD_STOP;
 
 				SlowUpdate();
 				return;
@@ -1494,7 +1503,7 @@ void CMobileCAI::ExecuteUnloadUnits(Command& c)
 void CMobileCAI::ExecuteUnloadUnit(Command& c)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
-	if (inCommand) {
+	if (inCommand == CMD_UNLOAD_UNIT) {
 		if (!owner->script->IsBusy())
 			StopMoveAndFinishCommand();
 
@@ -1874,12 +1883,26 @@ void CMobileCAI::UnloadUnits_LandFlood(Command& c)
 	StopMoveAndFinishCommand();
 }
 
+static constexpr CUnit* GetTransporteeFromUnloadOrder(const Command& c, const auto &transportees)
+{
+	if (transportees.empty())
+		return nullptr;
+
+	if (c.GetNumParams() < 4)
+		return transportees[0].unit;
+
+	const int transporteeID = c.GetParam(3);
+	for (const auto &transportee : transportees)
+		if (transportee.unit->id == transporteeID)
+			return transportee.unit;
+
+	return nullptr;
+}
 
 void CMobileCAI::UnloadLand(Command& c)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
 	// default unload
-	CUnit* transportee = nullptr;
 	CHoverAirMoveType* am = nullptr;
 
 	float3 wantedPos = c.GetPos(0);
@@ -1888,25 +1911,10 @@ void CMobileCAI::UnloadLand(Command& c)
 
 	SetGoal(wantedPos, owner->pos);
 
-	if (c.GetNumParams() < 4) {
-		// unload the first transportee
-		transportee = transportees[0].unit;
-	} else {
-		const int unitID = c.GetParam(3);
-
-		// unload a specific transportee
-		for (const CUnit::TransportedUnit& tu: transportees) {
-			CUnit* carried = tu.unit;
-
-			if (unitID == carried->id) {
-				transportee = carried;
-				break;
-			}
-		}
-		if (transportee == nullptr) {
-			StopMoveAndFinishCommand();
-			return;
-		}
+	const auto transportee = GetTransporteeFromUnloadOrder(c, transportees);
+	if (transportee == nullptr) {
+		StopMoveAndFinishCommand(); // FIXME: UnloadLandFlood() has just FinishCommand here, is the difference meaningful?
+		return;
 	}
 
 	if (wantedPos.SqDistance2D(owner->pos) >= Square(owner->unitDef->loadingRadius * 0.9f))
@@ -1918,7 +1926,7 @@ void CMobileCAI::UnloadLand(Command& c)
 		if (!eventHandler.AllowUnitTransportUnload(owner, transportee, wantedPos, true))
 			return;
 
-		inCommand = true;
+		inCommand = CMD_UNLOAD_UNIT;
 
 		StopMove();
 		owner->script->TransportDrop(transportee, wantedPos);
@@ -1999,7 +2007,7 @@ void CMobileCAI::UnloadDrop(Command& c)
 			FinishCommand();
 		}
 	} else {
-		inCommand = true;
+		inCommand = CMD_UNLOAD_UNIT;
 
 		StopMove();
 		owner->script->TransportDrop(transportee, pos);
@@ -2011,7 +2019,6 @@ void CMobileCAI::UnloadLandFlood(Command& c)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
 	// land, then release all units at once
-	CUnit* transportee = nullptr;
 
 	float3 wantedPos = c.GetPos(0);
 
@@ -2019,23 +2026,10 @@ void CMobileCAI::UnloadLandFlood(Command& c)
 
 	SetGoal(wantedPos, owner->pos);
 
-	if (c.GetNumParams() < 4) {
-		transportee = transportees[0].unit;
-	} else {
-		const int unitID = c.GetParam(3);
-
-		for (const CUnit::TransportedUnit& tu: transportees) {
-			CUnit* carried = tu.unit;
-
-			if (unitID == carried->id) {
-				transportee = carried;
-				break;
-			}
-		}
-		if (transportee == nullptr) {
-			FinishCommand();
-			return;
-		}
+	const auto transportee = GetTransporteeFromUnloadOrder(c, transportees);
+	if (transportee == nullptr) {
+		FinishCommand(); // FIXME: UnloadLand() has StopMoveAndFinishCommand here, is the difference meaningful?
+		return;
 	}
 
 	if (wantedPos.SqDistance2D(owner->pos) < Square(owner->unitDef->loadingRadius * 0.9f)) {
@@ -2069,7 +2063,7 @@ void CMobileCAI::UnloadLandFlood(Command& c)
 			}
 		} else {
 			// land transports
-			inCommand = true;
+			inCommand = CMD_UNLOAD_UNIT;
 
 			StopMove();
 			owner->script->TransportDrop(transportee, wantedPos);

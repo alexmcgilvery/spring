@@ -2,6 +2,7 @@
 
 #include "GuiHandler.h"
 
+#include <Rml/Backends/RmlUi_Backend.h>
 #include "CommandColors.h"
 #include "KeyBindings.h"
 #include "KeyCodes.h"
@@ -84,7 +85,7 @@ CGuiHandler::CGuiHandler()
 	autoShowMetal = mapInfo->gui.autoShowMetal;
 	useStencil = false;
 
-	if (GLEW_ARB_depth_clamp) {
+	if (GLAD_GL_ARB_depth_clamp) {
 		GLint stencilBits;
 		glGetIntegerv(GL_STENCIL_BITS, &stencilBits);
 		useStencil = (stencilBits >= 1);
@@ -174,6 +175,7 @@ bool CGuiHandler::EnableLuaUI(bool enableCommand)
 		}
 	}
 
+	RmlGui::Reload();
 	CLuaUI::ReloadHandler();
 
 	if (luaUI != nullptr) {
@@ -540,6 +542,7 @@ void CGuiHandler::RevertToCmdDesc(const SCommandDescription& cmdDesc,
                                   bool defaultCommand, bool samePage)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
+	int newInCommand = inCommand;
 	for (size_t a = 0; a < commands.size(); ++a) {
 		if (commands[a].id != cmdDesc.id)
 			continue;
@@ -549,26 +552,20 @@ void CGuiHandler::RevertToCmdDesc(const SCommandDescription& cmdDesc,
 			return;
 		}
 
-		inCommand = a;
-
-		if (commands[a].type == CMDTYPE_ICON_BUILDING) {
-			const UnitDef* ud = unitDefHandler->GetUnitDefByID(-commands[a].id);
-			SetShowingMetal(ud->extractsMetal > 0);
-		} else {
-			SetShowingMetal(false);
-		}
+		newInCommand = a;
 
 		if (!samePage)
 			continue;
 
 		for (int ii = 0; ii < iconsCount; ii++) {
-			if (inCommand != icons[ii].commandsID)
+			if (newInCommand != icons[ii].commandsID)
 				continue;
 
 			activePage = std::min(maxPage, (ii / iconsPerPage));
 			selectedUnitsHandler.SetCommandPage(activePage);
 		}
 	}
+	SetActiveCommandIndex(newInCommand);
 }
 
 
@@ -596,7 +593,7 @@ void CGuiHandler::LayoutIcons(bool useSelectionPage)
 		useSelectionPage = useSelectionPage && !samePage;
 
 		// reset some of our state
-		inCommand = -1;
+		SetActiveCommandIndex(-1);
 		defaultCmdMemory = -1;
 		forceLayoutUpdate = false;
 
@@ -1013,21 +1010,31 @@ void CGuiHandler::ConvertCommands(std::vector<SCommandDescription>& cmds)
 }
 
 
-void CGuiHandler::SetShowingMetal(bool show)
+void CGuiHandler::SetShowingMetal(const SCommandDescription* cmdDesc)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
-	if (!show) {
-		if (showingMetal) {
-			infoTextureHandler->DisableCurrentMode();
-			showingMetal = false;
-		}
-	} else {
-		if (autoShowMetal) {
-			if (infoTextureHandler->GetMode() != "metal") {
-				infoTextureHandler->SetMode("metal");
-				showingMetal = true;
-			}
-		}
+	if (!autoShowMetal) {
+		return;
+	}
+
+	LOG_DEPRECATED("AutoShowMetal is deprecated. Please enable manually from lua instead (see https://github.com/beyond-all-reason/spring/issues/1092).");
+
+	bool show = false;
+	if (cmdDesc == nullptr)
+		show = false;
+	else if (cmdDesc->type == CMDTYPE_ICON_BUILDING) {
+		const UnitDef* ud = unitDefHandler->GetUnitDefByID(-cmdDesc->id);
+		show = ud && ud->extractsMetal > 0;
+	}
+
+	const bool showingMetal = infoTextureHandler->GetMode() == "metal";
+	if (showingMetal && !show)
+	{
+		infoTextureHandler->DisableCurrentMode();
+	}
+	else if (!showingMetal && show)
+	{
+		infoTextureHandler->SetMode("metal");
 	}
 }
 
@@ -1039,8 +1046,7 @@ void CGuiHandler::Update()
 
 	{
 		if (!invertQueueKey && (needShift && !KeyInput::GetKeyModState(KMOD_SHIFT))) {
-			SetShowingMetal(false);
-			inCommand = -1;
+			SetActiveCommandIndex(-1);
 			needShift = false;
 		}
 	}
@@ -1048,7 +1054,7 @@ void CGuiHandler::Update()
 	GiveCommandsNow();
 
 	if (selectedUnitsHandler.CommandsChanged()) {
-		SetShowingMetal(false);
+		// should we set active command index here?
 		LayoutIcons(true);
 		return;
 	}
@@ -1213,7 +1219,7 @@ bool CGuiHandler::MousePress(int x, int y, int button)
 				}
 			}
 			if (button == SDL_BUTTON_RIGHT)
-				inCommand = defaultCmdMemory = -1;
+				SetActiveCommandIndex(defaultCmdMemory = -1);
 			return true;
 		}
 		else if (minimap && minimap->IsAbove(x, y)) {
@@ -1223,8 +1229,7 @@ bool CGuiHandler::MousePress(int x, int y, int button)
 		if (inCommand >= 0) {
 			if (invertQueueKey && (button == SDL_BUTTON_RIGHT) &&
 				!mouse->buttons[SDL_BUTTON_LEFT].pressed) { // for rocker gestures
-					SetShowingMetal(false);
-					inCommand = -1;
+					SetActiveCommandIndex(-1);
 					needShift = false;
 					return false;
 			}
@@ -1260,8 +1265,7 @@ void CGuiHandler::MouseRelease(int x, int y, int button, const float3& cameraPos
 	}
 
 	if (!invertQueueKey && needShift && !KeyInput::GetKeyModState(KMOD_SHIFT)) {
-		SetShowingMetal(false);
-		inCommand = -1;
+		SetActiveCommandIndex(-1);
 		needShift = false;
 	}
 
@@ -1280,7 +1284,7 @@ void CGuiHandler::MouseRelease(int x, int y, int button, const float3& cameraPos
 
 	if ((button == SDL_BUTTON_RIGHT) && (iconCmd == -1)) {
 		// right click -> set the default cmd
-		inCommand = defaultCmdMemory;
+		SetActiveCommandIndex(defaultCmdMemory);
 		defaultCmdMemory = -1;
 	}
 
@@ -1318,11 +1322,10 @@ bool CGuiHandler::SetActiveCommand(int cmdIndex, bool rightMouseButton)
 
 	if (cmdIndex < 0) {
 		// cancel the current command
-		inCommand = -1;
 		defaultCmdMemory = -1;
 		needShift = false;
 		activeMousePress = false;
-		SetShowingMetal(false);
+		SetActiveCommandIndex(-1);
 		return true;
 	}
 
@@ -1368,15 +1371,12 @@ bool CGuiHandler::SetActiveCommand(int cmdIndex, bool rightMouseButton)
 		case CMDTYPE_ICON_UNIT_OR_AREA:
 		case CMDTYPE_ICON_UNIT_OR_RECTANGLE:
 		case CMDTYPE_ICON_UNIT_FEATURE_OR_AREA: {
-			inCommand = cmdIndex;
-			SetShowingMetal(false);
+			SetActiveCommandIndex(cmdIndex);
 			activeMousePress = false;
 			break;
 		}
 		case CMDTYPE_ICON_BUILDING: {
-			const UnitDef* ud = unitDefHandler->GetUnitDefByID(-cd.id);
-			inCommand = cmdIndex;
-			SetShowingMetal(ud->extractsMetal > 0);
+			SetActiveCommandIndex(cmdIndex);
 			activeMousePress = false;
 			break;
 		}
@@ -1446,6 +1446,20 @@ bool CGuiHandler::SetActiveCommand(int cmdIndex, int button,
 	return retval;
 }
 
+void CGuiHandler::SetActiveCommandIndex(int newIndex)
+{
+	if (inCommand != newIndex) {
+		inCommand = newIndex;
+		if (inCommand < commands.size()) {
+			SetShowingMetal(&commands[inCommand]);
+			eventHandler.ActiveCommandChanged(&commands[inCommand]);
+		} else {
+			SetShowingMetal(nullptr);
+			eventHandler.ActiveCommandChanged(nullptr);
+		}
+
+	}
+}
 
 int CGuiHandler::IconAtPos(int x, int y) // GetToolTip --> IconAtPos
 {
@@ -1839,13 +1853,11 @@ bool CGuiHandler::KeyPressed(int keyCode, int scanCode, bool isRepeat)
 	RECOIL_DETAILED_TRACY_ZONE;
 	if (keyCode == SDLK_ESCAPE && activeMousePress) {
 		activeMousePress = false;
-		inCommand = -1;
-		SetShowingMetal(false);
+		SetActiveCommandIndex(-1);
 		return true;
 	}
 	if (keyCode == SDLK_ESCAPE && inCommand >= 0) {
-		inCommand=-1;
-		SetShowingMetal(false);
+		SetActiveCommandIndex(-1);
 		return true;
 	}
 
@@ -1889,6 +1901,8 @@ bool CGuiHandler::SetActiveCommand(const Action& action,
 	if (ProcessLocalActions(action)) {
 		return true;
 	}
+
+	int newInCommand = inCommand;
 
 	// See if we have a positional icon command
 	int iconCmd = -1;
@@ -2004,18 +2018,15 @@ bool CGuiHandler::SetActiveCommand(const Action& action,
 			case CMDTYPE_ICON_UNIT_OR_AREA:
 			case CMDTYPE_ICON_UNIT_OR_RECTANGLE:
 			case CMDTYPE_ICON_UNIT_FEATURE_OR_AREA: {
-				SetShowingMetal(false);
 				actionOffset = actionIndex;
 				lastKeySet = ks;
-				inCommand = a;
+				newInCommand = a;
 				break;
 			}
 			case CMDTYPE_ICON_BUILDING: {
-				const UnitDef* ud=unitDefHandler->GetUnitDefByID(-cmdDesc.id);
-				SetShowingMetal(ud->extractsMetal > 0);
 				actionOffset = actionIndex;
 				lastKeySet = ks;
-				inCommand = a;
+				newInCommand = a;
 				break;
 			}
 			case CMDTYPE_NEXT: {
@@ -2038,10 +2049,10 @@ bool CGuiHandler::SetActiveCommand(const Action& action,
 			}
 			default:{
 				lastKeySet.Reset();
-				SetShowingMetal(false);
-				inCommand = a;
+				newInCommand = a;
 			}
 		}
+		SetActiveCommandIndex(newInCommand);
 		return true; // we used the command
 	}
 
@@ -2060,8 +2071,7 @@ void CGuiHandler::FinishCommand(int button)
 	if ((button == SDL_BUTTON_LEFT) && (KeyInput::GetKeyModState(KMOD_SHIFT) || invertQueueKey)) {
 		needShift = true;
 	} else {
-		SetShowingMetal(false);
-		inCommand = -1;
+		SetActiveCommandIndex(-1);
 	}
 }
 
@@ -2183,7 +2193,7 @@ Command CGuiHandler::GetCommand(int mouseX, int mouseY, int buttonHint, bool pre
 
 	if (size_t(tempInCommand) >= commands.size()) {
 		if (!preview)
-			inCommand = -1;
+			SetActiveCommandIndex(-1);
 
 		return Command(CMD_STOP);
 	}
@@ -2374,8 +2384,11 @@ Command CGuiHandler::GetCommand(int mouseX, int mouseY, int buttonHint, bool pre
 				const float3 camTraceDir = mouse->buttons[button].dir;
 
 				const float traceDist = camera->GetFarPlaneDist() * 1.4f;
-				const float innerDist = CGround::LineGroundCol(camTracePos, camTracePos + camTraceDir * traceDist, false);
-				      float outerDist = -1.0f;
+				float innerDist = CGround::LineGroundCol(camTracePos, camTracePos + camTraceDir * traceDist, false);
+				float outerDist = -1.0f;
+
+				if (innerDist < 0.0f) // in case area center is out of map
+					innerDist = CGround::LinePlaneCol(camTracePos, camTraceDir, traceDist, CGround::GetWaterPlaneLevel());
 
 				if (innerDist < 0.0f)
 					return defaultRet;
@@ -2877,7 +2890,7 @@ bool CGuiHandler::DrawTexture(const IconInfo& icon, const std::string& texName)
 	if (!BindTextureString(tex2))
 		return false;
 
-	assert(xscale<=0.5); //border >= 50% makes no sence
+	assert(xscale<=0.5); //border >= 50% makes no sense
 	assert(yscale<=0.5);
 
 	// calculate the scaled quad
@@ -3590,8 +3603,11 @@ void CGuiHandler::DrawMapStuff(bool onMiniMap)
 						const float3 camTraceDir = mouse->buttons[button].dir;
 
 						const float traceDist = camera->GetFarPlaneDist() * 1.4f;
-						const float innerDist = CGround::LineGroundCol(camTracePos, camTracePos + camTraceDir * traceDist, false);
-						      float outerDist = -1.0f;
+						float innerDist = CGround::LineGroundCol(camTracePos, camTracePos + camTraceDir * traceDist, false);
+						float outerDist = -1.0f;
+
+						if (innerDist < 0.0f) // in case area center is out of map
+							innerDist = CGround::LinePlaneCol(camTracePos, camTraceDir, traceDist, CGround::GetWaterPlaneLevel());
 
 						if (innerDist < 0.0f)
 							break;
@@ -3723,17 +3739,14 @@ void CGuiHandler::DrawMapStuff(bool onMiniMap)
 				glEnable(GL_DEPTH_TEST);
 			}
 			// draw decloak distance
-			if (unit->decloakDistance > 0.0f) {
-				glColor4fv(cmdColors.rangeDecloak);
-				if (unit->unitDef->decloakSpherical && globalRendering->drawDebug) {
-					glPushMatrix();
-					glTranslatef(unit->midPos.x, unit->midPos.y, unit->midPos.z);
-					glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
-					GLUquadricObj* q = gluNewQuadric();
-					gluQuadricDrawStyle(q, GLU_LINE);
-					gluSphere(q, unit->decloakDistance, 10, 10);
-					gluDeleteQuadric(q);
-					glPopMatrix();
+			if (pointeeUnit->decloakDistance > 0.0f) {
+				if (pointeeUnit->unitDef->decloakSpherical && globalRendering->drawDebug) {
+					CMatrix44f mat;
+					mat.Translate(unit->midPos);
+					mat.RotateX(90.0f * math::DEG_TO_RAD);
+					mat.Scale(OnesVector * pointeeUnit->decloakDistance);
+
+					GL::shapes.DrawWireSphere(16, 16, mat, cmdColors.rangeDecloak);
 				} else { // cylindrical
 					glSurfaceCircle(unit->pos, unit->decloakDistance, { cmdColors.rangeDecloak }, 40);
 				}
@@ -3796,14 +3809,10 @@ void CGuiHandler::DrawMapStuff(bool onMiniMap)
 					const float3 bPos = bp.camPos + bp.dir * bpDist;
 					const BuildInfo cInfo = BuildInfo(buildeeDef, cPos, buildFacing);
 					const BuildInfo bInfo = BuildInfo(buildeeDef, bPos, buildFacing);
-
-					buildColors.clear();
-					buildColors.reserve(GetBuildPositions(bInfo, cInfo, tracePos, traceDir));
+					GetBuildPositions(bInfo, cInfo, tracePos, traceDir);
 				} else {
 					const BuildInfo bi(buildeeDef, cPos, buildFacing);
-
-					buildColors.clear();
-					buildColors.reserve(GetBuildPositions(bi, bi, tracePos, traceDir));
+					GetBuildPositions(bi, bi, tracePos, traceDir);
 				}
 
 

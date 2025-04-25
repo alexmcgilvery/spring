@@ -16,7 +16,6 @@
 #include "Map/ReadMap.h"
 #include "Map/SMF/SMFReadMap.h"
 #include "Map/SMF/SMFGroundDrawer.h"
-#include "Map/HeightMapTexture.h"
 #include "newRendering/GlobalRendering.h"
 #include "Rendering/ShadowHandler.h"
 #include "Rendering/Units/UnitDrawer.h"
@@ -67,13 +66,6 @@ CR_REG_METADATA_SUB(CGroundDecalHandler, UnitMinMaxHeight,
 (
 	CR_MEMBER(min),
 	CR_MEMBER(max)
-))
-
-CR_BIND(CGroundDecalHandler::DecalUpdateList, )
-CR_REG_METADATA_SUB(CGroundDecalHandler, DecalUpdateList,
-(
-	CR_MEMBER(updateList),
-	CR_MEMBER(changed)
 ))
 
 CR_BIND_DERIVED(CGroundDecalHandler, IGroundDecalDrawer, )
@@ -130,7 +122,7 @@ CGroundDecalHandler::CGroundDecalHandler()
 
 	instVBO = VBO(GL_ARRAY_BUFFER, false, false);
 
-	decals.reserve(decalLevel * 16384);
+	decals.reserve(1 << 16);
 	decalsUpdateList.Reserve(decals.capacity());
 
 	nextId = 0;
@@ -500,7 +492,7 @@ void CGroundDecalHandler::BindCommonTextures()
 	glBindTexture(GL_TEXTURE_2D, smfMap->GetMiniMapTexture());
 
 	glActiveTexture(GL_TEXTURE3);
-	glBindTexture(GL_TEXTURE_2D, heightMapTexture->GetTextureID());
+	glBindTexture(GL_TEXTURE_2D, smfMap->GetHeightMapTexture());
 
 	glActiveTexture(GL_TEXTURE4);
 	glBindTexture(GetDepthBufferTextureTarget(), depthBufferCopy->GetDepthBufferTexture(highQuality));
@@ -610,15 +602,15 @@ void CGroundDecalHandler::AddExplosion(AddExplosionInfo&& ei)
 		std::clamp(2.0f * ei.damage / 255.0f, 0.8f, 1.0f);
 
 	const float scarTTL = (vi.scarTtl > 0.0f) ?
-		decalLevel * GAME_SPEED * vi.scarTtl :
-		std::clamp(decalLevel * ei.damage * 3.0f, 15.0f, decalLevel * 1800.0f);
+		GAME_SPEED * vi.scarTtl :
+		std::clamp(DECAL_LEVEL_MULT * 3.0f * ei.damage, 15.0f, DECAL_LEVEL_MULT * 1800.0f);
 
 	const float glow = (vi.scarGlow > 0.0f) ?
 		vi.scarGlow :
 		std::clamp(2.0f * ei.damage / 255.0f, 0.0f, 1.0f);
 
 	const float glowTTL = (vi.scarGlowTtl > 0.0f) ?
-		decalLevel * GAME_SPEED * vi.scarGlowTtl :
+		GAME_SPEED * vi.scarGlowTtl :
 		60.0f;
 
 	const float alphaDecay = 1.0f / scarTTL;
@@ -691,10 +683,10 @@ void CGroundDecalHandler::AddExplosion(AddExplosionInfo&& ei)
 
 	if (vi.scarGlowColorMap && !vi.scarGlowColorMap->Empty()) {
 		auto idcs = vi.scarGlowColorMap->GetIndices(0.0f);
-		idToCmInfo.emplace(decal.info.id, std::make_tuple(vi.scarGlowColorMap, idcs));
+		idToCmInfo[decal.info.id] = std::make_tuple(vi.scarGlowColorMap, idcs);
 	}
 
-	idToPos.emplace(decal.info.id, decals.size() - 1);
+	idToPos[decal.info.id] = decals.size() - 1;
 	decalsUpdateList.EmplaceBackUpdate();
 }
 
@@ -809,6 +801,7 @@ void CGroundDecalHandler::Draw()
 
 	auto state = GL::SubState(
 		SampleShading(highQuality ? GL_TRUE : GL_FALSE),
+		MinSampleShading(1.0f),
 		Blending(GL_TRUE),
 		BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA),
 		DepthMask(GL_FALSE),
@@ -921,8 +914,8 @@ void CGroundDecalHandler::MoveSolidObject(const CSolidObject* object, const floa
 	});
 
 	decalsUpdateList.EmplaceBackUpdate();
-	idToPos.emplace(decal.info.id, decals.size() - 1);
-	decalOwners.emplace(object, decals.size() - 1);
+	idToPos[decal.info.id] = decals.size() - 1;
+	decalOwners[object] = decals.size() - 1;
 }
 
 void CGroundDecalHandler::RemoveSolidObject(const CSolidObject* object, const GhostSolidObject* gb)
@@ -1021,7 +1014,7 @@ uint32_t CGroundDecalHandler::CreateLuaDecal()
 		.glowColorMap = { SColor{0.0f, 0.0f, 0.0f, 0.0f}, SColor{0.0f, 0.0f, 0.0f, 0.0f} }
 	});
 	decalsUpdateList.EmplaceBackUpdate();
-	idToPos.emplace(decal.info.id, decals.size() - 1);
+	idToPos[decal.info.id] = decals.size() - 1;
 
 	return decal.info.id;
 }
@@ -1042,7 +1035,6 @@ bool CGroundDecalHandler::DeleteLuaDecal(uint32_t id)
 
 	decal.MarkInvalid();
 	decalsUpdateList.SetUpdate(it->second);
-	freeIds.push_back(decal.info.id);
 
 	return true;
 }
@@ -1205,7 +1197,7 @@ void CGroundDecalHandler::AddTrack(const CUnit* unit, const float3& newPos, bool
 
 	const SolidObjectDecalDef& decalDef = unitDef->decalDef;
 
-	const float trackLifeTime = decalLevel * GAME_SPEED * decalDef.trackDecalStrength;
+	const float trackLifeTime = DECAL_LEVEL_MULT * GAME_SPEED * decalDef.trackDecalStrength;
 	if (trackLifeTime <= 0.0f)
 		return;
 
@@ -1269,8 +1261,8 @@ void CGroundDecalHandler::AddTrack(const CUnit* unit, const float3& newPos, bool
 
 		mm = {};
 
-		decalOwners.emplace(unit, decals.size() - 1);
-		idToPos.emplace(decal.info.id, decals.size() - 1);
+		decalOwners[unit] = decals.size() - 1;
+		idToPos[decal.info.id] = decals.size() - 1;
 		decalsUpdateList.EmplaceBackUpdate();
 
 		return;
@@ -1359,7 +1351,7 @@ void CGroundDecalHandler::AddTrack(const CUnit* unit, const float3& newPos, bool
 	// replace the old entry
 	decalOwners[unit] = decals.size() - 1;
 
-	idToPos.emplace(newDecal.info.id, decals.size() - 1);
+	idToPos[newDecal.info.id], decals.size() - 1;
 	decalsUpdateList.EmplaceBackUpdate();
 }
 
@@ -1675,63 +1667,3 @@ void CGroundDecalHandler::UnitLoaded(const CUnit* unit, const CUnit* transport) 
 void CGroundDecalHandler::UnitUnloaded(const CUnit* unit, const CUnit* transport) { AddSolidObject(unit); }
 
 void CGroundDecalHandler::UnitMoved(const CUnit* unit) { AddTrack(unit, unit->pos); }
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void CGroundDecalHandler::DecalUpdateList::SetNeedUpdateAll()
-{
-	RECOIL_DETAILED_TRACY_ZONE;
-	std::fill(updateList.begin(), updateList.end(), true);
-	changed = true;
-}
-
-void CGroundDecalHandler::DecalUpdateList::ResetNeedUpdateAll()
-{
-	RECOIL_DETAILED_TRACY_ZONE;
-	std::fill(updateList.begin(), updateList.end(), false);
-	changed = false;
-}
-
-void CGroundDecalHandler::DecalUpdateList::SetUpdate(const CGroundDecalHandler::DecalUpdateList::IteratorPair& it)
-{
-	RECOIL_DETAILED_TRACY_ZONE;
-	std::fill(it.first, it.second, true);
-	changed = true;
-}
-
-void CGroundDecalHandler::DecalUpdateList::SetUpdate(size_t offset)
-{
-	RECOIL_DETAILED_TRACY_ZONE;
-	assert(offset < updateList.size());
-	updateList[offset] = true;
-	changed = true;
-}
-
-void CGroundDecalHandler::DecalUpdateList::EmplaceBackUpdate()
-{
-	RECOIL_DETAILED_TRACY_ZONE;
-	updateList.emplace_back(true);
-	changed = true;
-}
-
-std::optional<CGroundDecalHandler::DecalUpdateList::IteratorPair> CGroundDecalHandler::DecalUpdateList::GetNext(const std::optional<CGroundDecalHandler::DecalUpdateList::IteratorPair>& prev)
-{
-	RECOIL_DETAILED_TRACY_ZONE;
-	auto beg = prev.has_value() ? prev.value().second : updateList.begin();
-	     beg = std::find(beg, updateList.end(),  true);
-	auto end = std::find(beg, updateList.end(), false);
-
-	if (beg == end)
-		return std::nullopt;
-
-	return std::make_optional(std::make_pair(beg, end));
-}
-
-std::pair<size_t, size_t> CGroundDecalHandler::DecalUpdateList::GetOffsetAndSize(const CGroundDecalHandler::DecalUpdateList::IteratorPair& it)
-{
-	RECOIL_DETAILED_TRACY_ZONE;
-	return std::make_pair(
-		std::distance(updateList.begin(), it.first ),
-		std::distance(it.first          , it.second)
-	);
-}

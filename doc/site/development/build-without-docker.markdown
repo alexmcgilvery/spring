@@ -8,7 +8,7 @@ author: p2004a
 
 # Building without Docker
 
-The [https://github.com/beyond-all-reason/spring/tree/BAR105/docker-build/scripts](scripts) folder is the source of truth and best reference to figure out how to invoke and configure things.
+The [https://github.com/beyond-all-reason/RecoilEngine/tree/BAR105/docker-build/scripts](scripts) folder is the source of truth and best reference to figure out how to invoke and configure things.
 
 ## Compilation
 
@@ -178,7 +178,7 @@ cmake \
 
 ### Source code completion
 
-In the clang debug above, we also enabled creation of `compile_commands.json` file that can be then used by IMHO the best C++ language server [clangd](https://clangd.llvm.org/). The main problem with cmake generated compilation databases is that it doesn't contain entries for header files. That can be fixed with [compdb](https://github.com/Sarcasm/compdb) utility installed in the beggining. Running from top repo directory:
+In the clang debug above, we also enabled creation of `compile_commands.json` file that can be then used by IMHO the best C++ language server [clangd](https://clangd.llvm.org/). The main problem with cmake generated compilation databases is that it doesn't contain entries for header files. That can be fixed with [compdb](https://github.com/Sarcasm/compdb) utility installed in the beginning. Running from top repo directory:
 
 ```bash
 compdb -p builddir-clang/ list > compile_commands.json

@@ -24,6 +24,7 @@
 #include "Rendering/Textures/Bitmap.h"
 #include "System/Config/ConfigHandler.h"
 #include "System/Exceptions.h"
+#include "System/EventHandler.h"
 #include "System/Log/ILog.h"
 #include "System/FileSystem/FileHandler.h"
 #include "System/Threading/ThreadPool.h"
@@ -35,7 +36,6 @@
 #include "System/TimeProfiler.h"
 #include "System/UnorderedMap.hpp"
 #include "System/float4.h"
-#include "System/bitops.h"
 #include "System/ContainerUtil.h"
 #include "System/ScopedResource.h"
 #include "fmt/format.h"
@@ -75,11 +75,18 @@
 typedef unsigned char FT_Byte;
 #endif
 
+using SizedFontKey = std::pair<std::string, int>;
 
-static spring::unordered_map<std::string, std::weak_ptr<FontFace>> fontFaceCache;
+static spring::unordered_map<SizedFontKey, std::weak_ptr<FontFace>> fontFaceCache;
 static spring::unordered_map<std::string, std::weak_ptr<FontFileBytes>> fontMemCache;
-static spring::unordered_set<std::pair<std::string, int>, spring::synced_hash<std::pair<std::string, int>>> invalidFonts;
+static spring::unordered_set<SizedFontKey> invalidFonts;
 static auto cacheMutexes = spring::WrappedSyncRecursiveMutex{};
+
+struct TimestampedFont { std::shared_ptr<FontFace> fontFace; float timestamp; };
+
+/* pinnedRecentFonts maintains shared_ptrs to the weak_ptrs from fontFaceCache. This prevents the weak_ptr from expiring
+ * when no other part of the code holds a shared_ptr, as is the case when searching game and system fallback fonts. */
+static spring::unordered_map<SizedFontKey, TimestampedFont> pinnedRecentFonts;
 
 #include "NonPrintableSymbols.inl"
 
@@ -90,80 +97,45 @@ public:
 	FtLibraryHandler()
 		: config(nullptr)
 		, lib(nullptr)
+		#ifdef USE_FONTCONFIG
+		, gameFontSet(nullptr)
+		, basePattern(nullptr)
+		#endif // USE_FONTCONFIG
 	{
-		{
-			const FT_Error error = FT_Init_FreeType(&lib);
+		const FT_Error error = FT_Init_FreeType(&lib);
 
+		if (error != 0) {
 			FT_Int version[3];
 			FT_Library_Version(lib, &version[0], &version[1], &version[2]);
 
-			std::string msg = fmt::sprintf("%s::FreeTypeInit (version %d.%d.%d)", __func__, version[0], version[1], version[2]);
-			std::string err = fmt::sprintf("[%s] FT_Init_FreeType failure \"%s\"", __func__, GetFTError(error));
-
-			if (error != 0)
-				throw std::runtime_error(err);
+			std::string err = fmt::sprintf("[%s] FT_Init_FreeType failure (version %d.%d.%d) \"%s\"",
+						       __func__, version[0], version[1], version[2], GetFTError(error));
+			throw std::runtime_error(err);
 		}
-
-        #ifdef USE_FONTCONFIG
-		if (!UseFontConfig())
-			return;
-
-		{
-			std::string msg = fmt::sprintf("%s::FontConfigInit (version %d.%d.%d)", __func__, FC_MAJOR, FC_MINOR, FC_REVISION);
-			ScopedOnceTimer timer(msg);
-			ZoneScopedNC("FtLibraryHandler::FontConfigInit", tracy::Color::Purple);
-
-			try
-			{
-				FcInit();
-			} catch (const std::exception& e) {
-				LOG("FcInit() runtime error: \"%s\"", e.what());
-				config = nullptr;
-				return;
-			}
-
-			config = FcConfigCreate();
-			if (!config)
-				return;
-
-			static constexpr const char* cacheDirFmt = R"(<fontconfig><cachedir>fontcache</cachedir></fontconfig>)";
-			if (!FcConfigParseAndLoadFromMemory(config, reinterpret_cast<const FcChar8*>(cacheDirFmt), FcTrue)) {
-				FcConfigDestroy(config);
-				config = nullptr;
-			}
-		}
-		#endif
 	}
 
 	~FtLibraryHandler() {
+		pinnedRecentFonts.clear();
 		FT_Done_FreeType(lib);
 
 		#ifdef USE_FONTCONFIG
-		if (!UseFontConfig())
+		if (!config)
 			return;
 
 		FcConfigDestroy(config);
+		if (gameFontSet) {
+			FcFontSetDestroy(gameFontSet);
+		}
+		if (basePattern) {
+			FcPatternDestroy(basePattern);
+		}
 		FcFini();
 		config = nullptr;
 		#endif
 	}
 
-	// reduced set of fonts
-	// not called if FcInit() fails
-	static bool CheckGenFontConfigFast() {
-		FcConfigAppFontClear(GetFCConfig());
-		if (!FcConfigAppFontAddDir(GetFCConfig(), reinterpret_cast<const FcChar8*>("fonts")))
-			return false;
-
-		if (!FtLibraryHandler::CheckFontConfig()) {
-			return FcConfigBuildFonts(GetFCConfig());
-		}
-
-		return true;
-	}
-
-	static bool CheckGenFontConfigFull(bool console) {
-	#ifndef HEADLESS
+	bool InitFontconfig(bool console) {
+		#ifdef USE_FONTCONFIG
 		auto LOG_MSG = [console](const std::string& fmt, bool isError, auto&&... args) {
 			if (console) {
 				std::string fmtNL = fmt + "\n";
@@ -179,45 +151,112 @@ public:
 			}
 		};
 
-		if (!FtLibraryHandler::CanUseFontConfig()) {
-			LOG_MSG("[%s] Fontconfig(version %d.%d.%d) failed to initialize", true, __func__, FC_MAJOR, FC_MINOR, FC_REVISION);
+		if (!UseFontConfig())
 			return false;
-		}
-
-		char osFontsDir[8192];
-
-		#ifdef _WIN32
-			ExpandEnvironmentStrings("%WINDIR%\\fonts", osFontsDir, sizeof(osFontsDir)); // expands %HOME% etc.
-		#else
-			strncpy(osFontsDir, "/etc/fonts/", sizeof(osFontsDir));
-		#endif
-
-		FcConfigAppFontClear(GetFCConfig());
-		FcConfigAppFontAddDir(GetFCConfig(), reinterpret_cast<const FcChar8*>("fonts"));
-		FcConfigAppFontAddDir(GetFCConfig(), reinterpret_cast<const FcChar8*>(osFontsDir));
 
 		{
-			auto dirs = FcConfigGetCacheDirs(GetFCConfig());
+			std::string msg = fmt::sprintf("%s::FontConfigInit (version %d.%d.%d)", __func__, FC_MAJOR, FC_MINOR, FC_REVISION);
+			ScopedOnceTimer timer(msg);
+			ZoneScopedNC("FtLibraryHandler::FontConfigInit", tracy::Color::Purple);
+
+			searchSystemFonts = configHandler->GetBool("UseFontConfigSystemFonts");
+			searchFontAttributes = configHandler->GetBool("FontConfigSearchAttributes");
+			searchApplySubstitutions = configHandler->GetBool("FontConfigApplySubstitutions");
+
+			FcBool res;
+			std::string errprefix = fmt::sprintf("[%s] Fontconfig(version %d.%d.%d) failed to initialize", __func__, FC_MAJOR, FC_MINOR, FC_REVISION);
+
+			// init configuration
+			FcConfigEnableHome(FcFalse);
+			config = FcConfigCreate();
+
+			// we cant directly use the usual fontconfig methods because those won't let us have both first our cache
+			// and system fonts included. also linux actually has system config files that can be used by fontconfig.
+
+			#ifdef _WIN32
+			static constexpr auto winFontPath = "%WINDIR%\\fonts";
+			const int neededSize = ExpandEnvironmentStrings(winFontPath, nullptr, 0);
+			std::vector <char> osFontsDir (neededSize);
+			ExpandEnvironmentStrings(winFontPath, osFontsDir.data(), osFontsDir.size());
+
+			static constexpr const char* configFmt = R"(<fontconfig><dir>%s</dir><cachedir>fontcache</cachedir></fontconfig>)";
+			const std::string configFmtVar = fmt::sprintf(configFmt, osFontsDir.data());
+			#else
+			const std::string configFmtVar = R"(<fontconfig><cachedir>fontcache</cachedir></fontconfig>)";
+			#endif
+
+			#ifdef _WIN32
+			// Explicitly set the config with xml for windows.
+			res = FcConfigParseAndLoadFromMemory(config, reinterpret_cast<const FcChar8*>(configFmtVar.c_str()), FcTrue);
+			#else
+			// Load system configuration (passing 0 here so fc will use the default os config file if possible).
+			res = FcConfigParseAndLoad(config, 0, true);
+			#endif
+			if (res) {
+				#ifndef _WIN32
+				// add local cache after system config for linux
+				FcConfigParseAndLoadFromMemory(config, reinterpret_cast<const FcChar8*>(configFmtVar.c_str()), FcTrue);
+				#endif
+
+				LOG_MSG("[%s] Using Fontconfig light init", false, __func__);
+
+				// build system fonts
+				res = FcConfigBuildFonts(config);
+				if (!res) {
+					LOG_MSG("%s fonts", true, errprefix.c_str());
+					InitFailed();
+					return false;
+				}
+			} else {
+				// Can't load step by step to use our cache, so retry with general
+				// fontconfig init method, that has a few extra fallbacks.
+
+				// Init everything. Normally this would be enough, but the method before
+				// accounts for situations where system config is borked due to incompatible
+				// lib and system config files.
+				FcConfig *fcConfig = FcInitLoadConfigAndFonts();
+				if (fcConfig) {
+					FcConfigDestroy(config); // release previous config
+					config = fcConfig;
+
+					// add our cache at the back of the new config.
+					FcConfigParseAndLoadFromMemory(config, reinterpret_cast<const FcChar8*>(configFmtVar.c_str()), FcTrue);
+				} else {
+					LOG_MSG("%s config and fonts. No system fallbacks will be available", false, errprefix.c_str());
+				}
+			}
+
+			gameFontSet = FcFontSetCreate();
+			basePattern = FcPatternCreate();
+
+			// init app fonts dir
+			res = FcConfigAppFontAddDir(config, reinterpret_cast<const FcChar8*>("fonts"));
+			if (!res) {
+				LOG_MSG("%s font dir", true, errprefix.c_str());
+				InitFailed();
+				return false;
+			}
+
+			// print cache dirs
+			auto dirs = FcConfigGetCacheDirs(config);
 			FcStrListFirst(dirs);
-			for (FcChar8* dir = FcStrListNext(dirs), *prevDir = nullptr; dir != nullptr && dir != prevDir; ) {
-				prevDir = dir;
+			for (FcChar8* dir = FcStrListNext(dirs); dir != nullptr; dir = FcStrListNext(dirs)) {
 				LOG_MSG("[%s] Using Fontconfig cache dir \"%s\"", false, __func__, dir);
 			}
 			FcStrListDone(dirs);
 		}
 
-		if (FtLibraryHandler::CheckFontConfig()) {
-			LOG_MSG("[%s] fontconfig for directory \"%s\" up to date", false, __func__, osFontsDir);
-			return true;
-		}
-
-		LOG_MSG("[%s] creating fontconfig for directory \"%s\"", false, __func__, osFontsDir);
-
-		return FcConfigBuildFonts(GetFCConfig());
-	#endif
+		#endif // USE_FONTCONFIG
 
 		return true;
 	}
+
+	void InitFailed() {
+		FcConfigDestroy(config);
+		FcFini();
+		config = nullptr;
+	}
+	static bool InitSingletonFontconfig(bool console) { return singleton->InitFontconfig(console); }
 
 	static bool UseFontConfig() { return (configHandler == nullptr || configHandler->GetBool("UseFontConfigLib")); }
 
@@ -245,9 +284,41 @@ public:
 	static inline bool CanUseFontConfig() {
 		return GetFCConfig() != nullptr;
 	}
+	#ifdef USE_FONTCONFIG
+	static FcFontSet *GetGameFontSet() {
+		return singleton->gameFontSet;
+	}
+	static FcPattern *GetBasePattern() {
+		return singleton->basePattern;
+	}
+	static void ClearGameFontSet() {
+		FcFontSetDestroy(singleton->gameFontSet);
+		singleton->gameFontSet = FcFontSetCreate();
+	}
+	static void ClearBasePattern() {
+		FcPatternDestroy(singleton->basePattern);
+		singleton->basePattern = FcPatternCreate();
+	}
+	static bool GetSearchSystemFonts() {
+		return singleton->searchSystemFonts;
+	}
+	static bool GetSearchFontAttributes() {
+		return singleton->searchFontAttributes;
+	}
+	static bool GetSearchApplySubstitutions() {
+		return singleton->searchApplySubstitutions;
+	}
+	#endif
 private:
 	FcConfig* config;
 	FT_Library lib;
+	#ifdef USE_FONTCONFIG
+	FcFontSet *gameFontSet;
+	FcPattern *basePattern;
+	#endif
+	bool searchSystemFonts;
+	bool searchFontAttributes;
+	bool searchApplySubstitutions;
 
 	static inline std::unique_ptr<FtLibraryHandler> singleton = nullptr;
 };
@@ -263,21 +334,11 @@ void FtLibraryHandlerProxy::InitFtLibrary()
 #endif
 }
 
-bool FtLibraryHandlerProxy::CheckGenFontConfigFast()
+bool FtLibraryHandlerProxy::InitFontconfig(bool console)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
 #ifndef HEADLESS
-	return FtLibraryHandler::CheckGenFontConfigFast();
-#else
-	return false;
-#endif
-}
-
-bool FtLibraryHandlerProxy::CheckGenFontConfigFull(bool console)
-{
-	RECOIL_DETAILED_TRACY_ZONE;
-#ifndef HEADLESS
-	return FtLibraryHandler::CheckGenFontConfigFull(console);
+	return FtLibraryHandler::InitSingletonFontconfig(console);
 #else
 	return false;
 #endif
@@ -304,19 +365,11 @@ static inline uint64_t GetKerningHash(char32_t lchar, char32_t rchar)
 	return (static_cast<uint64_t>(lchar) << 32) | static_cast<uint64_t>(rchar); // 64bit used
 }
 
-static std::shared_ptr<FontFace> GetFontFace(const std::string& fontfile, const int size)
+static std::shared_ptr<FontFace> LoadFontFace(const std::string& fontfile)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
 	assert(CFontTexture::sync.GetThreadSafety() || Threading::IsMainThread());
 	auto lock = CFontTexture::sync.GetScopedLock();
-
-	//TODO add support to load fonts by name (needs fontconfig)
-
-	const auto fontKey = fontfile + IntToString(size);
-	const auto fontIt = fontFaceCache.find(fontKey);
-
-	if (fontIt != fontFaceCache.end() && !fontIt->second.expired())
-		return fontIt->second.lock();
 
 	// get the file (no need to cache, takes too little time)
 	std::string fontPath(fontfile);
@@ -357,17 +410,37 @@ static std::shared_ptr<FontFace> GetFontFace(const std::string& fontfile, const 
 		throw content_error(fmt::format("FT_New_Face failed: {}", GetFTError(error)));
 	}
 
+	return std::make_shared<FontFace>(face.Release(), fontMem);
+}
+
+static std::shared_ptr<FontFace> GetRenderFontFace(const std::string& fontfile, const int size)
+{
+	RECOIL_DETAILED_TRACY_ZONE;
+	assert(CFontTexture::sync.GetThreadSafety() || Threading::IsMainThread());
+	auto lock = CFontTexture::sync.GetScopedLock();
+
+	//TODO add support to load fonts by name (needs fontconfig)
+
+	FT_Error error;
+
+	const auto fontKey = make_pair(fontfile, size);
+	const auto fontIt = fontFaceCache.find(fontKey);
+
+	if (fontIt != fontFaceCache.end() && !fontIt->second.expired())
+		return fontIt->second.lock();
+
+	std::shared_ptr<FontFace> facePtr = LoadFontFace(fontfile);
+
 	// set render size
-	if ((error = FT_Set_Pixel_Sizes(face, 0, size)) != 0) {
+	if ((error = FT_Set_Pixel_Sizes(facePtr->face, 0, size)) != 0) {
 		throw content_error(fmt::format("FT_Set_Pixel_Sizes failed: {}", GetFTError(error)));
 	}
 
 	// select unicode charmap
-	if ((error = FT_Select_Charmap(face, FT_ENCODING_UNICODE)) != 0) {
+	if ((error = FT_Select_Charmap(facePtr->face, FT_ENCODING_UNICODE)) != 0) {
 		throw content_error(fmt::format("FT_Select_Charmap failed: {}", GetFTError(error)));
 	}
-
-	return (fontFaceCache[fontKey] = std::make_shared<FontFace>(face.Release(), fontMem)).lock();
+	return (fontFaceCache[fontKey] = facePtr).lock();
 }
 #endif
 
@@ -405,9 +478,9 @@ static std::shared_ptr<FontFace> GetFontForCharacters(const std::vector<char32_t
 		FcCharSetAddChar(cset, c);
 	}
 
-	// create properties of the wanted font
+	// create properties of the wanted font starting from our priorities pattern.
 	auto pattern = spring::ScopedResource(
-		FcPatternCreate(),
+		FcPatternDuplicate(FtLibraryHandler::GetBasePattern()),
 		[](FcPattern* p) { if (p) FcPatternDestroy(p); }
 	);
 
@@ -429,7 +502,6 @@ static std::shared_ptr<FontFace> GetFontForCharacters(const std::vector<char32_t
 		FcBool outline = FcFalse;
 
 		FcChar8* family = nullptr;
-		FcChar8* foundry = nullptr;
 
 		const FcChar8* ftname = reinterpret_cast<const FcChar8*>("not used");
 
@@ -438,19 +510,23 @@ static std::shared_ptr<FontFace> GetFontForCharacters(const std::vector<char32_t
 			[](FcBlanks* b) { if (b) FcBlanksDestroy(b); }
 		);
 
-		auto origPattern = spring::ScopedResource(
-			FcFreeTypeQueryFace(origFace, ftname, 0, blanks),
-			[](FcPattern* p) { if (p) FcPatternDestroy(p); }
-		);
+		if (FtLibraryHandler::GetSearchFontAttributes()) {
+			auto origPattern = spring::ScopedResource(
+				FcFreeTypeQueryFace(origFace, ftname, 0, blanks),
+				[](FcPattern* p) { if (p) FcPatternDestroy(p); }
+			);
 
-		if (origPattern != nullptr) {
-			FcPatternGetInteger(origPattern, FC_WEIGHT    , 0, &weight );
-			FcPatternGetInteger(origPattern, FC_SLANT     , 0, &slant  );
-			FcPatternGetBool(   origPattern, FC_OUTLINE   , 0, &outline);
-			FcPatternGetDouble( origPattern, FC_PIXEL_SIZE, 0, &pixelSize);
+			if (origPattern != nullptr) {
+				FcPatternGetInteger(origPattern, FC_WEIGHT    , 0, &weight );
+				FcPatternGetInteger(origPattern, FC_SLANT     , 0, &slant  );
+				FcPatternGetBool(   origPattern, FC_OUTLINE   , 0, &outline);
+				FcPatternGetDouble( origPattern, FC_PIXEL_SIZE, 0, &pixelSize);
 
-			FcPatternGetString( origPattern, FC_FAMILY , 0, &family );
-			FcPatternGetString( origPattern, FC_FOUNDRY, 0, &foundry);
+				FcPatternGetString( origPattern, FC_FAMILY , 0, &family );
+			}
+
+			if (family != nullptr)
+				FcPatternAddString(pattern, FC_FAMILY, family);
 
 		}
 
@@ -460,38 +536,50 @@ static std::shared_ptr<FontFace> GetFontForCharacters(const std::vector<char32_t
 
 		if (pixelSize > 0.0)
 			FcPatternAddDouble(pattern, FC_PIXEL_SIZE, pixelSize);
-
-		if (family)
-			FcPatternAddString(pattern, FC_FAMILY, family);
-		if (foundry)
-			FcPatternAddString(pattern, FC_FOUNDRY, foundry);
 	}
 
 	FcDefaultSubstitute(pattern);
-	if (!FcConfigSubstitute(FtLibraryHandler::GetFCConfig(), pattern, FcMatchPattern))
+	if (FtLibraryHandler::GetSearchApplySubstitutions() && !FcConfigSubstitute(FtLibraryHandler::GetFCConfig(), pattern, FcMatchPattern))
 	{
 		return nullptr;
 	}
 
 	// search fonts that fit our request
+	typedef std::unique_ptr<FcFontSet, decltype(&FcFontSetDestroy)> ScopedFcFontSet;
+
+	int nFonts = 0;
+	bool loadMore = FtLibraryHandler::GetSearchSystemFonts();
 	FcResult res;
-	auto fs = spring::ScopedResource(
-		FcFontSort(FtLibraryHandler::GetFCConfig(), pattern, FcFalse, nullptr, &res),
-		[](FcFontSet* f) { if (f) FcFontSetDestroy(f); }
-	);
 
-	if (fs == nullptr)
-		return nullptr;
-	if (res != FcResultMatch)
-		return nullptr;
+	// first search game fonts
+	FcFontSet *sets[] = { FtLibraryHandler::GetGameFontSet() };
+	ScopedFcFontSet fs(FcFontSetSort(FtLibraryHandler::GetFCConfig(), sets, 1, pattern, FcFalse, nullptr, &res), &FcFontSetDestroy);
 
-	// iterate returned font list
-	for (int i = 0; i < fs->nfont; ++i) {
-		const FcPattern* font = fs->fonts[i];
+	if (fs != nullptr && res == FcResultMatch)
+		nFonts = fs->nfont;
+
+	// iterate returned font list, and perform system font search when in need of more fonts
+	int i = 0;
+	while (i < nFonts || loadMore) {
+		if (i == nFonts) {
+			// now search system fonts
+			fs = ScopedFcFontSet(FcFontSort(FtLibraryHandler::GetFCConfig(), pattern, FcFalse, nullptr, &res), &FcFontSetDestroy);
+			if (fs == nullptr || res != FcResultMatch)
+				return nullptr;
+			loadMore = false;
+			nFonts = fs->nfont;
+			i = 0;
+		}
+		const FcPattern* font = fs->fonts[i++];
 
 		FcChar8* cFilename = nullptr;
 		FcResult r = FcPatternGetString(font, FC_FILE, 0, &cFilename);
 		if (r != FcResultMatch || cFilename == nullptr)
+			continue;
+
+		FcCharSet *patternCharSet;
+		r = FcPatternGetCharSet(font, FC_CHARSET, 0, &patternCharSet);
+		if (r != FcResultMatch || FcCharSetIntersectCount(cset, patternCharSet) == 0)
 			continue;
 
 		const std::string filename = std::string{ reinterpret_cast<char*>(cFilename) };
@@ -500,10 +588,12 @@ static std::shared_ptr<FontFace> GetFontForCharacters(const std::vector<char32_t
 			continue;
 
 		try {
-			auto face = GetFontFace(filename, origSize);
+			auto face = GetRenderFontFace(filename, origSize);
 
 			if (blackList.find(GetFaceKey(*face)) != blackList.cend())
 				continue;
+
+			CFontTexture::PinFont(face, filename, origSize);
 
 			#ifdef _DEBUG
 			{
@@ -554,7 +644,6 @@ CFontTexture::CFontTexture(const std::string& fontfile, int size, int _outlinesi
 	, wantedTexHeight(0)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
-	atlasAlloc.SetNonPowerOfTwo(globalRendering->supportNonPowerOfTwoTex);
 	atlasAlloc.SetMaxSize(globalRendering->maxTextureSize, globalRendering->maxTextureSize);
 
 	atlasGlyphs.reserve(1024);
@@ -569,15 +658,15 @@ CFontTexture::CFontTexture(const std::string& fontfile, int size, int _outlinesi
 #ifndef HEADLESS
 
 	try {
-		shFace = GetFontFace(fontfile, fontSize);
+		shFace = GetRenderFontFace(fontfile, fontSize);
 	}
 	catch (content_error& ex) {
 		LOG_L(L_ERROR, "[%s] %s (s=%d): %s", __func__, fontfile.c_str(), fontSize, ex.what());
-		return;
+		throw;
 	}
 
 	if (shFace == nullptr)
-		return;
+		throw content_error("Failed to load font file: " + fontfile);
 
 	FT_Face face = *shFace;
 
@@ -607,8 +696,23 @@ CFontTexture::CFontTexture(const std::string& fontfile, int size, int _outlinesi
 	CreateTexture(32, 32);
 
 	// precache ASCII glyphs & kernings (save them in kerningPrecached array for better lvl2 cpu cache hitrate)
+	PreloadGlyphs();
 
+#endif
+}
+
+/***
+ *
+ * Preloads standard alphabet glyphs for a font
+ */
+void CFontTexture::PreloadGlyphs()
+{
+#ifndef HEADLESS
+	FT_Face face = *shFace;
 	//preload Glyphs
+	// if given face doesn't contain alphanumerics, don't preload it
+	if (!FT_Get_Char_Index(face, 'a'))
+		return;
 	LoadWantedGlyphs(32, 127);
 	for (char32_t i = 32; i < 127; ++i) {
 		const auto& lgl = GetGlyph(i);
@@ -636,12 +740,183 @@ CFontTexture::~CFontTexture()
 #endif
 }
 
+/***
+ *
+ * Add a fallback font
+ *
+ * @param fontfile VFS path for the font
+ */
+bool CFontTexture::AddFallbackFont(const std::string& fontfile)
+{
+#if defined(USE_FONTCONFIG) && !defined(HEADLESS)
+	if (!FtLibraryHandler::CanUseFontConfig())
+		return false;
+
+	FcFontSet *set = FtLibraryHandler::GetGameFontSet();
+
+	// Check if font already loaded
+	for (int i=0; set && i < set->nfont; ++i) {
+		FcPattern* font = set->fonts[i];
+		FcChar8 *file;
+		if (FcPatternGetString(font, FC_FILE, 0, &file) == FcResultMatch) {
+			if (fontfile.compare(reinterpret_cast<const char*>(file)) == 0) {
+				return true;
+			}
+		}
+	}
+
+	// Load font face
+	std::shared_ptr<FontFace> facePtr;
+	try {
+		facePtr = LoadFontFace(fontfile);
+	} catch (content_error& ex) {
+		LOG_L(L_ERROR, "[%s] \"%s\": %s", __func__, fontfile.c_str(), ex.what());
+		return false;
+	}
+
+	// Add fontconfig configuration
+	FT_Face face = *facePtr;
+
+	// Store pattern
+	FcPattern* pattern = FcFreeTypeQueryFace(face, reinterpret_cast<const FcChar8*>(fontfile.c_str()), 0, NULL);
+	if (!FcFontSetAdd(set, pattern))
+	{
+		LOG_L(L_WARNING, "[%s] could not add pattern for %s", __func__, fontfile.c_str());
+		return false;
+	}
+	// needed?:
+	//FcConfigSubstitute(FtLibraryHandler::GetFCConfig(), pattern, FcMatchScan);
+
+	// Add to priority fonts pattern
+	FcChar8* family = nullptr;
+	if (FcPatternGetString( pattern, FC_FAMILY , 0, &family ) == FcResultMatch) {
+		FcPattern *basePattern = FtLibraryHandler::GetBasePattern();
+		FcPatternAddString(basePattern, FC_FAMILY, family);
+	} else {
+		LOG_L(L_WARNING, "[%s] could not add priority for %s", __func__, fontfile.c_str());
+		return false;
+	}
+
+	needsClearGlyphs = true;
+
+	return true;
+#else
+	return false;
+#endif
+}
+
+/***
+ *
+ * Clears fontconfig fallbacks
+ */
+void CFontTexture::ClearFallbackFonts()
+{
+	pinnedRecentFonts.clear();
+#if defined(USE_FONTCONFIG) && !defined(HEADLESS)
+	if (!FtLibraryHandler::CanUseFontConfig())
+		return;
+
+	FtLibraryHandler::ClearBasePattern();
+	FtLibraryHandler::ClearGameFontSet();
+
+	needsClearGlyphs = true;
+#endif
+}
+
+/***
+ *
+ * Clears all glyphs for all fonts
+ */
+void CFontTexture::ClearAllGlyphs() {
+#ifndef HEADLESS
+	RECOIL_DETAILED_TRACY_ZONE;
+
+	bool changed = false;
+	for (const auto& ft : allFonts) {
+		auto lf = ft.lock();
+		changed |= lf->ClearGlyphs();
+	}
+	if (changed)
+		eventHandler.FontsChanged();
+
+	needsClearGlyphs = false;
+#endif
+}
+
+/***
+ *
+ * Clears all glyphs for a font
+ */
+bool CFontTexture::ClearGlyphs() {
+	RECOIL_DETAILED_TRACY_ZONE;
+
+	bool changed = false;
+#ifndef HEADLESS
+
+	// Invalidate glyphs coming from other fonts, or those with the 'not found' glyph.
+	for (const auto& g : glyphs) {
+		if (g.second.face->face != shFace->face || g.second.index == 0) {
+			changed = true;
+		}
+	}
+
+	// Always clear failed attempts in case we have any cache here.
+	failedAttemptsToReplace.clear();
+
+	if (changed) {
+		kerningPrecached = {};
+
+		// clear all glyps
+		glyphs.clear();
+
+		// clear atlases
+		ClearAtlases(32, 32);
+
+		// preload standard glyphs
+		PreloadGlyphs();
+
+		// signal need to update texture
+		++curTextureUpdate;
+	}
+#endif
+	return changed;
+}
+
+void CFontTexture::PinFont(std::shared_ptr<FontFace>& face, const std::string& filename, const int size)
+{
+#ifndef HEADLESS
+	const auto fontKey = std::make_pair(filename, size);
+
+	float time = spring_gettime().toMilliSecsf();
+
+	auto cached = pinnedRecentFonts.find(fontKey);
+
+	if (cached != pinnedRecentFonts.end()) {
+		cached->second.timestamp = time;
+	} else {
+		if (pinnedRecentFonts.size() >= maxPinnedFonts) {
+			SizedFontKey* oldest;
+			float oldestTime = time;
+			for(auto &[key, timestampedFont]: pinnedRecentFonts) {
+				if (timestampedFont.timestamp <= oldestTime) {
+					oldest = &key;
+					oldestTime = timestampedFont.timestamp;
+				}
+			}
+			pinnedRecentFonts.erase(*oldest);
+		}
+		pinnedRecentFonts[fontKey] = { face, time };
+	}
+#endif
+}
+
 
 void CFontTexture::InitFonts()
 {
 	RECOIL_DETAILED_TRACY_ZONE;
 #ifndef HEADLESS
 	maxFontTries = configHandler ? configHandler->GetInt("MaxFontTries") : 5;
+	maxPinnedFonts = configHandler ? configHandler->GetInt("MaxPinnedFonts") : 10;
 #endif
 }
 
@@ -649,7 +924,7 @@ void CFontTexture::KillFonts()
 {
 	RECOIL_DETAILED_TRACY_ZONE;
 	// check unused fonts
-	spring::VectorEraseAllIf(allFonts, [](std::weak_ptr<CFontTexture> item) { return item.expired(); });
+	std::erase_if(allFonts, [](std::weak_ptr<CFontTexture> item) { return item.expired(); });
 
 	assert(allFonts.empty());
 	allFonts = {}; //just in case
@@ -661,25 +936,30 @@ void CFontTexture::Update() {
 	auto lock = CFontTexture::sync.GetScopedLock();
 
 	// check unused fonts
-	spring::VectorEraseAllIf(allFonts, [](std::weak_ptr<CFontTexture> item) { return item.expired(); });
+	std::erase_if(allFonts, [](std::weak_ptr<CFontTexture> item) { return item.expired(); });
 
 	static std::vector<std::shared_ptr<CFontTexture>> fontsToUpdate;
+
+	if (needsClearGlyphs)
+		ClearAllGlyphs();
+
+	for (const auto& font : allFonts) {
+		auto lf = font.lock();
+		if (lf->GlyphAtlasTextureNeedsUpdate())
+			fontsToUpdate.emplace_back(std::move(lf));
+	}
+
+	// note causes nested for_mt in atlasUpdateShadow.Blur()
+	for_mt(0, fontsToUpdate.size(), [](int i) {
+		fontsToUpdate[i]->UpdateGlyphAtlasTexture();
+	});
 	fontsToUpdate.clear();
 
 	for (const auto& font : allFonts) {
 		auto lf = font.lock();
-		if (lf->GlyphAtlasTextureNeedsUpdate() || lf->GlyphAtlasTextureNeedsUpload())
-			fontsToUpdate.emplace_back(std::move(lf));
+		if (lf->GlyphAtlasTextureNeedsUpload())
+			lf->UploadGlyphAtlasTexture();
 	}
-
-	for_mt_chunk(0, fontsToUpdate.size(), [](int i) {
-		fontsToUpdate[i]->UpdateGlyphAtlasTexture();
-	});
-
-	for (const auto& font : fontsToUpdate)
-		font->UploadGlyphAtlasTexture();
-
-	fontsToUpdate.clear();
 }
 
 const GlyphInfo& CFontTexture::GetGlyph(char32_t ch)
@@ -799,7 +1079,7 @@ void CFontTexture::LoadWantedGlyphs(const std::vector<char32_t>& wanted)
 				++idx;
 			}
 		}
-		f = GetFontForCharacters(map, *f, fontSize, alreadyCheckedFonts);
+		f = GetFontForCharacters(map, *shFace, fontSize, alreadyCheckedFonts);
 	} while (!map.empty() && f);
 
 	// handle glyphs that didn't reach maxFontTries number of attempts, but nonetheless failed
@@ -874,9 +1154,8 @@ void CFontTexture::LoadGlyph(std::shared_ptr<FontFace>& f, char32_t ch, unsigned
 	const auto iter = std::find_if(glyphs.begin(), glyphs.end(), pred);
 
 	if (iter != glyphs.end()) {
-		auto& glyph = glyphs[ch];
-		glyph = iter->second;
-		glyph.letter = ch;
+		auto glyphInfo = iter->second;
+		glyphs[ch] = glyphInfo;
 		return;
 	}
 
@@ -1041,6 +1320,28 @@ void CFontTexture::ReallocAtlases(bool pre)
 	atlasShadowMem = {};
 	atlasDim = {};
 	atlasUDim = {};
+#endif
+}
+
+void CFontTexture::ClearAtlases(const int width, const int height)
+{
+#ifndef HEADLESS
+	// refresh the atlasAlloc to reset coordinates
+	atlasAlloc = CRowAtlasAlloc();
+	atlasAlloc.SetMaxSize(globalRendering->maxTextureSize, globalRendering->maxTextureSize);
+
+	// clear atlases
+	wantedTexWidth = width;
+	wantedTexHeight = height;
+
+	atlasUpdate.Alloc(wantedTexWidth, wantedTexHeight);
+	atlasUpdateShadow.Alloc(1, 1);
+	atlasUpdateShadow = {};
+
+	if (!atlasGlyphs.empty())
+		LOG_L(L_WARNING, "[FontTexture::%s] discarding %u glyph bitmaps", __func__, uint32_t(atlasGlyphs.size()));
+
+	atlasGlyphs.clear();
 #endif
 }
 

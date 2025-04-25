@@ -65,6 +65,7 @@
 #include "Rendering/DebugColVolDrawer.h"
 #include "Rendering/DebugVisibilityDrawer.h"
 #include "Rendering/DebugDrawerAI.h"
+#include "Rendering/DebugDrawerQuadField.h"
 #include "Rendering/IPathDrawer.h"
 #include "Rendering/Features/FeatureDrawer.h"
 #include "Rendering/HUDDrawer.h"
@@ -402,31 +403,6 @@ public:
 	}
 };
 
-
-
-class AdvModelShadingActionExecutor : public IUnsyncedActionExecutor {
-public:
-	AdvModelShadingActionExecutor() : IUnsyncedActionExecutor("AdvModelShading",
-			"Control advanced model shading mode",
-			false, {
-			{"", "Toggles advanced model shading mode"},
-			{"<on|off>", "Set advanced model shading mode <on|off>"},
-			}) {}
-
-	bool Execute(const UnsyncedAction& action) const {
-		static bool canUseShaders = unitDrawer->UseAdvShading();
-
-		if (!canUseShaders)
-			return false;
-
-		InverseOrSetBool(unitDrawer->UseAdvShadingRef(), action.GetArgs());
-		LogSystemStatus("model shaders", unitDrawer->UseAdvShading());
-		return true;
-	}
-};
-
-
-
 class AdvMapShadingActionExecutor : public IUnsyncedActionExecutor {
 public:
 	AdvMapShadingActionExecutor() : IUnsyncedActionExecutor("AdvMapShading",
@@ -635,6 +611,12 @@ public:
 		inMapDrawer->SetDrawMode(true);
 		return true;
 	}
+
+	bool ExecuteRelease(const UnsyncedAction& action) const final {
+		inMapDrawer->SetDrawMode(false);
+		// TODO: false for backwards compatibility (needs in depth review before changing)
+		return false;
+	}
 };
 
 
@@ -682,9 +664,37 @@ public:
 		return true;
 	}
 
+	bool ExecuteRelease(const UnsyncedAction& action) const final {
+		if (button == 4 || button == 5) {
+			// HACK   somehow weird things happen when MouseRelease is called for button 4 and 5.
+			// Note that SYS_WMEVENT on windows also only sends MousePress events for these buttons.
+			return false;
+		}
+		mouse->MouseRelease(mouse->lastx, mouse->lasty, button);
+		// TODO: false for backwards compatibility (needs in depth review)
+		return false;
+	}
+
 private:
 	int button;
 };
+
+
+class MouseStateActionExecutor : public IUnsyncedActionExecutor {
+public:
+	MouseStateActionExecutor() : IUnsyncedActionExecutor("MouseState", "Toggles mousestate") {}
+
+	bool Execute(const UnsyncedAction& action) const final {
+		// TODO: false for backwards compatibility (needs in depth review)
+		return false;
+	}
+	bool ExecuteRelease(const UnsyncedAction& action) const final {
+		mouse->ToggleMiddleClickScroll();
+		// TODO: false for backwards compatibility (needs in depth review)
+		return false;
+	}
+};
+
 
 class MouseCancelSelectionRectangleActionExecutor : public IUnsyncedActionExecutor {
 public:
@@ -744,6 +754,12 @@ public:
 		camera->SetMovState(moveStateIdx, true);
 
 		return halt;
+	}
+
+	bool ExecuteRelease(const UnsyncedAction& action) const final {
+		camera->SetMovState(moveStateIdx, false);
+		// TODO: false for backwards compatibility (needs in depth review)
+		return false;
 	}
 
 private:
@@ -1142,7 +1158,15 @@ class SpecFullViewActionExecutor : public IUnsyncedActionExecutor {
 public:
 	SpecFullViewActionExecutor() : IUnsyncedActionExecutor(
 		"SpecFullView",
-		"Sets or toggles between full LOS or ally-team LOS if the local user is a spectator"
+		"Sets or toggles LOS settings if the local user is a spectator. Fullview: See everything, otherwise visibility is determined by the current team. Fullselect: Whether all units can be selected",
+		false, 
+		{
+			{"", "Toggles both Fullview and Fullselect from current values"},
+			{"0", "Not Fullview, Not Fullselect"},
+			{"1", "Fullview, Not Fullselect"},
+			{"2", "Not Fullview, Fullselect"},
+			{"3", "Fullview, Fullselect (default)"},
+		}
 	) {
 	}
 
@@ -1549,6 +1573,19 @@ public:
 	}
 };
 
+class DebugQuadFieldActionExecutor : public IUnsyncedActionExecutor {
+public:
+	DebugQuadFieldActionExecutor() : IUnsyncedActionExecutor("DebugQuadField", "Draw quadfield sectors around GuiTraceRay and selected units") {
+	}
+
+	bool Execute(const UnsyncedAction& action) const final {
+		bool enabled = DebugDrawerQuadField::IsEnabled();
+		DebugDrawerQuadField::SetEnabled(!enabled);
+		LogSystemStatus("quadfield debug", !enabled);
+		return true;
+	}
+};
+
 class DrawSkyActionExecutor : public IUnsyncedActionExecutor {
 public:
 	DrawSkyActionExecutor() : IUnsyncedActionExecutor("DrawSky", "Whether to actually draw sky") {
@@ -1565,15 +1602,25 @@ public:
 	DebugGLActionExecutor() : IUnsyncedActionExecutor("DebugGL", "Enable/Disable OpenGL debug-context output") {}
 
 	bool Execute(const UnsyncedAction& action) const final {
-		bool enabled = !globalRendering->rendererDebug;
+		bool debugEnabled = !globalRendering->rendererDebug;
+
 		uint32_t msgSrceIdx = 0;
 		uint32_t msgTypeIdx = 0;
 		uint32_t msgSevrIdx = 0;
 
 		auto args = CSimpleParser::Tokenize(action.GetArgs());
 
-		if (args.size() > 0)
-			enabled = StringToBool(args[0]);
+		if (args.size() > 0) {
+			int options = StringToInt(args[0]);
+			if (options > 1) {
+				debugEnabled = !!(options & (1 << 1));
+				configHandler->Set("DebugGLReportGroups", !!(options & (1 << 2)), true);
+				configHandler->Set("DebugGLStacktraces",  !!(options & (1 << 3)), true);
+			}
+			else {
+				debugEnabled = !!(options & 1);
+			}
+		}
 
 		if (args.size() > 1)
 			msgSrceIdx = StringToInt(args[1]);
@@ -1582,7 +1629,7 @@ public:
 		if (args.size() > 3)
 			msgSevrIdx = StringToInt(args[3]);
 
-		globalRendering->rendererDebug = enabled;
+		globalRendering->rendererDebug = debugEnabled;
 		globalRendering->ToggleDebugOutput(msgSrceIdx, msgTypeIdx, msgSevrIdx);
 
 		return true;
@@ -1779,6 +1826,27 @@ public:
 };
 
 
+class GameInfoCloseActionExecutor : public IUnsyncedActionExecutor {
+public:
+	GameInfoCloseActionExecutor() : IUnsyncedActionExecutor("GameInfoClose", "Closes game info") {}
+
+	bool Execute(const UnsyncedAction& action) const final {
+		// TODO: false for backwards compatibility (may or may not make sense to keep it, probably not)
+		return false;
+	}
+
+	bool ExecuteRelease(const UnsyncedAction& action) const final {
+		if (CGameInfo::IsActive()) {
+			// TODO: handled in release, and return false for backwards compatibility
+			// (needs in depth review)
+			CGameInfo::Disable();
+			return false;
+		}
+		return false;
+	}
+};
+
+
 
 class HideInterfaceActionExecutor : public IUnsyncedActionExecutor {
 public:
@@ -1914,6 +1982,28 @@ public:
 	}
 };
 
+class RotateSkyActionExecutor : public IUnsyncedActionExecutor {
+public:
+	RotateSkyActionExecutor() : IUnsyncedActionExecutor("RotateSky",
+		"Rotates the sky around axis by angle") {
+	}
+
+	bool Execute(const UnsyncedAction& action) const final {
+		auto args = CSimpleParser::Tokenize(action.GetArgs());
+		if (args.size() != 4)
+			return false;
+
+		const auto axisAngle = float4{
+			StringToInt<float>(args[0]),
+			StringToInt<float>(args[1]),
+			StringToInt<float>(args[2]),
+			StringToInt<float>(args[3])
+		};
+
+		ISky::GetSky()->SetSkyAxisAngle(axisAngle);
+		return true;
+	}
+};
 
 class FeatureFadeDistActionExecutor : public IUnsyncedActionExecutor {
 public:
@@ -2534,8 +2624,23 @@ public:
 	}
 
 	bool Execute(const UnsyncedAction& action) const final {
-		// FIXME: same file for both?
-		CglFont::LoadCustomFonts(action.GetArgs(), action.GetArgs());
+		auto args = CSimpleParser::Tokenize(action.GetArgs(), 1);
+		std::string newLargeFontFile;
+		std::string newSmallFontFile;
+		switch (args.size())
+		{
+		case 1: {
+			newSmallFontFile = std::move(args[0]);
+		} break;
+		case 2: {
+			newSmallFontFile = std::move(args[0]);
+			newLargeFontFile = std::move(args[1]);
+		} break;
+		default:
+			// nothing
+			break;
+		}
+		CglFont::LoadCustomFonts(newSmallFontFile, newLargeFontFile);
 		return true;
 	}
 };
@@ -2818,17 +2923,23 @@ class GroundDecalsActionExecutor : public IUnsyncedActionExecutor {
 public:
 	GroundDecalsActionExecutor() : IUnsyncedActionExecutor(
 		"GroundDecals",
-		"Enable/Disable ground-decal rendering."
+		"Enable/Disable ground-decal rendering"
 	) {
 	}
 
 	bool Execute(const UnsyncedAction& action) const final {
-		bool drawDecals = IGroundDecalDrawer::GetDrawDecals();
+		if (action.GetArgs().empty()) {
+			IGroundDecalDrawer::SetDrawDecals(!IGroundDecalDrawer::GetDrawDecals()); //inverse
+		}
+		else {
+			bool failed;
+			auto dl = StringToInt(action.GetArgs(), &failed);
+			if (!failed)
+				IGroundDecalDrawer::SetDrawDecals(static_cast<bool>(dl));
+		}
 
-		InverseOrSetBool(drawDecals, action.GetArgs());
-		IGroundDecalDrawer::SetDrawDecals(drawDecals);
-
-		LogSystemStatus("Ground-decal rendering", IGroundDecalDrawer::GetDrawDecals());
+		static constexpr const char* fmt = "Ground-decal rendering %s";
+		LOG(fmt, IGroundDecalDrawer::GetDrawDecals() ? "enabled" : "disabled");
 		return true;
 	}
 };
@@ -3165,7 +3276,7 @@ public:
 
 	bool Execute(const UnsyncedAction& action) const final {
 		InverseOrSetBool(CUnitDrawer::IconHideWithUI(), action.GetArgs());
-		configHandler->Set("IconsHideWithUI", CUnitDrawer::IconHideWithUI() ? 1 : 0);
+		configHandler->Set("UnitIconsHideWithUI", CUnitDrawer::IconHideWithUI() ? 1 : 0);
 		LogSystemStatus("Hide unit icons with UI: ", CUnitDrawer::IconHideWithUI());
 		return true;
 	}
@@ -3219,7 +3330,7 @@ public:
 
 class AirMeshActionExecutor: public IUnsyncedActionExecutor {
 public:
-	AirMeshActionExecutor(): IUnsyncedActionExecutor("airmesh", "Show/Hide the smooth air-mesh map overlay") {
+	AirMeshActionExecutor(): IUnsyncedActionExecutor("airmesh", "Show/Hide the smooth air-mesh map overlay", true) {
 	}
 
 	bool Execute(const UnsyncedAction& action) const final {
@@ -3783,82 +3894,27 @@ private:
 } // namespace (unnamed)
 
 
-
-
-
-// TODO CGame stuff in UnsyncedGameCommands: refactor (or move)
-bool CGame::ActionReleased(const Action& action)
+bool UnsyncedGameCommands::ActionPressed(const Action& action, bool isRepeat)
 {
-	switch (hashString(action.command.c_str())) {
-		case hashString("drawinmap"): {
-			inMapDrawer->SetDrawMode(false);
-		} break;
+	const IUnsyncedActionExecutor* executor = GetActionExecutor(action.command);
 
-		case hashString("moveforward"): {
-			camera->SetMovState(CCamera::MOVE_STATE_FWD, false);
-		} break;
-		case hashString("moveback"): {
-			camera->SetMovState(CCamera::MOVE_STATE_BCK, false);
-		} break;
-		case hashString("moveleft"): {
-			camera->SetMovState(CCamera::MOVE_STATE_LFT, false);
-		} break;
-		case hashString("moveright"): {
-			camera->SetMovState(CCamera::MOVE_STATE_RGT, false);
-		} break;
-		case hashString("moveup"): {
-			camera->SetMovState(CCamera::MOVE_STATE_UP, false);
-		} break;
-		case hashString("movedown"): {
-			camera->SetMovState(CCamera::MOVE_STATE_DWN, false);
-		} break;
+	if (executor != nullptr) {
+		// an executor for that action was found
+		if (executor->ExecuteAction(UnsyncedAction(action, isRepeat)))
+			return true;
+	}
 
-		case hashString("movefast"): {
-			camera->SetMovState(CCamera::MOVE_STATE_FST, false);
-		} break;
-		case hashString("moveslow"): {
-			camera->SetMovState(CCamera::MOVE_STATE_SLW, false);
-		} break;
-		case hashString("movetilt"): {
-			camera->SetMovState(CCamera::MOVE_STATE_TLT, false);
-		} break;
-		case hashString("movereset"): {
-			camera->SetMovState(CCamera::MOVE_STATE_RST, false);
-		} break;
-		case hashString("moverotate"): {
-			camera->SetMovState(CCamera::MOVE_STATE_RTT, false);
-		} break;
+	return false;
+}
 
-		case hashString("mouse1"): {
-			mouse->MouseRelease(mouse->lastx, mouse->lasty, 1);
-		} break;
-		case hashString("mouse2"): {
-			mouse->MouseRelease(mouse->lastx, mouse->lasty, 2);
-		} break;
-		case hashString("mouse3"): {
-			mouse->MouseRelease(mouse->lastx, mouse->lasty, 3);
-		} break;
+bool UnsyncedGameCommands::ActionReleased(const Action& action)
+{
+	const IUnsyncedActionExecutor* executor = GetActionExecutor(action.command);
 
-		#if 0
-		// HACK   somehow weird things happen when MouseRelease is called for button 4 and 5.
-		// Note that SYS_WMEVENT on windows also only sends MousePress events for these buttons.
-		case hashString("mouse4"): {
-			mouse->MouseRelease(mouse->lastx, mouse->lasty, 4);
-		} break;
-		case hashString("mouse5"): {
-			mouse->MouseRelease(mouse->lastx, mouse->lasty, 5);
-		} break;
-		#endif
-
-		case hashString("mousestate"): {
-			mouse->ToggleMiddleClickScroll();
-		} break;
-		case hashString("gameinfoclose"): {
-			CGameInfo::Disable();
-		} break;
-
-		default: {
-		} break;
+	if (executor != nullptr) {
+		// an executor for that action was found
+		if (executor->ExecuteActionRelease(UnsyncedAction(action, false)))
+			return true;
 	}
 
 	return false;
@@ -3882,7 +3938,6 @@ void UnsyncedGameCommands::AddDefaultActionExecutors()
 	AddActionExecutor(AllocActionExecutor<MapMeshDrawerActionExecutor>());
 	AddActionExecutor(AllocActionExecutor<MapBorderActionExecutor>());
 	AddActionExecutor(AllocActionExecutor<WaterActionExecutor>());
-	AddActionExecutor(AllocActionExecutor<AdvModelShadingActionExecutor>()); // [maint]
 	AddActionExecutor(AllocActionExecutor<AdvMapShadingActionExecutor>()); // [maint]
 	AddActionExecutor(AllocActionExecutor<UnitDrawerTypeActionExecutor>()); // [maint]
 	AddActionExecutor(AllocActionExecutor<FeatureDrawerTypeActionExecutor>()); // [maint]
@@ -3912,6 +3967,7 @@ void UnsyncedGameCommands::AddDefaultActionExecutors()
 	AddActionExecutor(AllocActionExecutor<CameraMoveActionExecutor>(CCamera::MOVE_STATE_TLT, "Tilt"  , false));
 	AddActionExecutor(AllocActionExecutor<CameraMoveActionExecutor>(CCamera::MOVE_STATE_RST, "Reset" , false));
 	AddActionExecutor(AllocActionExecutor<CameraMoveActionExecutor>(CCamera::MOVE_STATE_RTT, "Rotate", false));
+	AddActionExecutor(AllocActionExecutor<MouseStateActionExecutor>());
 	AddActionExecutor(AllocActionExecutor<AIKillReloadActionExecutor>(true));
 	AddActionExecutor(AllocActionExecutor<AIKillReloadActionExecutor>(false));
 	AddActionExecutor(AllocActionExecutor<AIControlActionExecutor>());
@@ -3944,6 +4000,7 @@ void UnsyncedGameCommands::AddDefaultActionExecutors()
 	AddActionExecutor(AllocActionExecutor<PauseActionExecutor>());
 	AddActionExecutor(AllocActionExecutor<DebugActionExecutor>());
 	AddActionExecutor(AllocActionExecutor<DebugCubeMapActionExecutor>());
+	AddActionExecutor(AllocActionExecutor<DebugQuadFieldActionExecutor>());
 	AddActionExecutor(AllocActionExecutor<DrawSkyActionExecutor>());
 	AddActionExecutor(AllocActionExecutor<DebugGLActionExecutor>());
 	AddActionExecutor(AllocActionExecutor<DebugGLErrorsActionExecutor>());
@@ -3961,6 +4018,7 @@ void UnsyncedGameCommands::AddDefaultActionExecutors()
 	AddActionExecutor(AllocActionExecutor<NetMsgSmoothingActionExecutor>());
 	AddActionExecutor(AllocActionExecutor<SpeedControlActionExecutor>());
 	AddActionExecutor(AllocActionExecutor<GameInfoActionExecutor>());
+	AddActionExecutor(AllocActionExecutor<GameInfoCloseActionExecutor>());
 	AddActionExecutor(AllocActionExecutor<HideInterfaceActionExecutor>());
 	AddActionExecutor(AllocActionExecutor<HardwareCursorActionExecutor>());
 	AddActionExecutor(AllocActionExecutor<FullscreenActionExecutor>());
@@ -3971,6 +4029,7 @@ void UnsyncedGameCommands::AddDefaultActionExecutors()
 	AddActionExecutor(AllocActionExecutor<GroundDetailActionExecutor>());
 	// [devel] AddActionExecutor(AllocActionExecutor<MoreGrassActionExecutor>());
 	// [devel] AddActionExecutor(AllocActionExecutor<LessGrassActionExecutor>());
+	// [devel] AddActionExecutor(AllocActionExecutor<RotateSkyActionExecutor>());
 	AddActionExecutor(AllocActionExecutor<FeatureFadeDistActionExecutor>());
 	AddActionExecutor(AllocActionExecutor<FeatureDrawDistActionExecutor>());
 	AddActionExecutor(AllocActionExecutor<SpeedUpActionExecutor>());

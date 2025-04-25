@@ -2,7 +2,6 @@
 
 #include "Height.h"
 #include "Map/HeightLinePalette.h"
-#include "Map/HeightMapTexture.h"
 #include "Map/ReadMap.h"
 #include "newRendering/GlobalRendering.h"
 #include "Rendering/Shaders/ShaderHandler.h"
@@ -36,7 +35,7 @@ CHeightTexture::CHeightTexture()
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glSpringTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, texSize.x, texSize.y);
+	RecoilTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, texSize.x, texSize.y);
 
 	glGenTextures(1, &paletteTex);
 	glBindTexture(GL_TEXTURE_2D, paletteTex);
@@ -44,7 +43,7 @@ CHeightTexture::CHeightTexture()
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glSpringTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, 256, 2);
+	RecoilTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, 256, 2);
 	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 1, GL_RGBA, GL_UNSIGNED_BYTE, &CHeightLinePalette::paletteColored[0].r);
 	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 1, 256, 1, GL_RGBA, GL_UNSIGNED_BYTE, &CHeightLinePalette::paletteBlackAndWhite[0].r);
 
@@ -146,7 +145,9 @@ void CHeightTexture::Update()
 	RECOIL_DETAILED_TRACY_ZONE;
 	needUpdate = false;
 
-	if (!fbo.IsValid() || !shader->IsValid() || (heightMapTexture->GetTextureID() == 0))
+	const auto hmTexID = readMap->GetHeightMapTexture();
+
+	if (!fbo.IsValid() || !shader->IsValid() || (hmTexID == 0))
 		return UpdateCPU();
 
 	fbo.Bind();
@@ -157,7 +158,7 @@ void CHeightTexture::Update()
 	glEnable(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D, paletteTex);
 	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, heightMapTexture->GetTextureID());
+	glBindTexture(GL_TEXTURE_2D, hmTexID);
 	glBegin(GL_QUADS);
 		glVertex2f(0.f, 0.f);
 		glVertex2f(0.f, 1.f);

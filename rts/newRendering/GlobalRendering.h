@@ -10,6 +10,7 @@
 #include "System/Matrix44f.h"
 #include "System/creg/creg_cond.h"
 #include "System/Misc/SpringTime.h"
+#include "System/UnorderedSet.hpp"
 #include "System/type2.h"
 
 struct IRendererCore;
@@ -183,8 +184,13 @@ public:
 	void GetDisplayBounds(SDL_Rect& r, const int* di = nullptr) const;
 	void GetUsableDisplayBounds(SDL_Rect& r, const int* di = nullptr) const;
 
-	void SetRendererStartState();
+	bool CheckGLMultiSampling() const;
+	bool CheckGLContextVersion(const int2& minCtx) const;
+	bool ToggleGLDebugOutput(unsigned int msgSrceIdx, unsigned int msgTypeIdx, unsigned int msgSevrIdx) const;
+	void InitGLState();
+	void ToggleMultisampling() const;
 
+	bool CheckShaderGL4() const;
 public:
 	//helper function
 	static int DepthBitsToFormat(int bits);
@@ -293,6 +299,7 @@ public:
 	 * Level of multisample anti-aliasing
 	 */
 	int msaaLevel;
+	float minSampleShadingRate;
 
 	/**
 	 * @brief maxTextureSize
@@ -300,6 +307,7 @@ public:
 	 * maximum 2D texture size
 	 */
 	int maxTextureSize;
+	int maxTexSlots;
 	int maxFragShSlots;
 	int maxCombShSlots;
 
@@ -351,7 +359,7 @@ public:
 	 * @brief GPU driver's vendor
 	 *
 	 * These can be used to enable workarounds for bugs in their drivers.
-	 * Note, you should always give the user the possiblity to override such workarounds via config-tags.
+	 * Note, you should always give the user the possibility to override such workarounds via config-tags.
 	 */
 	bool haveAMD;
 	bool haveMesa;
@@ -372,7 +380,7 @@ public:
 	*/
 	bool supportPersistentMapping;
 
-	// GLEW_ARB_explicit_attrib_location
+	// GLAD_GL_ARB_explicit_attrib_location
 	bool supportExplicitAttribLoc;
 
 	/**
@@ -380,7 +388,6 @@ public:
 	 *
 	 * Especially some ATI cards report that they support NPOTs, but don't (or just very limited).
 	 */
-	bool supportNonPowerOfTwoTex;
 	bool supportTextureQueryLOD;
 
 	bool supportMSAAFrameBuffer;
@@ -474,6 +481,7 @@ public:
 	static constexpr uint32_t FRAME_END_TIME_QUERY_IDX = NUM_OPENGL_TIMER_QUERIES - 1;
 
 private:
+	void SetMinSampleShadingRate();
 	bool SetWindowMinMaximized(bool maximize) const;
 
 private:

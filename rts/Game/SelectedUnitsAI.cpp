@@ -9,6 +9,7 @@
 #include "Game/Players/PlayerHandler.h"
 #include "Map/Ground.h"
 #include "Sim/Misc/GlobalConstants.h"
+#include "Sim/Misc/LosHandler.h"
 #include "Sim/Misc/QuadField.h"
 #include "Sim/Misc/TeamHandler.h"
 #include "Sim/MoveTypes/MoveType.h"
@@ -197,7 +198,7 @@ bool CSelectedUnitsHandlerAI::GiveCommandNet(Command& c, int playerNum)
 		const float3 frontDir = ((pos - groupCenterCoor) * XZVector).ANormalize();
 		const float3  sideDir = frontDir.cross(UpVector);
 
-		// calculate so that the units form in an aproximate square
+		// calculate so that the units form in an approximate square
 		const float length = 100.0f + (math::sqrt((float)numSelectedUnits) * 32.0f);
 
 		// push back some extra params so it confer with a front move
@@ -455,7 +456,7 @@ void CSelectedUnitsHandlerAI::MakeFormationFrontOrder(Command* c, int playerNum)
 		float closestDistSq = std::numeric_limits<float>::infinity();
 		const auto cmdPos = allFrontMoveCommands[i].second.GetPos(0);
 
-		// find closest unit of the unit type selected for this move comamnd
+		// find closest unit of the unit type selected for this move command
 		for (size_t j = 0; j < unassignedUnits.size(); j++) {
 			const auto& unit = unassignedUnits[j];
 			if (unit.unitDefId == mixedUnitTypes[i]){
@@ -501,7 +502,7 @@ void CSelectedUnitsHandlerAI::CreateUnitOrder(std::vector< std::pair<float, int>
 
 		// give weaponless units a long range to make them go to the back
 		const float range = (unit->maxRange < 1.0f)? 2000: unit->maxRange;
-		const float value = ((ud->cost.metal * 60) + ud->cost.energy) / ud->health * range;
+		const float value = ud->power / ud->health * range;
 
 		out.emplace_back(value, unitID);
 	}
@@ -689,13 +690,14 @@ void CSelectedUnitsHandlerAI::SelectCircleUnits(
 		return;
 
 	const CPlayer* p = playerHandler.Player(playerNum);
+	const int allyTeam = teamHandler.AllyTeam(p->team);
+	const float allyTeamError = losHandler->GetAllyTeamRadarErrorSize(allyTeam);
 
 	QuadFieldQuery qfQuery;
-	quadField.GetUnitsExact(qfQuery, pos, radius, false);
+	quadField.GetUnitsExact(qfQuery, pos, radius+allyTeamError, false);
 
 	const float radiusSqr = radius * radius;
 	const unsigned int count = qfQuery.units->size();
-	const int allyTeam = teamHandler.AllyTeam(p->team);
 
 	units.reserve(count);
 
@@ -708,9 +710,9 @@ void CSelectedUnitsHandlerAI::SelectCircleUnits(
 			continue;
 		if (!(unit->losStatus[allyTeam] & (LOS_INLOS | LOS_INRADAR)))
 			continue;
-
-		const float dx = (pos.x - unit->midPos.x);
-		const float dz = (pos.z - unit->midPos.z);
+		const float3 errorPos = unit->GetErrorPos(allyTeam);
+		const float dx = (pos.x - errorPos.x);
+		const float dz = (pos.z - errorPos.z);
 
 		if (((dx * dx) + (dz * dz)) > radiusSqr)
 			continue;
@@ -733,15 +735,17 @@ void CSelectedUnitsHandlerAI::SelectRectangleUnits(
 		return;
 
 	const CPlayer* p = playerHandler.Player(playerNum);
+	const int allyTeam = teamHandler.AllyTeam(p->team);
+	const float allyTeamError = losHandler->GetAllyTeamRadarErrorSize(allyTeam);
 
 	const float3 mins(std::min(pos0.x, pos1.x), 0.0f, std::min(pos0.z, pos1.z));
 	const float3 maxs(std::max(pos0.x, pos1.x), 0.0f, std::max(pos0.z, pos1.z));
 
 	QuadFieldQuery qfQuery;
-	quadField.GetUnitsExact(qfQuery, mins, maxs);
+	quadField.GetUnitsExact(qfQuery, {mins.x - allyTeamError, 0, mins.z - allyTeamError},
+			                 {maxs.x + allyTeamError, 0, maxs.z + allyTeamError});
 
 	const unsigned int count = qfQuery.units->size();
-	const int allyTeam = teamHandler.AllyTeam(p->team);
 
 	units.reserve(count);
 
@@ -753,6 +757,12 @@ void CSelectedUnitsHandlerAI::SelectRectangleUnits(
 		if (unit->allyteam == allyTeam)
 			continue;
 		if (!(unit->losStatus[allyTeam] & (LOS_INLOS | LOS_INRADAR)))
+			continue;
+		const float3 errorPos = unit->GetErrorPos(allyTeam);
+
+		if (errorPos.x < mins.x || errorPos.x > maxs.x)
+			continue;
+		if (errorPos.z < mins.z || errorPos.z > maxs.z)
 			continue;
 
 		units.push_back(unit->id);

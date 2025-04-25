@@ -1,6 +1,7 @@
 /* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
 
 #include <algorithm>
+#include <bit>
 #include <utility>
 #include <cstring>
 #include <memory>
@@ -400,6 +401,8 @@ public:
 	BitmapAction& operator=(const BitmapAction& ba) = delete;
 	BitmapAction& operator=(BitmapAction&& ba) noexcept = delete;
 
+	const CBitmap* GetBitmap() const { return bmp; }
+
 	virtual void CreateAlpha(uint8_t red, uint8_t green, uint8_t blue) = 0;
 	virtual void ReplaceAlpha(float a) = 0;
 	virtual void SetTransparent(const SColor& c, const SColor trans = SColor(0, 0, 0, 0)) = 0;
@@ -423,10 +426,9 @@ protected:
 template<typename T, uint32_t ch>
 class TBitmapAction : public BitmapAction {
 public:
-	static constexpr size_t PixelTypeSize = sizeof(T) * ch;
-
 	using ChanType  = T;
-	using PixelType = T[ch];
+	using PixelType = std::array<T, ch>;
+	static constexpr size_t PixelTypeSize = sizeof(PixelType);
 
 	using AccumChanType = typename std::conditional<std::is_same_v<T, float>, float, uint32_t>::type;
 
@@ -666,89 +668,87 @@ template<typename T, uint32_t ch>
 void TBitmapAction<T, ch>::Blur(int iterations, float weight)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
-	// We use an axis-separated blur algorithm. Applies blurkernel in both the x
+	// We use an axis-separated blur algorithm. Applies BLUR_KERNEL in both the x
 	// and y dimensions. This 3x1 blur kernel is equivalent to a 3x3 kernel in
 	// both the x and y dimensions.
 	// See more info
 	// https://www.rastergrid.com/blog/2010/09/efficient-gaussian-blur-with-linear-sampling/
-	static constexpr float blurkernel[3] = {
+	static constexpr std::array BLUR_KERNEL {
 		1.0f / 4.0f, 2.0f / 4.0f, 1.0f / 4.0f
 	};
+	static constexpr int BLUR_KERNEL_HS = BLUR_KERNEL.size() >> 1;
 
-	// Two temporaries are required in order to perform axis separated gaussian
-	// blur with an additional weight from the source pixel specified by `weight`.
-	// The first blur pass, when dimension == 0, applies blur in the x
-	// dimension on bitmaps[0] and saves the result to bitmaps[1]. The second blur
-	// pass, when dimension == 1, applies blur in the y dimension on bitmaps[1]
-	// and saves the result in bitmaps[2]. Additionally, the second blur pass adds
-	// an additional `weight` from bitmaps[0] to the final result in bitmaps[2].
-	CBitmap tmp(nullptr, bmp->xsize, bmp->ysize, bmp->channels, bmp->dataType);
-	CBitmap tmp2(nullptr, bmp->xsize, bmp->ysize, bmp->channels, bmp->dataType);
+	// note ysize and xsize are swapped
+	CBitmap tmp(nullptr, bmp->ysize, bmp->xsize, ch, bmp->dataType);
+	auto tempAction = BitmapAction::GetBitmapAction(&tmp); // lifetime thing, not used furher
 
-	std::array<CBitmap*, 3> bitmaps = {bmp, &tmp, &tmp2};
-	std::array<std::unique_ptr<BitmapAction>, 3> actions = {
-		BitmapAction::GetBitmapAction(bitmaps[0]),
-		BitmapAction::GetBitmapAction(bitmaps[1]),
-		BitmapAction::GetBitmapAction(bitmaps[2])
+	auto* tempTypedAction = static_cast<TBitmapAction<T, ch>*>(tempAction.get());
+	auto* currTypedAction = this;
+
+	const std::array blurPassTuples {
+		std::tuple( bmp, currTypedAction, tempTypedAction), // horizontal pass
+		std::tuple(&tmp, tempTypedAction, currTypedAction)  // vertical   pass
 	};
 
-	using ThisType = decltype(this);
+	const auto w0 = BLUR_KERNEL[BLUR_KERNEL_HS] * BLUR_KERNEL[BLUR_KERNEL_HS] * (weight - 1.0f);
+
+	#define MT_EXECUTION 1
 
 	for (int iter = 0; iter < iterations; ++iter) {
-		for(int dimension = 0; dimension < 2; ++dimension) {
-
-			CBitmap* src = bitmaps[dimension];
-			CBitmap* dst = bitmaps[dimension + 1];
-
-			auto& srcAction = actions[dimension];
-			auto& dstAction = actions[dimension + 1];
-
-			for_mt(0, src->ysize, [&](const int y) {
+		for (size_t bpi = 0; bpi < blurPassTuples.size(); ++bpi) {
+			// everything is a pointer here, can assign with just auto
+			auto [src, srcAction, dstAction] = blurPassTuples[bpi];
+		#if MT_EXECUTION == 1
+			for_mt_chunk(0, src->ysize, [this, src, srcAction, dstAction, bpi, w0](int y) {
+		#else
+			for (int y = 0; y < src->ysize; y++) {
+		#endif
+				int yBaseOffset = (y * src->xsize);
 				for (int x = 0; x < src->xsize; x++) {
-					int yBaseOffset = (y * src->xsize);
-					for (int a = 0; a < src->channels; a++) {
-						float fragment = 0.0f;
 
-						for (int i = 0; i < 3; ++i) {
-							int yoffset = dimension == 1 ? (i - 1) : 0;
-							int xoffset = dimension == 0 ? (i - 1) : 0;
+					// don't use AccumChanType for additional precision
+					std::array<float, ch> val{ 0.0f };
+					float wSum = 0.0f;
 
-							const int tx = x + xoffset;
-							const int ty = y + yoffset;
+					for (int off = -BLUR_KERNEL_HS; off <= BLUR_KERNEL_HS; ++off) {
+						const int xo = x + off;
+						// check bounds
+						if ((xo < 0) || (xo > src->xsize - 1))
+							continue;
 
-							xoffset *= ((tx >= 0) && (tx < src->xsize));
-							yoffset *= ((ty >= 0) && (ty < src->ysize));
+						const auto& w = BLUR_KERNEL[off + BLUR_KERNEL_HS];
+						wSum += w;
 
-							const int offset = (yoffset * src->xsize + xoffset);
-
-							auto& srcChannel = static_cast<ThisType>(srcAction.get())->GetRef(yBaseOffset + x + offset, a);
-
-							fragment += (blurkernel[i] * srcChannel);
+						const auto& srcRef = srcAction->GetRef(yBaseOffset + xo);
+						for (int a = 0; a < ch; a++) {
+							val[a] += w * srcRef[a];
 						}
+					}
 
-						if (dimension == 1) {
-							auto& srcChannel = static_cast<ThisType>(actions[0].get())->GetRef(yBaseOffset + x, a);
+					auto& dstRef = dstAction->GetRef(x * src->ysize + y);
+					for (int a = 0; a < ch; a++) {
+						auto rawDstVal = val[a] / wSum;
 
-							fragment += (blurkernel[1] * blurkernel[1]) * (weight - 1.0f) * srcChannel;
-						}
-
-						auto& dstChannel = static_cast<ThisType>(dstAction.get())->GetRef(yBaseOffset + x, a);
+						// apply extra (> 1.0f) weight
+						rawDstVal += w0 * dstRef[a] * (bpi == 1 && w0 > 0.0f);
 
 						if constexpr (std::is_same_v<ChanType, float>) {
-							dstChannel = static_cast<ChanType>(std::max(fragment, 0.0f));
+							dstRef[a] = static_cast<ChanType>(std::max(rawDstVal, 0.0f));
 						}
 						else {
-							dstChannel = static_cast<ChanType>(std::clamp(fragment, 0.0f, static_cast<float>(GetMaxNormValue())));
+							dstRef[a] = static_cast<ChanType>(std::clamp(rawDstVal, 0.0f, static_cast<float>(GetMaxNormValue())));
 						}
 					}
 				}
+		#if MT_EXECUTION == 1
 			});
+		#else
+			}
+		#endif
 		}
-
-		std::swap(actions[0], actions[2]);
-		std::swap(bitmaps[0], bitmaps[2]);
 	}
 
+	#undef MT_EXECUTION
 }
 
 template<typename T, uint32_t ch>
@@ -1066,7 +1066,7 @@ CBitmap& CBitmap::operator=(CBitmap&& bmp) noexcept
 bool CBitmap::CanBeKilled()
 {
 	RECOIL_DETAILED_TRACY_ZONE;
-	return ITexMemPool::texMemPool->NoCurrentAllocations();
+	return !ITexMemPool::texMemPool || ITexMemPool::texMemPool->NoCurrentAllocations();
 }
 
 void CBitmap::InitPool(size_t size)
@@ -1110,6 +1110,11 @@ void CBitmap::AllocDummy(const SColor fill)
 
 	Alloc(1, 1, sizeof(SColor), dataType);
 	Fill(fill);
+}
+
+int32_t CBitmap::GetReqNumLevels() const
+{
+	return std::bit_width(static_cast<uint32_t>(std::max(xsize , ysize)));
 }
 
 uint32_t CBitmap::GetDataTypeSize(uint32_t glType)
@@ -1170,7 +1175,7 @@ int32_t CBitmap::ExtFmtToChannels(int32_t extFmt)
 int32_t CBitmap::GetIntFmt() const
 {
 	RECOIL_DETAILED_TRACY_ZONE;
-	constexpr uint32_t intFormats[3][5] = {
+	static constexpr uint32_t intFormats[3][5] = {
 			{ 0, GL_R8   , GL_RG8  , GL_RGB8  , GL_RGBA8   },
 			{ 0, GL_R16  , GL_RG16 , GL_RGB16 , GL_RGBA16  },
 			{ 0, GL_R32F , GL_RG32F, GL_RGB32F, GL_RGBA32F }
@@ -1488,11 +1493,12 @@ namespace {
 			case hashString("tif"): [[fallthrough]];
 			case hashString("tiff"): { success = ilSave(IL_TIF, p); } break;
 			case hashString("dds"): { success = ilSave(IL_DDS, p); } break;
-			case hashString("raw"): { success = ilSave(IL_RAW, p); } break;
 			case hashString("pbm"): [[fallthrough]];
 			case hashString("pgm"): [[fallthrough]];
 			case hashString("ppm"): [[fallthrough]];
 			case hashString("pnm"): { success = ilSave(IL_PNM, p); } break;
+			case hashString("hdr"): { success = ilSave(IL_HDR, p); } break;
+			case hashString("raw"): { success = ilSave(IL_RAW, p); } break;
 		}
 
 		assert(ilGetError() == IL_NO_ERROR);
@@ -1554,6 +1560,13 @@ bool CBitmap::Save(const std::string& filename, bool dontSaveAlpha, bool logged,
 	const std::string& fsImageExt = FileSystem::GetExtension(filename);
 	const std::string& fsFullPath = dataDirsAccess.LocateFile(filename, FileQueryFlags::WRITE);
 	const std::wstring& ilFullPath = std::wstring(fsFullPath.begin(), fsFullPath.end());
+
+	if (FileSystem::FileExists(fsFullPath)) {
+		if (logged)
+			LOG("[CBitmap::%s] deleting \"%s\" in \"%s\"", __func__, filename.c_str(), fsFullPath.c_str());
+
+		FileSystem::DeleteFile(fsFullPath);
+	}
 
 	if (logged)
 		LOG("[CBitmap::%s] saving \"%s\" to \"%s\" (IL_VERSION=%d IL_UNICODE=%d)", __func__, filename.c_str(), fsFullPath.c_str(), IL_VERSION, sizeof(ILchar) != 1);
@@ -1677,71 +1690,57 @@ bool CBitmap::SaveFloat(std::string const& filename) const
 
 
 #ifndef HEADLESS
-uint32_t CBitmap::CreateTexture(float aniso, float lodBias, bool mipmaps, uint32_t texID) const
+uint32_t CBitmap::CreateTexture(const TextureCreationParams& tcp) const
 {
 	RECOIL_DETAILED_TRACY_ZONE;
 	if (compressed)
-		return CreateDDSTexture(texID, aniso, lodBias, mipmaps);
+		return CreateDDSTexture(tcp);
 
 	if (GetMemSize() == 0)
 		return 0;
 
-	// jcnossen: Some drivers return "2.0" as a version string,
-	// but switch to software rendering for non-power-of-two textures.
-	// GL_ARB_texture_non_power_of_two indicates that the hardware will actually support it.
-	if (!globalRendering->supportNonPowerOfTwoTex && (xsize != next_power_of_2(xsize) || ysize != next_power_of_2(ysize))) {
-		CBitmap bm = CreateRescaled(next_power_of_2(xsize), next_power_of_2(ysize));
-		return bm.CreateTexture(aniso, mipmaps);
-	}
+	uint32_t texID = tcp.texID;
+	const int32_t numLevels = tcp.reqNumLevels <= 0 ? GetReqNumLevels() : tcp.reqNumLevels;
+	const auto minFilter = tcp.GetMinFilter(numLevels);
+	const auto magFilter = tcp.GetMagFilter();
 
 	if (texID == 0)
 		glGenTextures(1, &texID);
 
-	glBindTexture(GL_TEXTURE_2D, texID);
+	auto binding = GL::TexBind(GL_TEXTURE_2D, texID);
 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-	if (lodBias != 0.0f)
-		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, lodBias);
-	if (aniso > 0.0f)
-		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, aniso);
+	if (tcp.lodBias != 0.0f)
+		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, tcp.lodBias);
+	if (tcp.aniso > 0.0f)
+		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY, tcp.aniso);
 
-	if (mipmaps) {
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-		glBuildMipmaps(GL_TEXTURE_2D, GetIntFmt(), xsize, ysize, GetExtFmt(), dataType, GetRawMem());
-	} else {
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexImage2D(GL_TEXTURE_2D, 0, GetIntFmt(), xsize, ysize, 0, GetExtFmt(), dataType, GetRawMem());
-	}
+	RecoilBuildMipmaps(GL_TEXTURE_2D, GetIntFmt(), xsize, ysize, GetExtFmt(), dataType, GetRawMem(), numLevels);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magFilter);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFilter);
 
 	return texID;
 }
 
 
-static void HandleDDSMipmap(GLenum target, bool mipmaps, int num_mipmaps)
+static void HandleDDSMipmap(GLenum target, int32_t numEmbeddedLevels, uint32_t minFilter)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
-	if (num_mipmaps > 0) {
-		// dds included the MipMaps use them
-		glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-	} else {
-		if (mipmaps && IS_GL_FUNCTION_AVAILABLE(glGenerateMipmap)) {
-			// create the mipmaps at runtime
-			glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-			glGenerateMipmap(target);
-		} else {
-			// no mipmaps
-			glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		}
-	}
+	glTexParameteri(target, GL_TEXTURE_MIN_FILTER, minFilter);
+
+	if (numEmbeddedLevels == 0 && minFilter != GL_LINEAR && minFilter != GL_NEAREST)
+		glGenerateMipmap(target);
 }
 
-uint32_t CBitmap::CreateDDSTexture(uint32_t texID, float aniso, float lodBias, bool mipmaps) const
+uint32_t CBitmap::CreateDDSTexture(const TextureCreationParams& tcp) const
 {
 	RECOIL_DETAILED_TRACY_ZONE;
 	glPushAttrib(GL_TEXTURE_BIT);
+
+	auto texID = tcp.texID;
 
 	if (texID == 0)
 		glGenTextures(1, &texID);
@@ -1762,12 +1761,12 @@ uint32_t CBitmap::CreateDDSTexture(uint32_t texID, float aniso, float lodBias, b
 				break;
 			}
 
-			if (lodBias != 0.0f)
-				glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, lodBias);
-			if (aniso > 0.0f)
-				glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, aniso);
+			if (tcp.lodBias != 0.0f)
+				glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, tcp.lodBias);
+			if (tcp.aniso > 0.0f)
+				glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, tcp.aniso);
 
-			HandleDDSMipmap(GL_TEXTURE_2D, mipmaps, ddsimage.get_num_mipmaps());
+			HandleDDSMipmap(GL_TEXTURE_2D, ddsimage.get_num_mipmaps(), tcp.GetMinFilter(ddsimage.get_num_mipmaps()));
 			break;
 
 		case nv_dds::Texture3D:
@@ -1780,10 +1779,10 @@ uint32_t CBitmap::CreateDDSTexture(uint32_t texID, float aniso, float lodBias, b
 				break;
 			}
 
-			if (lodBias != 0.0f)
-				glTexParameterf(GL_TEXTURE_3D, GL_TEXTURE_LOD_BIAS, lodBias);
+			if (tcp.lodBias != 0.0f)
+				glTexParameterf(GL_TEXTURE_3D, GL_TEXTURE_LOD_BIAS, tcp.lodBias);
 
-			HandleDDSMipmap(GL_TEXTURE_3D, mipmaps, ddsimage.get_num_mipmaps());
+			HandleDDSMipmap(GL_TEXTURE_3D, ddsimage.get_num_mipmaps(), tcp.GetMinFilter(ddsimage.get_num_mipmaps()));
 			break;
 
 		case nv_dds::TextureCubemap:
@@ -1796,12 +1795,12 @@ uint32_t CBitmap::CreateDDSTexture(uint32_t texID, float aniso, float lodBias, b
 				break;
 			}
 
-			if (lodBias != 0.0f)
-				glTexParameterf(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_LOD_BIAS, lodBias);
-			if (aniso > 0.0f)
-				glTexParameterf(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAX_ANISOTROPY_EXT, aniso);
+			if (tcp.lodBias != 0.0f)
+				glTexParameterf(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_LOD_BIAS, tcp.lodBias);
+			if (tcp.aniso > 0.0f)
+				glTexParameterf(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAX_ANISOTROPY_EXT, tcp.aniso);
 
-			HandleDDSMipmap(GL_TEXTURE_CUBE_MAP, mipmaps, ddsimage.get_num_mipmaps());
+			HandleDDSMipmap(GL_TEXTURE_CUBE_MAP, ddsimage.get_num_mipmaps(), tcp.GetMinFilter(ddsimage.get_num_mipmaps()));
 			break;
 
 		default:
@@ -1814,17 +1813,28 @@ uint32_t CBitmap::CreateDDSTexture(uint32_t texID, float aniso, float lodBias, b
 }
 #else  // !HEADLESS
 
-uint32_t CBitmap::CreateTexture(float aniso, float lodBias, bool mipmaps, uint32_t texID) const {
+uint32_t CBitmap::CreateTexture(const TextureCreationParams& tcp) const {
 	RECOIL_DETAILED_TRACY_ZONE;
 	return 0;
 }
 
-uint32_t CBitmap::CreateDDSTexture(uint32_t texID, float aniso, float lodBias, bool mipmaps) const {
+uint32_t CBitmap::CreateDDSTexture(const TextureCreationParams& tcp) const {
 	RECOIL_DETAILED_TRACY_ZONE;
 	return 0;
 }
 #endif // !HEADLESS
 
+
+uint32_t CBitmap::CreateMipMapTexture(float aniso, float lodBias, int32_t reqNumLevels, uint32_t texID) const
+{
+	TextureCreationParams tcp;
+	tcp.texID = texID;
+	tcp.aniso = aniso;
+	tcp.lodBias = lodBias;
+	tcp.reqNumLevels = reqNumLevels;
+
+	return CreateTexture(tcp);
+}
 
 void CBitmap::CreateAlpha(uint8_t red, uint8_t green, uint8_t blue)
 {
@@ -2079,4 +2089,24 @@ void CBitmap::ReverseYAxis()
 
 	ITexMemPool::texMemPool->Free(tmp, memSize);
 #endif
+}
+
+uint32_t TextureCreationParams::GetMinFilter(int32_t numLevels) const
+{
+	if (numLevels == 1) {
+		return linearTextureFilter ? GL_LINEAR : GL_NEAREST;
+	}
+	else {
+		if (linearMipMapFilter) {
+			return linearTextureFilter ? GL_LINEAR_MIPMAP_LINEAR : GL_NEAREST_MIPMAP_NEAREST;
+		}
+		else {
+			return linearTextureFilter ? GL_LINEAR_MIPMAP_NEAREST : GL_NEAREST_MIPMAP_NEAREST;
+		}
+	}
+}
+
+uint32_t TextureCreationParams::GetMagFilter() const
+{
+	return linearTextureFilter ? GL_LINEAR : GL_NEAREST;
 }

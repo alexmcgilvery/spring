@@ -19,7 +19,6 @@
 
 #if !defined(__APPLE__) && !defined(HEADLESS)
 
-#include "System/bitops.h"
 #include "System/Log/ILog.h"
 #include "System/SpringMath.h"
 
@@ -29,6 +28,7 @@
 #include <SDL_events.h>
 #endif
 
+#include <bit>
 #include <cstring> // memset
 
 #include "System/Misc/TracyDefs.h"
@@ -434,7 +434,7 @@ static inline int GetBestCursorSize(const int minSize)
 		if (s >= minSize)
 			return s;
 
-	return next_power_of_2(minSize);
+	return std::bit_ceil <uint32_t> (minSize);
 }
 
 
@@ -657,7 +657,7 @@ void HardwareCursorX11::PushImage(int xsize, int ysize, const void* mem)
 void HardwareCursorX11::SetDelay(float delay)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
-	cimages.back()->delay = (XcursorUInt)(delay*1000.0f); //in millseconds
+	cimages.back()->delay = (XcursorUInt)(delay*1000.0f); //in milliseconds
 }
 
 void HardwareCursorX11::PushFrame(int index, float delay)
@@ -682,7 +682,7 @@ void HardwareCursorX11::Finish()
 	if (cimages.empty())
 		return;
 
-	const int squaresize = next_power_of_2(std::max(xmaxsize, ymaxsize));
+	const int squaresize = std::bit_ceil(std::max <uint32_t> (xmaxsize, ymaxsize));
 
 	// resize images
 	for (XcursorImage*& ci: cimages)

@@ -21,8 +21,7 @@ class CBitmap;
 class FtLibraryHandlerProxy {
 public:
 	static void InitFtLibrary();
-	static bool CheckGenFontConfigFast();
-	static bool CheckGenFontConfigFull(bool console);
+	static bool InitFontconfig(bool console);
 };
 
 
@@ -98,7 +97,7 @@ struct GlyphInfo {
 class CglFontRenderer;
 
 /**
-This class just store glyphs and load new glyphs if requred
+This class just store glyphs and load new glyphs if required
 It works with image and don't care about rendering these glyphs
 It works only and only with UTF32 chars
 **/
@@ -113,6 +112,11 @@ public:
 	static void InitFonts();
 	static void KillFonts();
 	static void Update();
+	static bool AddFallbackFont(const std::string& fontfile);
+	static void ClearFallbackFonts();
+	static void ClearAllGlyphs();
+
+	static void PinFont(std::shared_ptr<FontFace>& face, const std::string& filename, const int size);
 
 	inline static spring::WrappedSyncRecursiveMutex sync = {};
 protected:
@@ -143,14 +147,18 @@ protected:
 	void UploadGlyphAtlasTexture();
 	void UploadGlyphAtlasTextureImpl();
 private:
+	void ClearAtlases(const int width, const int height);
 	void CreateTexture(const int width, const int height);
 	void LoadGlyph(std::shared_ptr<FontFace>& f, char32_t ch, unsigned index);
+	bool ClearGlyphs();
+	void PreloadGlyphs();
 protected:
 	float GetKerning(const GlyphInfo& lgl, const GlyphInfo& rgl);
 protected:
 	static inline std::vector<std::weak_ptr<CFontTexture>> allFonts = {};
 
 	static inline const GlyphInfo dummyGlyph = GlyphInfo();
+	static inline bool needsClearGlyphs = false;
 
 	std::array<float, 128 * 128> kerningPrecached = {}; // contains ASCII kerning
 
@@ -179,6 +187,7 @@ private:
 	int lastTextureUpdate = 0;
 	bool needsTextureUpload = true;
 	inline static int maxFontTries = 0;
+	inline static int maxPinnedFonts = 0;
 #endif
 	std::shared_ptr<FontFace> shFace;
 

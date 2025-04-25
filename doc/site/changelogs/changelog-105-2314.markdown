@@ -20,11 +20,11 @@ You can replace these functions before migrating, and known existing games have 
 * removed the recently added `Spring.MakeGLDBQuery` and `Spring.GetGLDBQuery`.
 
 ### Behaviour changes
-* failure to load a model now results in a crash. This avoids a potential desync down the road.
 * QTPFS had a major overhaul, with multiple modrule changes and behaviour changes. See the section below.
 * many invalid def entries now cause the unit to be rejected; on the other hand, many (in particular, metal cost and weapon damage) can now be 0. Watch out for division by 0!
 Check the "def validity checks" section below for details.
 * nanoturret (immobile builder) build-range now only needs to reach the edge of the buildee's radius instead of its center. Mobile builders already worked this way.
+* raw move via `Spring.SetUnitMoveGoal` is now considered completed not only when the unit reaches its goal but also when it touches another unit who is at the goal. As of 105-2314 there is no easy way to detect that this happened.
 * screenshots are postfixed with UTC timestamp instead of number.
 * add `SMFTextureStreaming` boolean springsetting, defaults to false. If true, dynamically load and unload SMF Diffuse textures, which saves VRAM, but worse performance and image quality.
 Previous behaviour was equivalent to `true`, so if you get VRAM issues try changing it.
@@ -64,7 +64,7 @@ regardless of distance etc. Defaults to 0, which means units will not try to raw
 value to make them avoid pathable but very slow terrain (for example if you set it to 0.2 then they will not raw-move across terrain where they move at 20% speed or less, and will use
 normal pathing instead - which may still end up taking them through that path).
 * added modrule, `system.qtMaxNodesSearched`, can be used to limit the absolute number of nodes searched.
-* added modrule, `system.qtMaxNodesSearchedRelativeToMapOpenNodes`, can be used to limit the number of nodes searche relative to the number of pathable quads on the map.
+* added modrule, `system.qtMaxNodesSearchedRelativeToMapOpenNodes`, can be used to limit the number of nodes searched relative to the number of pathable quads on the map.
 The final limit will be the larger between the relative and the absolute limits.
 * added modrule, `system.pfHcostMult`, a float value between 0 and 2, defaults to 0.2. Controls how aggressively the pathing search prioritizes nodes going in the direction of the goal.
 Higher values mean pathing is cheaper, but can start producing degenerate paths where the unit goes straight at the goal and then has to hug a wall.

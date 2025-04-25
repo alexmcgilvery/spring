@@ -86,7 +86,7 @@ void CS3OTextureHandler::Reload()
 			if (texData.invertAxis)
 				bitmap.ReverseYAxis();
 
-			uint32_t newTexId = bitmap.CreateTexture(0.0f, 0.0f, true, texData.texID);
+			uint32_t newTexId = bitmap.CreateMipMapTexture(0.0f, 0.0f, 0, texData.texID);
 			assert(newTexId == texData.texID);
 		}
 	}
@@ -173,7 +173,9 @@ unsigned int CS3OTextureHandler::LoadAndCacheTexture(
 	}
 
 	const unsigned int texID = preloadCall ? 0 : bitmap->CreateMipMapTexture();
+#ifndef HEADLESS
 	assert(preloadCall || texID > 0);
+#endif
 
 	if (textureIt != textureCache.end() && texID > 0) {
 		assert(!preloadCall);

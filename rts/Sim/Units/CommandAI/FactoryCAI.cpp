@@ -257,14 +257,12 @@ void CFactoryCAI::GiveCommandReal(const Command& c, bool fromSynced)
 				}
 			}
 		}
-		UpdateIconName(cmdID, numQueued);
-		SlowUpdate();
 	} else {
 		if (c.GetOpts() & ALT_KEY) {
+			Command nc(c);
+			nc.SetOpts(nc.GetOpts() | INTERNAL_ORDER);
 			for (int a = 0; a < numItems; ++a) {
 				if (repeatOrders) {
-					Command nc(c);
-					nc.SetOpts(nc.GetOpts() | INTERNAL_ORDER);
 					if (commandQue.empty()) {
 						commandQue.push_front(nc);
 					} else {
@@ -284,10 +282,10 @@ void CFactoryCAI::GiveCommandReal(const Command& c, bool fromSynced)
 			}
 		}
 		numQueued += numItems;
-		UpdateIconName(cmdID, numQueued);
-
-		SlowUpdate();
 	}
+
+	UpdateIconName(cmdID, numQueued);
+	SlowUpdate();
 }
 
 
@@ -399,7 +397,21 @@ void CFactoryCAI::SlowUpdate()
 			// regular order (move/wait/etc)
 			switch (c.GetID()) {
 				case CMD_STOP: {
-					ExecuteStop(c);
+					/* Targeted hack to optimize bulk STOP orders.
+					 * Build orders get replaced by STOP instead of being removed,
+					 * this is due to the buildqueue's internal implementation as `std::deque`
+					 * whose interface doesn't support removal from the middle that well.
+					 * Units often get added and removed in large quantities via CTRL/SHIFT,
+					 * such multiple STOPs commands in a row would then produce a freeze
+					 * when the engine tries to process them all in one frame.
+					 * Just execute the last in each series to ensure last build is cancelled
+					 * otherwise last unit stays being built. */
+					if (oldQueueSize == 1 || commandQue[1].GetID() != CMD_STOP) {
+						ExecuteStop(c);
+					} else {
+						commandQue.pop_front();
+					}
+
 				} break;
 				default: {
 					CCommandAI::SlowUpdate();

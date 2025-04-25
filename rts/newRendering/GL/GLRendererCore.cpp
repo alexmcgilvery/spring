@@ -7,9 +7,10 @@
 #include "Rendering/GL/RenderBuffers.h"
 #include "Rendering/GL/myGL.h"
 #include "Rendering/GL/FBO.h"
+#include "Rendering/GL/glExtra.h"
+#include "Rendering/GL/glxHandler.h"
 #include "Rendering/UniformConstants.h"
 #include "Rendering/Fonts/glFont.h"
-#include "System/bitops.h"
 #include "System/EventHandler.h"
 #include "System/TimeProfiler.h"
 #include "System/StringUtil.h"
@@ -23,6 +24,7 @@
 
 CONFIG(bool, DebugGL).defaultValue(false).description("Enables GL debug-context and output. (see GL_ARB_debug_output)");
 CONFIG(bool, DebugGLStacktraces).defaultValue(false).description("Create a stacktrace when an OpenGL error occurs");
+CONFIG(bool, DebugGLReportGroups).defaultValue(false).description("Show OpenGL PUSH/POP groups in the GL debug");
 
 CONFIG(int, GLContextMajorVersion).defaultValue(3).minimumValue(3).maximumValue(4);
 CONFIG(int, GLContextMinorVersion).defaultValue(0).minimumValue(0).maximumValue(5);
@@ -53,7 +55,6 @@ CR_REG_METADATA(CGLRendererCore, (
 
 	CR_IGNORED(supportPersistentMapping),
 	CR_IGNORED(supportExplicitAttribLoc),
-	CR_IGNORED(supportNonPowerOfTwoTex),
 	CR_IGNORED(supportTextureQueryLOD),
 	CR_IGNORED(supportMSAAFrameBuffer),
 	CR_IGNORED(supportDepthBufferBitDepth),
@@ -74,6 +75,7 @@ CR_REG_METADATA(CGLRendererCore, (
 	CR_IGNORED(dualScreenMode),
 	CR_IGNORED(dualScreenMiniMapOnLeft),
 
+	CR_IGNORED(glExtensions),
 	CR_IGNORED(glTimerQueries)
 )
 */
@@ -85,10 +87,23 @@ CGLRendererCore::CGLRendererCore()
 
 	, glContext{nullptr}
 
+	, glExtensions{}
 	, glTimerQueries{0}
 {
-	rendererDebug = configHandler->GetBool("DebugGL");
-	rendererDebugErrors = false;
+	verticalSync->WrapNotifyOnChange();
+	configHandler->NotifyOnChange(this, {
+		"DualScreenMode",
+		"DualScreenMiniMapOnLeft",
+		"Fullscreen",
+		"WindowBorderless",
+		"XResolution",
+		"YResolution",
+		"XResolutionWindowed",
+		"YResolutionWindowed",
+		"WindowPosX",
+		"WindowPosY"
+	});
+	SetDualScreenParams();
 }
 
 CGLRendererCore::~CGLRendererCore()
@@ -224,7 +239,9 @@ bool CGLRendererCore::RendererCreateWindow(const char* title)
 		if (softGL != nullptr)
 			LOG_L(L_WARNING, "MSAALevel > 0 and LIBGL_ALWAYS_SOFTWARE set, this will very likely crash!");
 
-		make_even_number(msaaLevel);
+		// has to be even
+		if (msaaLevel % 2 == 1)
+			++msaaLevel;
 	}
 
 	if ((sdlWindow = CreateSDLWindow(title)) == nullptr)
@@ -247,8 +264,19 @@ bool CGLRendererCore::RendererCreateWindow(const char* title)
 	if ((glContext = CreateGLContext(minCtx)) == nullptr)
 		return false;
 
+	gladLoadGL();
+	GLX::Load(sdlWindow);
+
 	if (!CheckGLContextVersion(minCtx)) {
-		handleerror(nullptr, "minimum required OpenGL version not supported, aborting", "ERROR", MBF_OK | MBF_EXCL);
+		int ctxProfile = 0;
+		SDL_GL_GetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, &ctxProfile);
+
+		const std::string errStr = fmt::format("current OpenGL version {}.{}(core={}) is less than required {}.{}(core={}), aborting",
+			globalRenderingInfo.glContextVersion.x, globalRenderingInfo.glContextVersion.y, globalRenderingInfo.glContextIsCore,
+			minCtx.x, minCtx.y, (ctxProfile == SDL_GL_CONTEXT_PROFILE_CORE)
+		);
+
+		handleerror(nullptr, errStr.c_str(), "ERROR", MBF_OK | MBF_EXCL);
 		return false;
 	}
 
@@ -337,6 +365,7 @@ void CGLRendererCore::RendererPresentFrame(bool allowSwapBuffers, bool clearErro
 	spring_time pre;
 	{
 		SCOPED_TIMER("Misc::SwapBuffers");
+		SCOPED_GL_DEBUGGROUP("Misc::SwapBuffers");
 		assert(sdlWindow);
 
 		// silently or verbosely clear queue at the end of every frame
@@ -374,7 +403,7 @@ void CGLRendererCore::ReleaseThreadContext() // equivalent to prior MakeCurrentC
 
 void CGLRendererCore::SetTimeStamp(uint32_t queryIdx) const
 {
-	if (!GLEW_ARB_timer_query)
+	if (!GLAD_GL_ARB_timer_query)
 		return;
 
 	glQueryCounter(glTimerQueries[(NUM_OPENGL_TIMER_QUERIES * (drawFrame & 1)) + queryIdx], GL_TIMESTAMP);
@@ -382,7 +411,7 @@ void CGLRendererCore::SetTimeStamp(uint32_t queryIdx) const
 
 uint64_t CGLRendererCore::CalculateFrameTimeDelta(uint32_t queryIdx0, uint32_t queryIdx1) const
 {
-	if (!GLEW_ARB_timer_query)
+	if (!GLAD_GL_ARB_timer_query)
 		return 0;
 
 	const uint32_t queryBase = NUM_OPENGL_TIMER_QUERIES * (1 - (drawFrame & 1));
@@ -410,6 +439,55 @@ uint64_t CGLRendererCore::CalculateFrameTimeDelta(uint32_t queryIdx0, uint32_t q
 
 SDL_GLContext CGLRendererCore::CreateGLContext(const int2& minCtx)
 {
+	#ifndef HEADLESS
+	// detect RenderDoc
+	{
+		constexpr GLenum GL_DEBUG_TOOL_EXT = 0x6789;
+		constexpr GLenum GL_DEBUG_TOOL_NAME_EXT = 0x678A;
+		constexpr GLenum GL_DEBUG_TOOL_PURPOSE_EXT = 0x678B;
+		// For OpenGL:
+		// if GL_EXT_debug_tool is present (see https://renderdoc.org/debug_tool.txt)
+		if (glIsEnabled(GL_DEBUG_TOOL_EXT)) {
+			auto debugStr = reinterpret_cast<const char*>(glGetString(GL_DEBUG_TOOL_NAME_EXT));
+			LOG("[GR::%s] Detected external GL debug tool %s, enabling compatibility mode", __func__, debugStr);
+			underExternalDebug = true;
+		}
+	}
+
+	if (cmpCtx.x == 0) {
+		handleerror(nullptr, buf, "ERROR", MBF_OK | MBF_EXCL);
+		return nullptr;
+	}
+
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, cmpCtx.x);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, cmpCtx.y);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
+
+	// should never fail at this point
+	return (newContext = SDL_GL_CreateContext(sdlWindow));
+}
+
+void CGlobalRendering::CheckGLExtensions()
+{
+	#ifndef HEADLESS
+	{
+		GLint n = 0;
+		glGetIntegerv(GL_NUM_EXTENSIONS, &n);
+		for (auto i = 0; i < n; i++) {
+			glExtensions.emplace(reinterpret_cast<const char*>(glGetStringi(GL_EXTENSIONS, i)));
+		}
+	}
+	// detect RenderDoc
+	{
+		constexpr GLenum GL_DEBUG_TOOL_EXT = 0x6789;
+		constexpr GLenum GL_DEBUG_TOOL_NAME_EXT = 0x678A;
+		constexpr GLenum GL_DEBUG_TOOL_PURPOSE_EXT = 0x678B;
+		// For OpenGL:
+		// if GL_EXT_debug_tool is present (see https://renderdoc.org/debug_tool.txt)
+		if (glIsEnabled(GL_DEBUG_TOOL_EXT)) {
+			auto debugStr = reinterpret_cast<const char*>(glGetString(GL_DEBUG_TOOL_NAME_EXT));
+			LOG("[GR::%s] Detected external GL debug tool %s, enabling compatibility mode", __func__, debugStr);
+			underExternalDebug = true;
 	SDL_GLContext newContext = nullptr;
 
 	constexpr int2 glCtxs[] = {{2, 0}, {2, 1},  {3, 0}, {3, 1}, {3, 2}, {3, 3},  {4, 0}, {4, 1}, {4, 2}, {4, 3}, {4, 4}, {4, 5}, {4, 6}};
@@ -450,29 +528,21 @@ SDL_GLContext CGLRendererCore::CreateGLContext(const int2& minCtx)
 			SDL_GL_DeleteContext(newContext);
 		}
 	}
+	#endif
 
-	if (cmpCtx.x == 0) {
-		handleerror(nullptr, buf, "ERROR", MBF_OK | MBF_EXCL);
-		return nullptr;
-	}
+	if (underExternalDebug)
+		return;
 
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, cmpCtx.x);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, cmpCtx.y);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
-
-	// should never fail at this point
-	return (newContext = SDL_GL_CreateContext(sdlWindow));
-}
-
-void CGLRendererCore::CheckGLExtensions() const
-{
 	char extMsg[ 128] = {0};
 	char errMsg[2048] = {0};
 	char* ptr = &extMsg[0];
 
-	if (!GLEW_ARB_multitexture       ) ptr += snprintf(ptr, sizeof(extMsg) - (ptr - extMsg), " multitexture ");
-	if (!GLEW_ARB_texture_env_combine) ptr += snprintf(ptr, sizeof(extMsg) - (ptr - extMsg), " texture_env_combine ");
-	if (!GLEW_ARB_texture_compression) ptr += snprintf(ptr, sizeof(extMsg) - (ptr - extMsg), " texture_compression ");
+	if (!GLAD_GL_ARB_multitexture       ) ptr += snprintf(ptr, sizeof(extMsg) - (ptr - extMsg), " multitexture ");
+	if (!GLAD_GL_ARB_texture_env_combine) ptr += snprintf(ptr, sizeof(extMsg) - (ptr - extMsg), " texture_env_combine ");
+	if (!GLAD_GL_ARB_texture_compression) ptr += snprintf(ptr, sizeof(extMsg) - (ptr - extMsg), " texture_compression ");
+	if (!GLAD_GL_ARB_texture_float)       ptr += snprintf(ptr, sizeof(extMsg) - (ptr - extMsg), " texture_float ");
+	if (!GLAD_GL_ARB_texture_non_power_of_two) ptr += snprintf(ptr, sizeof(extMsg) - (ptr - extMsg), " texture_non_power_of_two ");
+	if (!GLAD_GL_ARB_framebuffer_object)       ptr += snprintf(ptr, sizeof(extMsg) - (ptr - extMsg), " framebuffer_object ");
 
 	if (extMsg[0] == 0)
 		return;
@@ -494,9 +564,10 @@ void CGLRendererCore::SetGLSupportFlags()
 	const std::string& glRenderer = StringToLower(globalRenderingInfo.glRenderer);
 	const std::string& glVersion = StringToLower(globalRenderingInfo.glVersion);
 
-	haveGLSL  = (glGetString(GL_SHADING_LANGUAGE_VERSION) != nullptr);
-	haveGLSL &= static_cast<bool>(GLEW_ARB_vertex_shader && GLEW_ARB_fragment_shader);
-	haveGLSL &= static_cast<bool>(GLEW_VERSION_2_0); // we want OpenGL 2.0 core functions
+	bool haveGLSL  = (glGetString(GL_SHADING_LANGUAGE_VERSION) != nullptr);
+	haveGLSL &= static_cast<bool>(GLAD_GL_ARB_vertex_shader && GLAD_GL_ARB_fragment_shader);
+	haveGLSL &= static_cast<bool>(GLAD_GL_VERSION_2_0); // we want OpenGL 2.0 core functions
+	haveGLSL |= underExternalDebug;
 
 	#ifndef HEADLESS
 	if (!haveGLSL)
@@ -529,22 +600,22 @@ void CGLRendererCore::SetGLSupportFlags()
 		globalRenderingInfo.gpuVendor = "Unknown";
 	}
 
-	supportPersistentMapping = GLEW_ARB_buffer_storage;
+	supportPersistentMapping = GLAD_GL_ARB_buffer_storage;
 	supportPersistentMapping &= (configHandler->GetInt("ForceDisablePersistentMapping") == 0);
 
-	supportExplicitAttribLoc = GLEW_ARB_explicit_attrib_location;
+	supportExplicitAttribLoc = GLAD_GL_ARB_explicit_attrib_location;
 	supportExplicitAttribLoc &= (configHandler->GetInt("ForceDisableExplicitAttribLocs") == 0);
 
-	// ATI's x-series doesn't support NPOTs, hd-series does
-	supportNonPowerOfTwoTex = GLEW_ARB_texture_non_power_of_two /* && (!haveAMD || (glRenderer.find(" x") == std::string::npos && glRenderer.find(" 9") == std::string::npos))*/;
-	supportTextureQueryLOD = GLEW_ARB_texture_query_lod;
-
+	supportTextureQueryLOD = GLAD_GL_ARB_texture_query_lod;
 
 	for (size_t n = 0; (n < sizeof(globalRenderingInfo.glVersionShort) && globalRenderingInfo.glVersion[n] != 0); n++) {
 		if ((globalRenderingInfo.glVersionShort[n] = globalRenderingInfo.glVersion[n]) == ' ') {
 			globalRenderingInfo.glVersionShort[n] = 0;
 			break;
 		}
+	}
+	if (int2 glVerNum = { 0, 0 }; sscanf(globalRenderingInfo.glVersionShort.data(), "%d.%d", &glVerNum.x, &glVerNum.y) == 2) {
+		globalRenderingInfo.glslVersionNum = glVerNum.x * 10 + glVerNum.y;
 	}
 
 	for (size_t n = 0; (n < sizeof(globalRenderingInfo.glslVersionShort) && globalRenderingInfo.glslVersion[n] != 0); n++) {
@@ -557,9 +628,9 @@ void CGLRendererCore::SetGLSupportFlags()
 		globalRenderingInfo.glslVersionNum = glslVerNum.x * 100 + glslVerNum.y;
 	}
 
-	haveGL4 = static_cast<bool>(GLEW_ARB_multi_draw_indirect);
-	haveGL4 &= static_cast<bool>(GLEW_ARB_uniform_buffer_object);
-	haveGL4 &= static_cast<bool>(GLEW_ARB_shader_storage_buffer_object);
+	haveGL4 = static_cast<bool>(GLAD_GL_ARB_multi_draw_indirect);
+	haveGL4 &= static_cast<bool>(GLAD_GL_ARB_uniform_buffer_object);
+	haveGL4 &= static_cast<bool>(GLAD_GL_ARB_shader_storage_buffer_object);
 	haveGL4 &= CheckShaderGL4();
 	haveGL4 &= !forceDisableGL4;
 
@@ -573,23 +644,15 @@ void CGLRendererCore::SetGLSupportFlags()
 
 	// runtime-compress textures? (also already required for SMF ground textures)
 	// default to off because it reduces quality, smallest mipmap level is bigger
-	if (GLEW_ARB_texture_compression)
+	if (GLAD_GL_ARB_texture_compression)
 		compressTextures = configHandler->GetBool("CompressTextures");
 
 
-	#ifdef GLEW_NV_primitive_restart
 	// not defined for headless builds
-	supportRestartPrimitive = GLEW_NV_primitive_restart;
-	#endif
-	#ifdef GLEW_ARB_clip_control
-	supportClipSpaceControl = GLEW_ARB_clip_control;
-	#endif
-	#ifdef GLEW_ARB_seamless_cube_map
-	supportSeamlessCubeMaps = GLEW_ARB_seamless_cube_map;
-	#endif
-	#ifdef GLEW_EXT_framebuffer_multisample
-	supportMSAAFrameBuffer = GLEW_EXT_framebuffer_multisample;
-	#endif
+	supportRestartPrimitive = GLAD_GL_NV_primitive_restart;
+	supportClipSpaceControl = GLAD_GL_ARB_clip_control;
+	supportSeamlessCubeMaps = GLAD_GL_ARB_seamless_cube_map;
+	supportMSAAFrameBuffer = GLAD_GL_EXT_framebuffer_multisample;
 	// CC did not exist as an extension before GL4.5, too recent to enforce
 
 	//stick to the theory that reported = exist
@@ -597,9 +660,7 @@ void CGLRendererCore::SetGLSupportFlags()
 	supportClipSpaceControl &= (configHandler->GetInt("ForceDisableClipCtrl") == 0);
 
 	//supportFragDepthLayout = ((globalRenderingInfo.glContextVersion.x * 10 + globalRenderingInfo.glContextVersion.y) >= 42);
-	#ifdef GLEW_ARB_conservative_depth
-	supportFragDepthLayout = GLEW_ARB_conservative_depth; //stick to the theory that reported = exist
-	#endif
+	supportFragDepthLayout = GLAD_GL_ARB_conservative_depth; //stick to the theory that reported = exist
 
 	//stick to the theory that reported = exist
 	//supportMSAAFrameBuffer &= ((globalRenderingInfo.glContextVersion.x * 10 + globalRenderingInfo.glContextVersion.y) >= 32);
@@ -635,20 +696,20 @@ void CGLRendererCore::QueryGLMaxVals()
 {
 	// maximum 2D texture size
 	glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxTextureSize);
-
+	glGetIntegerv(GL_MAX_TEXTURE_COORDS, &maxTexSlots);
 	glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &maxFragShSlots);
 	glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &maxCombShSlots);
 
-	if (GLEW_EXT_texture_filter_anisotropic)
+	if (GLAD_GL_EXT_texture_filter_anisotropic)
 		glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &maxTexAnisoLvl);
 
 	// some GLSL relevant information
-	if (GLEW_ARB_uniform_buffer_object) {
+	if (GLAD_GL_ARB_uniform_buffer_object) {
 		glGetIntegerv(GL_MAX_UNIFORM_BUFFER_BINDINGS, &glslMaxUniformBufferBindings);
 		glGetIntegerv(GL_MAX_UNIFORM_BLOCK_SIZE,      &glslMaxUniformBufferSize);
 	}
 
-	if (GLEW_ARB_shader_storage_buffer_object) {
+	if (GLAD_GL_ARB_shader_storage_buffer_object) {
 		glGetIntegerv(GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS, &glslMaxStorageBufferBindings);
 		glGetIntegerv(GL_MAX_SHADER_STORAGE_BLOCK_SIZE,      &glslMaxStorageBufferSize);
 	}
@@ -673,11 +734,16 @@ void CGLRendererCore::QueryGLVersionInfo(char (&sdlVersionStr)[64], char (&glVid
 	SDL_VERSION(&sdlVC);
 	SDL_GetVersion(&sdlVL);
 
+#ifndef HEADLESS
+	grInfo.gladVersion = "0.1.36";
+#else
+	grInfo.gladVersion = "headless stub";
+#endif // HEADLESS
+
 	if ((grInfo.glVersion   = (const char*) glGetString(GL_VERSION                 )) == nullptr) grInfo.glVersion   = "unknown";
 	if ((grInfo.glVendor    = (const char*) glGetString(GL_VENDOR                  )) == nullptr) grInfo.glVendor    = "unknown";
 	if ((grInfo.glRenderer  = (const char*) glGetString(GL_RENDERER                )) == nullptr) grInfo.glRenderer  = "unknown";
 	if ((grInfo.glslVersion = (const char*) glGetString(GL_SHADING_LANGUAGE_VERSION)) == nullptr) grInfo.glslVersion = "unknown";
-	if ((grInfo.glewVersion = (const char*) glewGetString(GLEW_VERSION             )) == nullptr) grInfo.glewVersion = "unknown";
 	if ((grInfo.sdlDriverName = (const char*) SDL_GetCurrentVideoDriver(           )) == nullptr) grInfo.sdlDriverName = "unknown";
 	// should never be null with any driver, no harm in an extra check
 	// (absence of GLSL version string would indicate bigger problems)
@@ -712,7 +778,7 @@ void CGLRendererCore::LogGLVersionInfo(const char* sdlVersionStr, const char* gl
 	LOG("\tGL vendor   : %s", globalRenderingInfo.glVendor);
 	LOG("\tGL renderer : %s", globalRenderingInfo.glRenderer);
 	LOG("\tGLSL version: %s", globalRenderingInfo.glslVersion);
-	LOG("\tGLEW version: %s", globalRenderingInfo.glewVersion);
+	LOG("\tGLAD version: %s", globalRenderingInfo.gladVersion);
 	LOG("\tGPU memory  : %s", glVidMemStr);
 	LOG("\tSDL swap-int: %d", SDL_GL_GetSwapInterval());
 	LOG("\tSDL driver  : %s", globalRenderingInfo.sdlDriverName);
@@ -721,28 +787,28 @@ void CGLRendererCore::LogGLVersionInfo(const char* sdlVersionStr, const char* gl
 	LOG("\tGLSL shader support       : %i", haveGLSL);
 	LOG("\tGL4 support               : %i", haveGL4);
 	LOG("\tFBO extension support     : %i", FBO::IsSupported());
-	LOG("\tNVX GPU mem-info support  : %i", glewIsExtensionSupported("GL_NVX_gpu_memory_info"));
-	LOG("\tATI GPU mem-info support  : %i", glewIsExtensionSupported("GL_ATI_meminfo"));
-	LOG("\tTexture clamping to edge  : %i", glewIsExtensionSupported("GL_EXT_texture_edge_clamp"));
-	LOG("\tNPOT-texture support      : %i (%i)", supportNonPowerOfTwoTex, glewIsExtensionSupported("GL_ARB_texture_non_power_of_two"));
-	LOG("\tS3TC/DXT1 texture support : %i/%i", glewIsExtensionSupported("GL_EXT_texture_compression_s3tc"), glewIsExtensionSupported("GL_EXT_texture_compression_dxt1"));
-	LOG("\ttexture query-LOD support : %i (%i)", supportTextureQueryLOD, glewIsExtensionSupported("GL_ARB_texture_query_lod"));
-	LOG("\tMSAA frame-buffer support : %i (%i)", supportMSAAFrameBuffer, glewIsExtensionSupported("GL_EXT_framebuffer_multisample"));
+	LOG("\tNVX GPU mem-info support  : %i", IsExtensionSupported("GL_NVX_gpu_memory_info"));
+	LOG("\tATI GPU mem-info support  : %i", IsExtensionSupported("GL_ATI_meminfo"));
+	LOG("\tTexture clamping to edge  : %i", IsExtensionSupported("GL_EXT_texture_edge_clamp"));
+	LOG("\tS3TC/DXT1 texture support : %i/%i", IsExtensionSupported("GL_EXT_texture_compression_s3tc"), IsExtensionSupported("GL_EXT_texture_compression_dxt1"));
+	LOG("\ttexture query-LOD support : %i (%i)", supportTextureQueryLOD, IsExtensionSupported("GL_ARB_texture_query_lod"));
+	LOG("\tMSAA frame-buffer support : %i (%i)", supportMSAAFrameBuffer, IsExtensionSupported("GL_EXT_framebuffer_multisample"));
 	LOG("\tZ-buffer depth            : %i (-)" , supportDepthBufferBitDepth);
-	LOG("\tprimitive-restart support : %i (%i)", supportRestartPrimitive, glewIsExtensionSupported("GL_NV_primitive_restart"));
-	LOG("\tclip-space control support: %i (%i)", supportClipSpaceControl, glewIsExtensionSupported("GL_ARB_clip_control"));
-	LOG("\tseamless cube-map support : %i (%i)",  supportSeamlessCubeMaps, glewIsExtensionSupported("GL_ARB_seamless_cube_map"));
-	LOG("\tfrag-depth layout support : %i (%i)", supportFragDepthLayout, glewIsExtensionSupported("GL_ARB_conservative_depth"));
-	LOG("\tpersistent maps support   : %i (%i)", supportPersistentMapping, glewIsExtensionSupported("GL_ARB_buffer_storage"));
-	LOG("\texplicit attribs location : %i (%i)", supportExplicitAttribLoc, glewIsExtensionSupported("GL_ARB_explicit_attrib_location"));
-	LOG("\tmulti draw indirect       : %i (-)" , glewIsExtensionSupported("GL_ARB_multi_draw_indirect"));
-	LOG("\tarray textures            : %i (-)" , glewIsExtensionSupported("GL_EXT_texture_array"));
-	LOG("\tbuffer copy support       : %i (-)" , glewIsExtensionSupported("GL_ARB_copy_buffer"));
-	LOG("\tindirect draw             : %i (-)" , glewIsExtensionSupported("GL_ARB_draw_indirect"));
-	LOG("\tbase instance             : %i (-)" , glewIsExtensionSupported("GL_ARB_base_instance"));
+	LOG("\tprimitive-restart support : %i (%i)", supportRestartPrimitive, IsExtensionSupported("GL_NV_primitive_restart"));
+	LOG("\tclip-space control support: %i (%i)", supportClipSpaceControl, IsExtensionSupported("GL_ARB_clip_control"));
+	LOG("\tseamless cube-map support : %i (%i)", supportSeamlessCubeMaps, IsExtensionSupported("GL_ARB_seamless_cube_map"));
+	LOG("\tfrag-depth layout support : %i (%i)", supportFragDepthLayout, IsExtensionSupported("GL_ARB_conservative_depth"));
+	LOG("\tpersistent maps support   : %i (%i)", supportPersistentMapping, IsExtensionSupported("GL_ARB_buffer_storage"));
+	LOG("\texplicit attribs location : %i (%i)", supportExplicitAttribLoc, IsExtensionSupported("GL_ARB_explicit_attrib_location"));
+	LOG("\tmulti draw indirect       : %i (-)" , IsExtensionSupported("GL_ARB_multi_draw_indirect"));
+	LOG("\tarray textures            : %i (-)" , IsExtensionSupported("GL_EXT_texture_array"));
+	LOG("\tbuffer copy support       : %i (-)" , IsExtensionSupported("GL_ARB_copy_buffer"));
+	LOG("\tindirect draw             : %i (-)" , IsExtensionSupported("GL_ARB_draw_indirect"));
+	LOG("\tbase instance             : %i (-)" , IsExtensionSupported("GL_ARB_base_instance"));
 
 	LOG("\t");
 	LOG("\tmax. FBO samples              : %i", FBO::GetMaxSamples());
+	LOG("\tmax. texture slots            : %i", maxTexSlots);
 	LOG("\tmax. FS/program texture slots : %i/%i", maxFragShSlots, maxCombShSlots);
 	LOG("\tmax. texture size             : %i", maxTextureSize);
 	LOG("\tmax. texture anisotropy level : %f", maxTexAnisoLvl);
@@ -814,6 +880,16 @@ void CGLRendererCore::LogGLVersionInfo(const char* sdlVersionStr, const char* gl
 		EnumToString(GL_COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR),
 		EnumToString(GL_COMPRESSED_SRGB8_ALPHA8_ASTC_12x10_KHR),
 		EnumToString(GL_COMPRESSED_SRGB8_ALPHA8_ASTC_12x12_KHR),
+		EnumToString(GL_PALETTE4_RGB8_OES),
+		EnumToString(GL_PALETTE4_RGBA8_OES),
+		EnumToString(GL_PALETTE4_R5_G6_B5_OES),
+		EnumToString(GL_PALETTE4_RGBA4_OES),
+		EnumToString(GL_PALETTE4_RGB5_A1_OES),
+		EnumToString(GL_PALETTE8_RGB8_OES),
+		EnumToString(GL_PALETTE8_RGBA8_OES),
+		EnumToString(GL_PALETTE8_R5_G6_B5_OES),
+		EnumToString(GL_PALETTE8_RGBA4_OES),
+		EnumToString(GL_PALETTE8_RGB5_A1_OES)
 	};
 	#undef EnumToString
 
@@ -833,8 +909,10 @@ void CGLRendererCore::LogGLVersionInfo(const char* sdlVersionStr, const char* gl
 
 void CGLRendererCore::ToggleMultisampling() const
 {
-	static constexpr std::array<void(*)(), 2> ToggleFuncs = { []() { glDisable(GL_MULTISAMPLE); }, []() { glEnable(GL_MULTISAMPLE); } };
-	ToggleFuncs[msaaLevel > 0]();
+	if (msaaLevel > 0)
+		glEnable(GL_MULTISAMPLE);
+	else
+		glDisable(GL_MULTISAMPLE);
 }
 
 bool CGLRendererCore::CheckShaderGL4() const
@@ -873,21 +951,70 @@ void main()
 	fragColor = vec4(1.0, 1.0, 1.0, vFloat);
 }
 )";
+	auto testShader = Shader::GLSLProgramObject("[GL-TestShader]");
+	// testShader.Release() as part of the ~GLSLProgramObject() will delete GLSLShaderObject's
+	testShader.AttachShaderObject(new Shader::GLSLShaderObject(GL_VERTEX_SHADER  , vsSrc));
+	testShader.AttachShaderObject(new Shader::GLSLShaderObject(GL_FRAGMENT_SHADER, fsSrc));
 
-	auto testShader = std::make_unique<Shader::GLSLProgramObject>("[GL-TestShader]");
-	testShader->AttachShaderObject(new Shader::GLSLShaderObject(GL_VERTEX_SHADER  , vsSrc));
-	testShader->AttachShaderObject(new Shader::GLSLShaderObject(GL_FRAGMENT_SHADER, fsSrc));
-	testShader->SetLogReporting(false); //no need to spam guinea pig shader errors
-	testShader->Link();
-	testShader->Enable();
-	testShader->Disable();
-	testShader->Validate();
+	testShader.SetLogReporting(false); //no need to spam guinea pig shader errors
+	testShader.Link();
+	testShader.Enable();
+	testShader.Disable();
+	testShader.Validate();
 
-	return testShader->IsValid();
-	//no need for explicit destuction here
+	return testShader.IsValid();
 #else
 	return false;
 #endif
+}
+
+int CGlobalRendering::DepthBitsToFormat(int bits)
+{
+	switch (bits)
+	{
+	case 16:
+		return GL_DEPTH_COMPONENT16;
+	case 24:
+		return GL_DEPTH_COMPONENT24;
+	case 32:
+		return GL_DEPTH_COMPONENT32;
+	default:
+		return GL_DEPTH_COMPONENT; //should never hit this
+	}
+}
+
+void CGlobalRendering::SetMinSampleShadingRate()
+{
+#ifndef HEADLESS
+	if (!GLAD_GL_VERSION_4_0)
+		return;
+
+	if (msaaLevel > 0 && minSampleShadingRate > 0.0f) {
+		// Enable sample shading
+		glEnable(GL_SAMPLE_SHADING);
+		glMinSampleShading(minSampleShadingRate);
+	}
+	else {
+		glDisable(GL_SAMPLE_SHADING);
+	}
+#endif // !HEADLESS
+}
+
+bool CGlobalRendering::SetWindowMinMaximized(bool maximize) const
+{
+	static constexpr uint32_t mmFlags[] = {
+		SDL_WINDOW_MINIMIZED,
+		SDL_WINDOW_MAXIMIZED
+	};
+	if ((SDL_GetWindowFlags(sdlWindow) & mmFlags[maximize]) != 0)
+		return false; //already in desired state
+
+	if (maximize)
+		SDL_MaximizeWindow(sdlWindow);
+	else
+		SDL_MinimizeWindow(sdlWindow);
+
+	return (SDL_GetWindowFlags(sdlWindow) & mmFlags[maximize]) != 0;
 }
 
 /**
@@ -900,7 +1027,7 @@ bool CGLRendererCore::CheckGLMultiSampling() const
 {
 	if (msaaLevel == 0)
 		return false;
-	if (!GLEW_ARB_multisample)
+	if (!GLAD_GL_ARB_multisample)
 		return false;
 
 	GLint buffers = 0;
@@ -928,7 +1055,7 @@ bool CGLRendererCore::CheckGLContextVersion(const int2& minCtx) const
 	if (profile != 0)
 		globalRenderingInfo.glContextIsCore = (profile == GL_CONTEXT_CORE_PROFILE_BIT);
 	else
-		globalRenderingInfo.glContextIsCore = !GLEW_ARB_compatibility;
+		globalRenderingInfo.glContextIsCore = !GLAD_GL_ARB_compatibility;
 
 	// keep this for convenience
 	globalRenderingInfo.glContextVersion = tmpCtx;
@@ -937,59 +1064,6 @@ bool CGLRendererCore::CheckGLContextVersion(const int2& minCtx) const
 	return ((tmpCtx.x * 10 + tmpCtx.y) >= (minCtx.x * 10 + minCtx.y));
 	#endif
 }
-
-
-
-#if defined(_WIN32) && !defined(HEADLESS)
-	#if defined(_MSC_VER) && _MSC_VER >= 1600
-		#define _GL_APIENTRY __stdcall
-	#else
-		#include <windef.h>
-		#define _GL_APIENTRY APIENTRY
-	#endif
-#else
-	#define _GL_APIENTRY
-#endif
-
-
-#if (defined(GL_ARB_debug_output) && !defined(HEADLESS))
-
-#ifndef GL_DEBUG_SOURCE_API
-#define GL_DEBUG_SOURCE_API                GL_DEBUG_SOURCE_API_ARB
-#define GL_DEBUG_SOURCE_WINDOW_SYSTEM      GL_DEBUG_SOURCE_WINDOW_SYSTEM_ARB
-#define GL_DEBUG_SOURCE_SHADER_COMPILER    GL_DEBUG_SOURCE_SHADER_COMPILER_ARB
-#define GL_DEBUG_SOURCE_THIRD_PARTY        GL_DEBUG_SOURCE_THIRD_PARTY_ARB
-#define GL_DEBUG_SOURCE_APPLICATION        GL_DEBUG_SOURCE_APPLICATION_ARB
-#define GL_DEBUG_SOURCE_OTHER              GL_DEBUG_SOURCE_OTHER_ARB
-
-#define GL_DEBUG_TYPE_ERROR                GL_DEBUG_TYPE_ERROR_ARB
-#define GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR  GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR_ARB
-#define GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR   GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR_ARB
-#define GL_DEBUG_TYPE_PORTABILITY          GL_DEBUG_TYPE_PORTABILITY_ARB
-#define GL_DEBUG_TYPE_PERFORMANCE          GL_DEBUG_TYPE_PERFORMANCE_ARB
-#if (defined(GL_DEBUG_TYPE_MARKER_ARB) && defined(GL_DEBUG_TYPE_PUSH_GROUP_ARB) && defined(GL_DEBUG_TYPE_POP_GROUP_ARB))
-#define GL_DEBUG_TYPE_MARKER               GL_DEBUG_TYPE_MARKER_ARB
-#define GL_DEBUG_TYPE_PUSH_GROUP           GL_DEBUG_TYPE_PUSH_GROUP_ARB
-#define GL_DEBUG_TYPE_POP_GROUP            GL_DEBUG_TYPE_POP_GROUP_ARB
-#else
-#define GL_DEBUG_TYPE_MARKER               -1u
-#define GL_DEBUG_TYPE_PUSH_GROUP           -2u
-#define GL_DEBUG_TYPE_POP_GROUP            -3u
-#endif
-#define GL_DEBUG_TYPE_OTHER                GL_DEBUG_TYPE_OTHER_ARB
-
-#define GL_DEBUG_SEVERITY_HIGH             GL_DEBUG_SEVERITY_HIGH_ARB
-#define GL_DEBUG_SEVERITY_MEDIUM           GL_DEBUG_SEVERITY_MEDIUM_ARB
-#define GL_DEBUG_SEVERITY_LOW              GL_DEBUG_SEVERITY_LOW_ARB
-
-#define GL_DEBUG_OUTPUT_SYNCHRONOUS        GL_DEBUG_OUTPUT_SYNCHRONOUS_ARB
-#define GLDEBUGPROC                        GLDEBUGPROCARB
-#endif
-
-#ifndef glDebugMessageCallback
-#define glDebugMessageCallback  glDebugMessageCallbackARB
-#define glDebugMessageControl   glDebugMessageControlARB
-#endif
 
 constexpr static std::array<GLenum,  7> msgSrceEnums = {GL_DONT_CARE, GL_DEBUG_SOURCE_API, GL_DEBUG_SOURCE_WINDOW_SYSTEM, GL_DEBUG_SOURCE_SHADER_COMPILER, GL_DEBUG_SOURCE_THIRD_PARTY, GL_DEBUG_SOURCE_APPLICATION, GL_DEBUG_SOURCE_OTHER};
 constexpr static std::array<GLenum, 10> msgTypeEnums = {GL_DONT_CARE, GL_DEBUG_TYPE_ERROR, GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR, GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR, GL_DEBUG_TYPE_PORTABILITY, GL_DEBUG_TYPE_PERFORMANCE, GL_DEBUG_TYPE_MARKER, GL_DEBUG_TYPE_PUSH_GROUP, GL_DEBUG_TYPE_POP_GROUP, GL_DEBUG_TYPE_OTHER};
@@ -1040,7 +1114,14 @@ static inline const char* glDebugMessageSeverityName(GLenum msgSevr) {
 	return "UNKNOWN";
 }
 
-static void _GL_APIENTRY glDebugMessageCallbackFunc(
+#ifndef HEADLESS
+
+struct GLDebugOptions {
+	bool dbgTraces;
+	bool dbgGroups;
+};
+
+static void APIENTRY glDebugMessageCallbackFunc(
 	GLenum msgSrce,
 	GLenum msgType,
 	GLuint msgID,
@@ -1055,13 +1136,18 @@ static void _GL_APIENTRY glDebugMessageCallbackFunc(
 		default: {} break;
 	}
 
+	const auto* glDebugOptions = reinterpret_cast<const GLDebugOptions*>(userParam);
+
+	if ((glDebugOptions == nullptr) || !glDebugOptions->dbgGroups && (msgType == GL_DEBUG_TYPE_PUSH_GROUP || msgType == GL_DEBUG_TYPE_POP_GROUP))
+		return;
+
 	const char* msgSrceStr = glDebugMessageSourceName(msgSrce);
 	const char* msgTypeStr = glDebugMessageTypeName(msgType);
 	const char* msgSevrStr = glDebugMessageSeverityName(msgSevr);
 
 	LOG_L(L_WARNING, "[OPENGL_DEBUG] id=%u source=%s type=%s severity=%s msg=\"%s\"", msgID, msgSrceStr, msgTypeStr, msgSevrStr, dbgMessage);
 
-	if ((userParam == nullptr) || !(*reinterpret_cast<const bool*>(userParam)))
+	if ((glDebugOptions == nullptr) || !glDebugOptions->dbgTraces)
 		return;
 
 	CrashHandler::PrepareStacktrace();
@@ -1073,8 +1159,8 @@ static void _GL_APIENTRY glDebugMessageCallbackFunc(
 
 bool CGLRendererCore::ToggleDebugOutput(unsigned int msgSrceIdx, unsigned int msgTypeIdx, unsigned int msgSevrIdx) const
 {
-#if (defined(GL_ARB_debug_output) && !defined(HEADLESS))
-	if (!(GLEW_ARB_debug_output || GLEW_KHR_debug))
+#ifndef HEADLESS
+	if (!(GLAD_GL_ARB_debug_output || GLAD_GL_KHR_debug))
 		return false;
 
 	if (rendererDebug) {
@@ -1082,14 +1168,13 @@ bool CGLRendererCore::ToggleDebugOutput(unsigned int msgSrceIdx, unsigned int ms
 		const char* msgTypeStr = glDebugMessageTypeName(msgTypeEnums[msgTypeIdx %= msgTypeEnums.size()]);
 		const char* msgSevrStr = glDebugMessageSeverityName(msgSevrEnums[msgSevrIdx %= msgSevrEnums.size()]);
 
-		const static bool dbgTraces = configHandler->GetBool("DebugGLStacktraces");
-		// install OpenGL debug message callback; typecast is a workaround
-		// for #4510 (change in callback function signature with GLEW 1.11)
-		// use SYNCHRONOUS output, we want our callback to run in the same
-		// thread as the bugged GL call (for proper stacktraces)
-		// CB userParam is const, but has to be specified sans qualifiers
+		static GLDebugOptions glDebugOptions;
+
+		glDebugOptions.dbgTraces = configHandler->GetBool("DebugGLStacktraces");
+		glDebugOptions.dbgGroups = configHandler->GetBool("DebugGLReportGroups");
+
 		glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-		glDebugMessageCallback((GLDEBUGPROC)&glDebugMessageCallbackFunc, (void*)&dbgTraces);
+		glDebugMessageCallback((GLDEBUGPROC)&glDebugMessageCallbackFunc, (const void*)&glDebugOptions);
 		glDebugMessageControl(msgSrceEnums[msgSrceIdx], msgTypeEnums[msgTypeIdx], msgSevrEnums[msgSevrIdx], 0, nullptr, GL_TRUE);
 
 		LOG("[GR::%s] OpenGL debug-message callback enabled (source=%s type=%s severity=%s)", __func__, msgSrceStr, msgTypeStr, msgSevrStr);

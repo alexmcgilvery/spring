@@ -57,6 +57,7 @@ class LuaUnsyncedRead {
 		static int GetUnitNoDraw(lua_State* L);
 		static int GetUnitEngineDrawMask(lua_State* L);
 		static int GetUnitNoMinimap(lua_State* L);
+		static int GetUnitNoGroup(lua_State* L);
 		static int GetUnitNoSelect(lua_State* L);
 		static int GetUnitAlwaysUpdateMatrix(lua_State* L);
 		static int GetUnitDrawFlag(lua_State* L);
@@ -136,11 +137,13 @@ class LuaUnsyncedRead {
 
 		static int GetSoundStreamTime(lua_State* L);
 		static int GetSoundEffectParams(lua_State* L);
+		static int GetSoundDevices(lua_State* L);
 
 		static int GetFPS(lua_State* L);
 		static int GetGameSpeed(lua_State* L);
 		static int GetGameState(lua_State* L);
 
+		static int GetMouseButtonsPressed(lua_State* L);
 		static int GetMouseState(lua_State* L);
 		static int GetMouseCursor(lua_State* L);
 		static int GetMouseStartPosition(lua_State* L);
@@ -220,6 +223,8 @@ class LuaUnsyncedRead {
 		static int UnitIconGetDraw(lua_State* L);
 
 		static int GetSyncedGCInfo(lua_State* L);
+
+		static int SolveNURBSCurve(lua_State* L);
 };
 
 

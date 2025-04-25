@@ -108,6 +108,9 @@ void CProjectileDrawer::Init() {
 	ParseAtlasTextures(true, resProjTexturesTable, blockedTexNames, textureAtlas);
 	ParseAtlasTextures(true, resGroundFXTexturesTable, blockedTexNames, groundFXAtlas);
 
+	textureAtlas->SetMaxTexLevel(4);
+	groundFXAtlas->SetMaxTexLevel(4);
+
 	int smokeTexCount = -1;
 
 	{
@@ -192,8 +195,11 @@ void CProjectileDrawer::Init() {
 		ParseAtlasTextures(false, mapResGroundFXTexturesTable, blockedTexNames, groundFXAtlas);
 	}
 
-	if (!textureAtlas->Finalize())
+	if (!textureAtlas->Finalize()) {
+#ifndef HEADLESS
 		LOG_L(L_ERROR, "Could not finalize projectile-texture atlas. Use fewer/smaller textures.");
+#endif
+	}
 
 
 	flaretex        = &textureAtlas->GetTexture("flare");
@@ -423,9 +429,9 @@ void CProjectileDrawer::UpdateDrawFlags()
 							p->AddDrawFlag(DrawFlags::SO_REFLEC_FLAG);
 					} break;
 					case CCamera::CAMTYPE_SHADOW: {
-						if (p->HasDrawFlag(DrawFlags::SO_OPAQUE_FLAG))
+						if unlikely(hasModel)
 							p->AddDrawFlag(DrawFlags::SO_SHOPAQ_FLAG);
-						else if (p->HasDrawFlag(DrawFlags::SO_ALPHAF_FLAG))
+						else
 							p->AddDrawFlag(DrawFlags::SO_SHTRAN_FLAG);
 					} break;
 				}
@@ -439,7 +445,7 @@ bool CProjectileDrawer::CheckSoftenExt()
 	RECOIL_DETAILED_TRACY_ZONE;
 	static bool result =
 		FBO::IsSupported() &&
-		GLEW_EXT_framebuffer_blit; //eval once
+		GLAD_GL_EXT_framebuffer_blit; //eval once
 	return result;
 }
 
@@ -651,8 +657,14 @@ void CProjectileDrawer::DrawProjectilesMiniMap()
 		glDisable(GL_PROGRAM_POINT_SIZE);
 
 	sh.Enable();
-	CProjectile::GetMiniMapLinesRB().DrawArrays(GL_LINES);
-	CProjectile::GetMiniMapPointsRB().DrawArrays(GL_POINTS);
+	{
+		ZoneScopedN("DrawProjectilesMiniMap::MiniMapLinesRB");
+		CProjectile::GetMiniMapLinesRB().DrawArrays(GL_LINES);
+	}
+	{
+		ZoneScopedN("DrawProjectilesMiniMap::MiniMapPointsRB");
+		CProjectile::GetMiniMapPointsRB().DrawArrays(GL_POINTS);
+	}
 	sh.Disable();
 
 	if (pntsz)
@@ -737,9 +749,17 @@ void CProjectileDrawer::DrawOpaque(bool drawReflection, bool drawRefraction)
 	glDisable(GL_FOG);
 }
 
-void CProjectileDrawer::DrawAlpha(bool drawAboveWater, bool drawReflection, bool drawRefraction)
+void CProjectileDrawer::DrawAlpha(bool drawAboveWater, bool drawBelowWater, bool drawReflection, bool drawRefraction)
 {
 	ZoneScopedN("ProjectileDrawer::DrawAlpha");
+
+	static constexpr std::array<float, 4> clipPlanes[] {
+		{ 0.0f,  0.0f, 0.0f, 0.0f}, // never used
+		{ 0.0f, -1.0f, 0.0f, 0.0f},
+		{ 0.0f,  1.0f, 0.0f, 0.0f},
+		{ 0.0f,  0.0f, 0.0f, 1.0f}
+	};
+	const auto& clipPlane = clipPlanes[1U * drawBelowWater + 2U * drawAboveWater];
 
 	const uint8_t thisPassMask =
 		(1 - (drawReflection || drawRefraction)) * DrawFlags::SO_ALPHAF_FLAG +
@@ -795,14 +815,14 @@ void CProjectileDrawer::DrawAlpha(bool drawAboveWater, bool drawReflection, bool
 			ClipDistance<0>(GL_TRUE)
 		);
 
+		eventHandler.DrawWorldPreParticles(drawAboveWater, drawBelowWater, drawReflection, drawRefraction);
+
 		auto& rb = CExpGenSpawnable::GetPrimaryRenderBuffer();
-		if (!rb.ShouldSubmit()) {
-			eventHandler.DrawWorldPreParticles();
+		if (!rb.ShouldSubmit())
 			return;
-		}
 
 		const bool needSoften = (wantSoften > 0) && !drawReflection && !drawRefraction;
-		eventHandler.DrawWorldPreParticles();
+
 
 		glActiveTexture(GL_TEXTURE0); textureAtlas->BindTexture();
 
@@ -817,7 +837,7 @@ void CProjectileDrawer::DrawAlpha(bool drawAboveWater, bool drawReflection, bool
 
 		fxShader->Enable();
 
-		fxShader->SetUniform("clipPlane", 0.0f, (drawAboveWater ? 1.0f : -1.0f), 0.0f, 0.0f);
+		fxShader->SetUniform("clipPlane", clipPlane[0], clipPlane[1], clipPlane[2], clipPlane[3]);
 		fxShader->SetUniform("alphaCtrl", 0.0f, 1.0f, 0.0f, 0.0f);
 		if (needSoften) {
 			fxShader->SetUniform("softenThreshold", CProjectileDrawer::softenThreshold[0]);
