@@ -37,6 +37,7 @@
 #include "System/Net/UnpackPacket.h"
 #include "System/Sound/ISound.h"
 #include "System/Sync/DumpState.h"
+#include "System/Sync/DumpHistory.h"
 
 #include "System/Misc/TracyDefs.h"
 
@@ -622,6 +623,12 @@ void CGame::ClientReadNet()
 				ASSERT_SYNCED(CSyncChecker::GetChecksum());
 				clientNet->Send(CBaseNetProtocol::Get().SendSyncResponse(gu->myPlayerNum, gs->frameNum, CSyncChecker::GetChecksum()));
 
+				// Cache the just-closed frame's checksum so Lua can read a
+				// stable value during the next sim frame via
+				// Spring.GetPrevFrameSyncChecksum(). Must run before the
+				// 4096-frame reset below so we capture the pre-reset value.
+				CSyncChecker::SetPrevChecksum(CSyncChecker::GetChecksum());
+
 				// buffer all checksums, so we can check sync later between demo & local
 				if (haveServerDemo)
 					localSyncChecksums[gs->frameNum] = CSyncChecker::GetChecksum();
@@ -1137,6 +1144,10 @@ void CGame::ClientReadNet()
 
 			} break;
 
+			case NETMSG_MAPDRAW_OLD: {
+				LOG_L(L_WARNING, "[Game::%s] Invalid network opcode NETMSG_MAPDRAW_OLD(%d). Are you watching an old replay?", __func__, NETMSG_MAPDRAW_OLD);
+			} break;
+
 			case NETMSG_TEAM: {
 				ZoneScopedN("Net::Team");
 				const uint8_t playerNum = inbuf[1];
@@ -1571,7 +1582,8 @@ void CGame::ClientReadNet()
 			case NETMSG_GAMESTATE_DUMP: {
 				ZoneScopedN("Net::GamestateDump");
 				LOG("Collecting current game state information.");
-				DumpState(gs->frameNum, gs->frameNum, 1, true, true);
+				const uint32_t desyncFrameNum = *reinterpret_cast<const uint32_t*>(inbuf + 1);
+				DumpState(gs->frameNum, gs->frameNum, 1, true, desyncFrameNum, true);
 				break;
 			}
 

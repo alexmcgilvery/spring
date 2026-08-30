@@ -37,7 +37,7 @@ CFlareProjectile::CFlareProjectile(const float3& pos, const float3& speed, CUnit
 	deathFrame(activateFrame + ((owner != nullptr)? owner->unitDef->flareTime: 1)),
 
 	numSubProjs(0),
-	maxSubProjs(std::min((owner != nullptr)? owner->unitDef->flareSalvoSize: 0, int(subProjPos.size()))),
+	maxSubProjs(std::min((owner != nullptr)? owner->unitDef->flareSalvoSize: 0, int(std::tuple_size_v<decltype(subProjPos)>))),
 	lastSubProj(0)
 {
 	alphaFalloff = (owner != nullptr)? 1.0f / owner->unitDef->flareTime: 1.0f;
@@ -128,14 +128,14 @@ void CFlareProjectile::Draw()
 	for (int a = 0; a < numSubProjs; ++a) {
 		const float3 interPos = subProjPos[a] + subProjVel[a] * globalRendering->timeOffset;
 
-		#define fpt projectileDrawer->flareprojectiletex
-		AddEffectsQuad(
+		const auto* fpt = projectileDrawer->flareprojectiletex;
+		AddEffectsQuad<0>(
+			fpt->pageNum,
 			{ interPos - camera->GetRight() * rad - camera->GetUp() * rad, fpt->xstart, fpt->ystart, col },
 			{ interPos + camera->GetRight() * rad - camera->GetUp() * rad, fpt->xend,   fpt->ystart, col },
 			{ interPos + camera->GetRight() * rad + camera->GetUp() * rad, fpt->xend,   fpt->yend,   col },
 			{ interPos - camera->GetRight() * rad + camera->GetUp() * rad, fpt->xstart, fpt->yend,   col }
 		);
-		#undef fpt
 	}
 }
 

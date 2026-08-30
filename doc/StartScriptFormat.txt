@@ -25,7 +25,7 @@
 // note that the same values for clients also need to be set here
 [GAME]
 {
-	MapName=;           // with .smf extension
+	MapName=;           // without any extension
 	GameType=Balanced Annihilation V6.81; // either primary mod NAME, rapid tag name or archive name
 	GameStartDelay=4;   // optional, in seconds (unsigned int), default: 4
 	                    // The number of seconds till the game starts,
@@ -137,8 +137,6 @@
 		StartMetal=1000;
 		StartEnergy=1000;
 		MaxUnits=500;       // per team
-		GameMode=x;         // 0 cmdr dead->game continues, 1 cmdr dead->game ends, 2 lineage, 3 openend
-		LimitDGun=0;        // limit dgun to fixed radius around startpos?
 		DisableMapDamage=0; // disable map craters?
 		GhostedBuildings=1; // ghost enemy buildings after losing los on them
 		NoHelperAIs=0;      // are GroupAIs and other helper AIs allowed?

@@ -45,12 +45,15 @@
 #include "Rendering/Map/InfoTexture/IInfoTextureHandler.h"
 #include "Rendering/Units/UnitDrawer.h"
 #include "Rendering/Features/FeatureDrawer.h"
+#include "Rendering/IconHandler.h"
 #include "Sim/Features/Feature.h"
 #include "Sim/Features/FeatureDef.h"
 #include "Sim/Features/FeatureHandler.h"
 #include "Sim/Misc/LosHandler.h"
 #include "Sim/Misc/ModInfo.h"
 #include "Sim/Misc/TeamHandler.h"
+#include "Sim/Misc/GlobalConstants.h"
+#include "Sim/Misc/CustomColorPalette.h"
 #include "Sim/Misc/QuadField.h"
 #include "Sim/Projectiles/Projectile.h"
 #include "Sim/Units/Unit.h"
@@ -65,12 +68,14 @@
 #include "System/Config/ConfigVariable.h"
 #include "System/Input/KeyInput.h"
 #include "System/LoadSave/DemoReader.h"
+#include "System/LoadSave/DemoRecorder.h"
 #include "System/Log/DefaultFilter.h"
 #include "System/Platform/SDL1_keysym.h"
 #include "System/Platform/Misc.h"
 #include "System/Sound/ISound.h"
 #include "System/Sound/ISoundChannels.h"
 #include "System/StringUtil.h"
+#include "System/Sync/SyncChecker.h"
 #include "System/Misc/SpringTime.h"
 #include "System/ScopedResource.h"
 #include "System/Math/NURBS.h"
@@ -89,6 +94,7 @@
 #include <SDL_mouse.h>
 
 
+
 /******************************************************************************
  * Callouts to get state
  *
@@ -101,6 +107,8 @@ bool LuaUnsyncedRead::PushEntries(lua_State* L)
 	REGISTER_LUA_CFUNC(GetReplayLength);
 
 	REGISTER_LUA_CFUNC(GetGameName);
+	REGISTER_LUA_CFUNC(GetReplayFilePath);
+	REGISTER_LUA_CFUNC(GetReplayRecordingFilePath);
 	REGISTER_LUA_CFUNC(GetMenuName);
 
 	REGISTER_LUA_CFUNC(GetProfilerTimeRecord);
@@ -114,6 +122,7 @@ bool LuaUnsyncedRead::PushEntries(lua_State* L)
 	REGISTER_LUA_CFUNC(GetGameSecondsInterpolated);
 	REGISTER_LUA_CFUNC(GetLastUpdateSeconds);
 	REGISTER_LUA_CFUNC(GetVideoCapturingMode);
+	REGISTER_LUA_CFUNC(GetPrevFrameSyncChecksum);
 
 	REGISTER_LUA_CFUNC(GetNumDisplays);
 	REGISTER_LUA_CFUNC(GetViewGeometry);
@@ -176,6 +185,9 @@ bool LuaUnsyncedRead::PushEntries(lua_State* L)
 	REGISTER_LUA_CFUNC(GetTeamColor);
 	REGISTER_LUA_CFUNC(GetTeamOrigColor);
 
+	REGISTER_LUA_CFUNC(GetCustomPaletteColor);
+	REGISTER_LUA_CFUNC(GetUnitPaletteIndex);
+	REGISTER_LUA_CFUNC(GetFeaturePaletteIndex);
 	REGISTER_LUA_CFUNC(GetLocalPlayerID);
 	REGISTER_LUA_CFUNC(GetLocalTeamID);
 	REGISTER_LUA_CFUNC(GetLocalAllyTeamID);
@@ -299,8 +311,14 @@ bool LuaUnsyncedRead::PushEntries(lua_State* L)
 	REGISTER_LUA_CFUNC(GetGroundDecalCreationFrame);
 	REGISTER_LUA_CFUNC(GetGroundDecalOwner);
 	REGISTER_LUA_CFUNC(GetGroundDecalType);
+	REGISTER_LUA_CFUNC(GetGroundDecalGlowParams);
+	REGISTER_LUA_CFUNC(GetGroundDecalUserData);
 
 	REGISTER_LUA_CFUNC(UnitIconGetDraw);
+	REGISTER_LUA_CFUNC(GetUnitIconData);
+	REGISTER_LUA_CFUNC(GetUnitIcon);
+	REGISTER_LUA_CFUNC(GetIconData);
+	REGISTER_LUA_CFUNC(GetAllIconDataArray);
 
 	REGISTER_LUA_CFUNC(GetSyncedGCInfo);
 	REGISTER_LUA_CFUNC(SolveNURBSCurve);
@@ -468,7 +486,7 @@ static size_t PushSparseUnitTallyByDef(lua_State *const L, const T &v)
  *
  * @function Spring.IsReplay
  *
- * @return boolean? isReplay
+ * @return boolean isReplay
  */
 int LuaUnsyncedRead::IsReplay(lua_State* L)
 {
@@ -509,6 +527,58 @@ int LuaUnsyncedRead::GetGameName(lua_State* L)
 	return 1;
 }
 
+/*** If a replay is currently being watched, returns its file path.
+ *
+ * @function Spring.GetReplayFilePath
+ *
+ * @return string filePath
+ */
+int LuaUnsyncedRead::GetReplayFilePath(lua_State* L)
+{
+	if (gameServer != nullptr) {
+		if (gameServer->GetDemoReader()) {
+			lua_pushsstring(L, gameServer->GetDemoReader()->GetName());
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
+/*** If a replay is being recorded, returns its projected file path.
+ * Note that replay contents are only written there at game exit.
+ * Note also that watching a replay also records a meta-replay
+ * if the DemoFromDemo springsetting is set.
+ *
+ * @function Spring.GetReplayRecordingFilePath
+ *
+ * @return string filePath
+ */
+int LuaUnsyncedRead::GetReplayRecordingFilePath(lua_State* L)
+{
+	/* TODO: why are there two places that keep a recording?
+	 * Check for logic duplication and perhaps remove one.
+	 * See https://github.com/beyond-all-reason/RecoilEngine/issues/2942 */
+
+	if (clientNet != nullptr) {
+		const CDemoRecorder* dr = clientNet->GetDemoRecorder();
+
+		if (dr != nullptr && dr->IsValid()) {
+			lua_pushsstring(L, dr->GetName());
+			return 1;
+		}
+	}
+
+	if (gameServer != nullptr) {
+		if (gameServer->GetDemoRecorder()) {
+			lua_pushsstring(L, gameServer->GetDemoRecorder()->GetName());
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
 /***
  *
  * @function Spring.GetMenuName
@@ -546,23 +616,26 @@ int LuaUnsyncedRead::GetProfilerTimeRecord(lua_State* L)
 {
 	const CTimeProfiler::TimeRecord& record = CTimeProfiler::GetInstance().GetTimeRecord(lua_tostring(L, 1));
 
-	int numRet = 5;
+	const bool wantFrameData = luaL_optboolean(L, 2, false);
+
 	lua_pushnumber(L, record.total.toMilliSecsf());
 	lua_pushnumber(L, record.current.toMilliSecsf());
 	lua_pushnumber(L, record.stats.x); // max-dt
 	lua_pushnumber(L, record.stats.y); // time-%
 	lua_pushnumber(L, record.stats.z); // peak-%
 
-	if (luaL_optboolean(L, 2, false)) {
-		for (size_t i = 0; i < record.frames.size(); i++) {
-			lua_pushnumber(L, i + 1); // key
-			lua_pushnumber(L, record.frames[i].toMilliSecsf()); // val
-			lua_rawset(L, -3);
-		}
-		++numRet;
+	if (!wantFrameData)
+		return 5;
+
+	lua_createtable(L, record.frames.size(), 0);
+
+	for (size_t i = 0; i < record.frames.size(); i++) {
+		lua_pushnumber(L, i + 1); // key
+		lua_pushnumber(L, record.frames[i].toMilliSecsf()); // val
+		lua_rawset(L, -3);
 	}
 
-	return numRet;
+	return 6;
 }
 
 /***
@@ -620,8 +693,8 @@ int LuaUnsyncedRead::GetLuaMemUsage(lua_State* L)
 
 	// sum up the individual (unsynced and synced) state footprints
 	for (bool synced: {false, true}) {
-		lgs.allocedBytes = {0};
-		lgs.numLuaAllocs = {0};
+		lgs.allocedBytes = 0;
+		lgs.numLuaAllocs = 0;
 
 		for (const luaContextData* lcd: *LUAHANDLE_CONTEXTS[synced]) {
 			lhs = &lcd->allocState;
@@ -1133,6 +1206,8 @@ int LuaUnsyncedRead::GetFrameTimeOffset(lua_State* L)
 
 /*** Gets game time for drawing purposes
  *
+ * @function Spring.GetGameSecondsInterpolated
+ *
  * Returns the game time, taking the interpolated draw frame into account.
  *
  * @return number game time in seconds
@@ -1165,6 +1240,35 @@ int LuaUnsyncedRead::GetLastUpdateSeconds(lua_State* L)
 int LuaUnsyncedRead::GetVideoCapturingMode(lua_State* L)
 {
 	lua_pushboolean(L, videoCapturing->AllowRecord());
+	return 1;
+}
+
+
+/***
+ *
+ * Returns the engine's sync checksum for the previous simframe,
+ * useful for testing. The returned string is NOT convertible to
+ * a number within Lua.
+ *
+ * Returns a dummy value if `Platform.hasSyncChecksums` is false,
+ * or if no frames were processed yet.
+ *
+ * @function Spring.GetPrevFrameSyncChecksum
+ *
+ * @return string checksum
+ */
+int LuaUnsyncedRead::GetPrevFrameSyncChecksum(lua_State* L)
+{
+#ifdef SYNCCHECK
+	unsigned checksum = CSyncChecker::GetPrevChecksum();
+#else
+	unsigned checksum = 0;
+#endif
+
+	char buf[9];
+	snprintf(buf, sizeof(buf), "%08x", checksum);
+	lua_pushstring(L, buf);
+
 	return 1;
 }
 
@@ -1354,6 +1458,172 @@ int LuaUnsyncedRead::UnitIconGetDraw(lua_State* L) {
 	return 1;
 }
 
+/*** Icon Data
+ *
+ * @class IconData
+ */
+
+/***
+ * @class TexCoords
+ * @field x0 number left coordinate in the normalized range
+ * @field x1 number right coordinate in the normalized range
+ * @field y0 number top coordinate in the normalized range
+ * @field y1 number bottom coordinate in the normalized range
+ * @field atlasIndex integer? Means the atlas page number in case the texture is arrayed or points to another sequential texture in other rare cases
+ */
+
+namespace Impl {
+	template<bool full>
+	void PushIconData(lua_State* L, const icon::IconData& iconData) {
+		lua_createtable(L, 0, 2 + 5 * !full);
+
+		/*** @field IconData.name string */
+		LuaPushNamedString(L, "name", iconData.GetName());
+		if constexpr (full) {
+			/*** @field IconData.fileName string? */
+			LuaPushNamedString(L, "fileName", iconData.GetFileName());
+			/*** @field IconData.size number? Relative size of the icon */
+			LuaPushNamedNumber(L, "size", iconData.GetSize());
+			/*** @field IconData.distance number? When squared used as a icon length multiplier */
+			LuaPushNamedNumber(L, "distance", iconData.GetDistance());
+			/*** @field IconData.radiusAdjust boolean? Controls whether the unit radius affects the icon size */
+			LuaPushNamedBool(L, "radiusAdjust", iconData.GetRadiusAdjust());
+
+			/*** @field IconData.srcTexCoords TexCoords? */
+			{
+				const auto& stc = iconData.GetSrcTexCoords();
+				lua_pushliteral(L, "srcTexCoords");
+				lua_createtable(L, 0, 4);
+
+				LuaPushNamedNumber(L, "x0", stc.x1);
+				LuaPushNamedNumber(L, "y0", stc.y1);
+				LuaPushNamedNumber(L, "x1", stc.x2);
+				LuaPushNamedNumber(L, "y1", stc.y2);
+
+				lua_rawset(L, -3);
+			}
+		}
+
+		/*** @field IconData.atlasTexCoords TexCoords atlasIndex points to $icons0 or $icons1 texture */
+		const auto& atc = iconData.GetTexCoords();
+		{
+			lua_pushliteral(L, "atlasTexCoords");
+			lua_createtable(L, 0, 5);
+
+			LuaPushNamedNumber(L, "x0", atc.x1);
+			LuaPushNamedNumber(L, "y0", atc.y1);
+			LuaPushNamedNumber(L, "x1", atc.x2);
+			LuaPushNamedNumber(L, "y1", atc.y2);
+			LuaPushNamedNumber(L, "atlasIndex", atc.pageNum);
+
+			lua_rawset(L, -3);
+		}
+	}
+
+	template<bool full>
+	int GetIconDataImpl(lua_State* L, size_t iconIdx) {
+		if (iconIdx == icon::INVALID_ICON_INDEX)
+			return 0;
+
+		const auto& iconData = icon::iconHandler.GetIconData(iconIdx);
+
+		PushIconData<full>(L, iconData);
+		return 1;
+	}
+}
+
+/*** Get unit icon data
+ *
+ * @function Spring.GetUnitIconData
+ * @param unitID number
+ * @param fullData boolean? (Default: false) Whether additional information about the icon is returned, otherwise only `name` and `atlasTexCoords` are returned
+ * @return IconData? `nil` if unit is not found or unit currentIconIndex is invalid
+ * @see Spring.GetIconData
+ */
+int LuaUnsyncedRead::GetUnitIconData(lua_State* L)
+{
+	const CUnit* unit = ParseUnit(L, __func__, 1);
+	const auto fullData = luaL_optboolean(L, 2, false);
+
+	if (unit == nullptr)
+		return 0;
+
+	if (fullData)
+		return Impl::GetIconDataImpl<true >(L, unit->currentIconIndex);
+	else
+		return Impl::GetIconDataImpl<false>(L, unit->currentIconIndex);
+}
+
+/*** Get unit icon name
+ *
+ * @function Spring.GetUnitIcon
+ * @param unitID number
+ * @return string iconName
+ */
+int LuaUnsyncedRead::GetUnitIcon(lua_State* L)
+{
+	const CUnit* unit = ParseUnit(L, __func__, 1);
+	const auto iconIdx = unit->currentIconIndex;
+
+	if (iconIdx == icon::INVALID_ICON_INDEX) {
+		lua_pushstring(L, "");
+	}
+	else {
+		const auto& iconData = icon::iconHandler.GetIconData(iconIdx);
+		lua_pushstring(L, iconData.GetName().c_str());
+	}
+
+	return 1;
+}
+
+/*** Get icon data
+ *
+ * @function Spring.GetIconData
+ * @param iconName string
+ * @param fullData boolean? (Default: false) Whether additional information about the icon is returned, otherwise only `name` and `atlasTexCoords` are returned
+ * @return IconData? `nil` if iconName lookup fails
+ * @see Spring.GetUnitIconData
+ */
+int LuaUnsyncedRead::GetIconData(lua_State* L)
+{
+	const auto iconName = luaL_checkstring(L, 1);
+	const auto fullData = luaL_optboolean(L, 2, false);
+
+	const auto iconIdx = icon::iconHandler.GetIconIdx(iconName);
+
+	if (fullData)
+		return Impl::GetIconDataImpl<true >(L, iconIdx);
+	else
+		return Impl::GetIconDataImpl<false>(L, iconIdx);
+}
+
+/*** Get icon data
+ *
+ * @function Spring.GetAllIconDataArray
+ * @param fullData boolean? (Default: false) Whether additional information about each icon is returned, otherwise only `name` and `atlasTexCoords` are returned
+ * @return IconData[] iconDataList
+ * @see Spring.GetUnitIconData
+ * @see Spring.GetIconData
+ */
+int LuaUnsyncedRead::GetAllIconDataArray(lua_State* L)
+{
+	const auto fullData = luaL_optboolean(L, 1, false);
+
+	const auto& iconsData = icon::iconHandler.GetIconsData();
+
+	lua_createtable(L, iconsData.size(), 0);
+	for (size_t i = 0; i < iconsData.size(); ++i) {
+		const auto& iconData = iconsData[i];
+		if (fullData)
+			Impl::PushIconData<true >(L, iconData);
+		else
+			Impl::PushIconData<false>(L, iconData);
+
+		lua_rawseti(L, -2, i + 1);
+	}
+
+	return 1;
+}
 
 /***
  *
@@ -2258,70 +2528,56 @@ int LuaUnsyncedRead::GetUnitsInScreenRectangle(lua_State* L)
 
 	const int allegiance = LuaUtils::ParseAllegiance(L, __func__, 5);
 
-	std::function<bool(const CUnit*)> disqualifierFunc;
-
-	switch (allegiance)
-	{
-	case LuaUtils::AllUnits:
-		disqualifierFunc = [L](const CUnit* unit) -> bool { return !LuaUtils::IsUnitVisible(L, unit); };
-		break;
-	case LuaUtils::MyUnits:
-		disqualifierFunc = [readTeam](const CUnit* unit) -> bool { return unit->team != readTeam; };
-		break;
-	case LuaUtils::AllyUnits:
-		disqualifierFunc = [readATeam](const CUnit* unit) -> bool { return unit->allyteam != readATeam; };
-		break;
-	case LuaUtils::EnemyUnits:
-		disqualifierFunc = [readATeam](const CUnit* unit) -> bool { return unit->allyteam == readATeam; };
-		break;
-	default: {
-		if (LuaUtils::IsAlliedTeam(L, allegiance)) {
-			disqualifierFunc = [allegiance](const CUnit* unit) -> bool { return unit->team != allegiance; };
-		}
-		else {
-			disqualifierFunc = [allegiance, L](const CUnit* unit) -> bool {
-				if (unit->team != allegiance)
-					return true;
-
-				if (!LuaUtils::IsUnitVisible(L, unit))
-					return true;
-
-				return false;
-			};
-		}
-	} break;
-	}
-
 	// Even though we're in unsynced it's ok to use gs->tempNum since its exact value
 	// doesn't matter
 	const int tempNum = gs->GetTempNum();
 	lua_createtable(L, unitQuadIter.GetObjectCount(), 0);
 
-	uint32_t count = 0;
-	for (auto visUnitList : unitQuadIter.GetObjectLists()) {
-		for (CUnit* unit : *visUnitList) {
-			if (disqualifierFunc(unit))
-				continue;
+	auto runLoop = [&](auto disqualifier) {
+		uint32_t count = 0;
+		for (auto visUnitList : unitQuadIter.GetObjectLists()) {
+			for (CUnit* unit : *visUnitList) {
+				if (disqualifier(unit))
+					continue;
 
-			if (unit->tempNum == tempNum)
-				continue;
+				if (unit->tempNum == tempNum)
+					continue;
 
-			unit->tempNum = tempNum;
+				unit->tempNum = tempNum;
 
-			const float3 vpPos = camera->CalcViewPortCoordinates(unit->drawPos);
+				const float3 vpPos = camera->CalcViewPortCoordinates(unit->drawPos);
 
-			if (vpPos.x > r || vpPos.x < l)
-				continue;
+				if (vpPos.x > r || vpPos.x < l)
+					continue;
 
-			if (vpPos.y > b || vpPos.y < t)
-				continue;
+				if (vpPos.y > b || vpPos.y < t)
+					continue;
 
-			if (vpPos.z > 1.0f || vpPos.z < 0.0f)
-				continue;
+				if (vpPos.z > 1.0f || vpPos.z < 0.0f)
+					continue;
 
-			lua_pushnumber(L, unit->id);
-			lua_rawseti(L, -2, ++count);
+				lua_pushnumber(L, unit->id);
+				lua_rawseti(L, -2, ++count);
+			}
 		}
+	};
+
+	switch (allegiance) {
+		case LuaUtils::AllUnits:
+			runLoop([L](const CUnit* u) { return !LuaUtils::IsUnitVisible(L, u); });
+			break;
+		case LuaUtils::MyUnits:
+			runLoop([L, readTeam](const CUnit* u) { return u->team != readTeam || !LuaUtils::IsUnitVisible(L, u); });
+			break;
+		case LuaUtils::AllyUnits:
+			runLoop([L, readATeam](const CUnit* u) { return u->allyteam != readATeam || !LuaUtils::IsUnitVisible(L, u); });
+			break;
+		case LuaUtils::EnemyUnits:
+			runLoop([L, readATeam](const CUnit* u) { return u->allyteam == readATeam || !LuaUtils::IsUnitVisible(L, u); });
+			break;
+		default:
+			runLoop([L, allegiance](const CUnit* u) { return u->team != allegiance || !LuaUtils::IsUnitVisible(L, u); });
+			break;
 	}
 
 	return 1;
@@ -2386,6 +2642,7 @@ int LuaUnsyncedRead::GetFeaturesInScreenRectangle(lua_State* L)
 /***
  *
  * @function Spring.GetLocalPlayerID
+ * @function Spring.GetMyPlayerID Alias of GetLocalPlayerID
  * @return integer playerID
  */
 int LuaUnsyncedRead::GetLocalPlayerID(lua_State* L)
@@ -2398,6 +2655,7 @@ int LuaUnsyncedRead::GetLocalPlayerID(lua_State* L)
 /***
  *
  * @function Spring.GetLocalTeamID
+ * @function Spring.GetMyTeamID Alias of GetLocalTeamID
  * @return integer teamID
  */
 int LuaUnsyncedRead::GetLocalTeamID(lua_State* L)
@@ -2410,6 +2668,7 @@ int LuaUnsyncedRead::GetLocalTeamID(lua_State* L)
 /***
  *
  * @function Spring.GetLocalAllyTeamID
+ * @function Spring.GetMyAllyTeamID Alias of GetLocalAllyTeamID
  * @return integer allyTeamID
  */
 int LuaUnsyncedRead::GetLocalAllyTeamID(lua_State* L)
@@ -2725,14 +2984,14 @@ int LuaUnsyncedRead::GetCameraNames(lua_State* L)
 
 /***
  * @function Spring.GetCameraState
- * @param useReturns false
- * @return CameraState cameraState
+ * @param useTable false
+ * @return CameraName name
+ * @return any ... depends on the current controller mode.
  */
 /***
  * @function Spring.GetCameraState
- * @param useReturns true? (Default: `true`) Return multiple values instead of a table.
- * @return CameraName name
- * @return any Fields depending on current controller mode.
+ * @param useTable true? (Default: `true`) Return a table instead of multiple values.
+ * @return CameraState cameraState
  */
 int LuaUnsyncedRead::GetCameraState(lua_State* L)
 {
@@ -2856,6 +3115,7 @@ int LuaUnsyncedRead::GetCameraFOV(lua_State* L)
 
 /***
  * @class CameraVectors
+ * @x_helper
  * @field forward xyz
  * @field up xyz
  * @field right xyz
@@ -2872,7 +3132,7 @@ int LuaUnsyncedRead::GetCameraFOV(lua_State* L)
 int LuaUnsyncedRead::GetCameraVectors(lua_State* L)
 {
 #define PACK_CAMERA_VECTOR(s,n) \
-	HSTR_PUSH(L, #s);           \
+	lua_pushhstring(L, CompileTimeHash(#s), #s, sizeof(#s) - 1); \
 	lua_createtable(L, 3, 0);            \
 	lua_pushnumber(L, camera-> n .x); lua_rawseti(L, -2, 1); \
 	lua_pushnumber(L, camera-> n .y); lua_rawseti(L, -2, 2); \
@@ -3152,6 +3412,70 @@ int LuaUnsyncedRead::GetTeamOrigColor(lua_State* L)
 
 /***
  *
+ * @function Spring.GetCustomPaletteColor
+ * @param index integer 0-based index into custom palette
+ * @return number? r factor from 0 to 1
+ * @return number? g factor from 0 to 1
+ * @return number? b factor from 0 to 1
+ */
+int LuaUnsyncedRead::GetCustomPaletteColor(lua_State* L)
+{
+	const auto customIndex = LuaUtils::ParsePalette(L, 1);
+	const float4 color = customColorPalette.GetColor(customIndex);
+
+	lua_pushnumber(L, color.x);
+	lua_pushnumber(L, color.y);
+	lua_pushnumber(L, color.z);
+	return 3;
+}
+
+
+/***
+ * Returns the custom palette index for a unit, or nil if using team color.
+ * @function Spring.GetUnitPaletteIndex
+ * @param unitID integer
+ * @return integer? customIndex [0..MAX_CUSTOM_COLORS) if unit uses a custom color, nil if using team color
+ */
+int LuaUnsyncedRead::GetUnitPaletteIndex(lua_State* L)
+{
+	const int unitID = luaL_checkint(L, 1);
+	const CUnit* unit = unitHandler.GetUnit(unitID);
+	if (unit == nullptr)
+		return 0;
+
+	if (CCustomColorPalette::IsCustomPaletteIndex(unit->paletteIndex)) {
+		lua_pushnumber(L, CCustomColorPalette::DecodePaletteIndex(unit->paletteIndex));
+	} else {
+		lua_pushnil(L);
+	}
+	return 1;
+}
+
+
+/***
+ * Returns the custom palette index for a feature, or nil if using team color.
+ * @function Spring.GetFeaturePaletteIndex
+ * @param featureID integer
+ * @return integer? customIndex [0..MAX_CUSTOM_COLORS) if feature uses a custom color, nil if using team color
+ */
+int LuaUnsyncedRead::GetFeaturePaletteIndex(lua_State* L)
+{
+	const int featureID = luaL_checkint(L, 1);
+	const CFeature* feature = featureHandler.GetFeature(featureID);
+	if (feature == nullptr)
+		return 0;
+
+	if (CCustomColorPalette::IsCustomPaletteIndex(feature->paletteIndex)) {
+		lua_pushnumber(L, CCustomColorPalette::DecodePaletteIndex(feature->paletteIndex));
+	} else {
+		lua_pushnil(L);
+	}
+	return 1;
+}
+
+
+/***
+ *
  * @function Spring.GetDrawSeconds
  * @return integer time Time in seconds.
  */
@@ -3167,10 +3491,9 @@ int LuaUnsyncedRead::GetDrawSeconds(lua_State* L)
  * @section sound
 ******************************************************************************/
 
-/***
+/*** Contains data about a sound device.
  * @class SoundDeviceSpec
- *
- * Contains data about a sound device.
+ * @x_helper
  *
  * @field name string
  */
@@ -3213,6 +3536,7 @@ int LuaUnsyncedRead::GetSoundStreamTime(lua_State* L)
 /***
  *
  * @function Spring.GetSoundEffectParams
+ * @return table? soundEffectParams `nil` on headless/no-sound builds or when EFX is unsupported.
  */
 int LuaUnsyncedRead::GetSoundEffectParams(lua_State* L)
 {
@@ -3581,9 +3905,9 @@ int LuaUnsyncedRead::GetActivePage(lua_State* L)
  * @function Spring.GetMouseState
  * @return number x
  * @return number y
- * @return number lmbPressed left mouse button pressed
- * @return number mmbPressed middle mouse button pressed
- * @return number rmbPressed right mouse button pressed
+ * @return boolean lmbPressed left mouse button pressed
+ * @return boolean mmbPressed middle mouse button pressed
+ * @return boolean rmbPressed right mouse button pressed
  * @return boolean offscreen
  * @return boolean mmbScroll
  */
@@ -3806,7 +4130,7 @@ int LuaUnsyncedRead::GetCurrentTooltip(lua_State* L)
 
 /***
  * @function Spring.GetKeyFromScanSymbol
- * @param scanSymbol string
+ * @param scanSymbol string?
  * @return string keyName
  */
 int LuaUnsyncedRead::GetKeyFromScanSymbol(lua_State* L)
@@ -3993,12 +4317,10 @@ int LuaUnsyncedRead::GetScanSymbol(lua_State* L)
 }
 
 
-/***
- * Keybinding
- *
- * Contains data about a keybinding
+/*** Contains data about a keybinding
  *
  * @class KeyBinding
+ * @x_helper
  * @field command string
  * @field extra string
  * @field boundWith string
@@ -4233,11 +4555,10 @@ int LuaUnsyncedRead::GetGroupUnitsCount(lua_State* L)
 ******************************************************************************/
 
 
-/*** Roster
- *
- * Contains data about a player
+/*** Contains data about a player
  *
  * @class Roster
+ * @x_helper
  * @field name string
  * @field playerID integer
  * @field teamID integer
@@ -4374,11 +4695,10 @@ int LuaUnsyncedRead::GetPlayerStatistics(lua_State* L)
 ******************************************************************************/
 
 
-/*** Configuration
- *
- * Contains data about a configuration, only name and type are guaranteed
+/*** Contains data about a configuration, only name and type are guaranteed
  *
  * @class Configuration
+ * @x_helper
  * @field name string
  * @field type string
  * @field description string
@@ -4470,8 +4790,9 @@ int LuaUnsyncedRead::GetConfigParams(lua_State* L)
  *
  * @function Spring.GetConfigInt
  * @param name string
- * @param default number? (Default: `0`)
- * @return number? configInt
+ * @param default integer Default value if `name` is not found
+ * @return integer
+ * @overload fun(name: string): integer?
  */
 int LuaUnsyncedRead::GetConfigInt(lua_State* L)
 {
@@ -4491,8 +4812,9 @@ int LuaUnsyncedRead::GetConfigInt(lua_State* L)
  *
  * @function Spring.GetConfigFloat
  * @param name string
- * @param default number? (Default: `0`)
- * @return number? configFloat
+ * @param default number Default value if `name` is not found
+ * @return number
+ * @overload fun(name: string): number?
  */
 int LuaUnsyncedRead::GetConfigFloat(lua_State* L)
 {
@@ -4512,8 +4834,9 @@ int LuaUnsyncedRead::GetConfigFloat(lua_State* L)
  *
  * @function Spring.GetConfigString
  * @param name string
- * @param default string? (Default: `""`)
- * @return number? configString
+ * @param default string Default value if `name` is not found
+ * @return string
+ * @overload fun(name: string): string?
  */
 int LuaUnsyncedRead::GetConfigString(lua_State* L)
 {
@@ -4614,7 +4937,7 @@ int LuaUnsyncedRead::GetGroundDecalMiddlePos(lua_State* L)
 
 /***
  *
- * @function Spring.GetDecalQuadPos
+ * @function Spring.GetGroundDecalQuadPos
  * @param decalID integer
  * @return number? posTL.x
  * @return number posTL.z
@@ -4705,23 +5028,35 @@ int LuaUnsyncedRead::GetGroundDecalTexture(lua_State* L)
 
 /***
  *
- * @function Spring.GetDecalTextures
- * @param isMainTex boolean? (Default: `true`) If `false`, return the texture for normal/glow maps.
+ * @function Spring.GetGroundDecalTextures
  * @return string[] textureNames All textures on the atlas and available for use in `SetGroundDecalTexture`.
+ * @param isMainTex boolean|nil (Default: `nil`). If `nil` - no filtering is done, if `false` - return normal/glow textures, if `true` - return main color textures.
+ * @param addFilenames boolean? (Default: `false`). If `true` add the texture filenames in the second table
  * @see Spring.GetGroundDecalTexture
  */
 int LuaUnsyncedRead::GetGroundDecalTextures(lua_State* L)
 {
-	const auto& texNames = groundDecals->GetDecalTextures(luaL_optboolean(L, 2, true));
+	std::optional<bool> isMainTex;
+	if (!lua_isnoneornil(L, 1))
+		isMainTex = luaL_checkboolean(L, 1);
+
+	const auto pushFileNames = luaL_optboolean(L, 2, false);
+
+	const auto& texNames = groundDecals->GetDecalTextures(isMainTex);
 	LuaUtils::PushStringVector(L, texNames);
 
-	return 1;
+	if (!pushFileNames)
+		return 1;
+
+	const auto& texFileNames = groundDecals->GetDecalTextureFileNames(texNames);
+	LuaUtils::PushStringVector(L, texFileNames);
+	return 2;
 }
 
 
 /***
  *
- * @function Spring.SetGroundDecalTextureParams
+ * @function Spring.GetGroundDecalTextureParams
  * @param decalID integer
  * @return number? texWrapDistance If non-zero, sets the mode to repeat the texture along the left-right direction of the decal every texWrapFactor elmos.
  * @return number texTraveledDistance Shifts the texture repetition defined by texWrapFactor so the texture of a next line in the continuous multiline can start where the previous finished. For that it should collect all elmo lengths of the previously set multiline segments.
@@ -4882,6 +5217,60 @@ int LuaUnsyncedRead::GetGroundDecalOwner(lua_State* L)
 	return 1;
 }
 
+/***
+ *
+ * @function Spring.GetGroundDecalGlowParams
+ * Gets the glow parameters of the ground decal.
+ * @param decalID integer
+ * @return number? glow Between 0 and 1
+ * @return number glowFalloff Between 0 and 1, per second
+ */
+int LuaUnsyncedRead::GetGroundDecalGlowParams(lua_State* L)
+{
+	const auto* decal = groundDecals->GetDecalById(luaL_checkint(L, 1));
+	if (!decal) {
+		return 0;
+	}
+
+	lua_pushnumber(L, decal->glow);
+	lua_pushnumber(L, decal->glowFalloff * GAME_SPEED);
+
+	//PushNumberContainerAsArray(L, decal->glowColorMap[0].rgba);
+	//PushNumberContainerAsArray(L, decal->glowColorMap[1].rgba);
+
+	return 2;
+}
+
+/***
+ *
+ * @function Spring.GetGroundDecalUserData
+ * Gets the user defined decal data.
+ * @param decalID integer
+ * @param udQuad integer vec4 index, must be within [0;1] for now
+ * @return number? x
+ * @return number y
+ * @return number z
+ * @return number w
+ */
+int LuaUnsyncedRead::GetGroundDecalUserData(lua_State* L)
+{
+	const auto* decal = groundDecals->GetDecalById(luaL_checkint(L, 1));
+	if (!decal) {
+		return 0;
+	}
+
+	const auto quad = static_cast<uint32_t>(luaL_checknumber(L, 2));
+	if (quad >= GroundDecal::NUM_USERDATA) {
+		return 0;
+	}
+
+	const float4& userData = decal->userDefined[quad];
+	for (size_t i = 0; i < 4; ++i)
+		lua_pushnumber(L, userData[i]);
+
+	return 4;
+}
+
 
 /***
  *
@@ -4955,8 +5344,11 @@ int LuaUnsyncedRead::GetSyncedGCInfo(lua_State* L) {
 /***
  *
  * @function Spring.SolveNURBSCurve
- * @param groupID integer
- * @return number[]? unitIDs
+ * @param degree integer Degree of the curve.
+ * @param controlPoints number[] Flat array of `x, y, z, weight` quadruples; its length must be a multiple of 4.
+ * @param knots number[] Knot vector.
+ * @param segments integer Number of segments to evaluate.
+ * @return number[] points Flat array of `x, y, z` triples along the curve.
  */
 int LuaUnsyncedRead::SolveNURBSCurve(lua_State* L)
 {

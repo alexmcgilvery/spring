@@ -169,6 +169,7 @@ local flexCallIns = {
   'DrawScreenEffects',
   'DrawScreenPost',
   'DrawInMiniMap',
+  'DrawBuildSquare',
   'FontsChanged',
   'SunChanged',
   'RecvSkirmishAIMessage',
@@ -187,6 +188,9 @@ local callInLists = {
   'ActiveCommandChanged',
   'CameraRotationChanged',
   'CameraPositionChanged',
+  'MiniMapRotationChanged',
+  'MiniMapStateChanged',
+  'MiniMapGeometryChanged',
   'CommandNotify',
   'AddConsoleLine',
   'ViewResize',
@@ -315,44 +319,6 @@ end
 --------------------------------------------------------------------------------
 
 
-local function GetWidgetInfo(name, mode)
-
-  do return end -- FIXME
-
-  local lines = VFS.LoadFile(name, mode)
-
-  local infoLines = {}
-
-  for line in lines:gmatch('([^\n]*)\n') do
-    if (not line:find('^%s*%-%-')) then
-      if (line:find('[^\r]')) then
-        break -- not commented, not a blank line
-      end
-    end
-    local s, e, source = line:find('^%s*%-%-%>%>(.*)')
-    if (source) then
-      table.insert(infoLines, source)
-    end
-  end
-
-  local info = {}
-  local chunk, err = loadstring(table.concat(infoLines, '\n'))
-  if (not chunk) then
-    Spring.Log(section, LOG.INFO, 'not loading ' .. name .. ': ' .. err)
-  else
-    setfenv(chunk, info)
-    local success, err = pcall(chunk)
-    if (not success) then
-      Spring.Log(section, LOG.INFO, 'not loading ' .. name .. ': ' .. tostring(err))
-    end
-  end
-
-  for k,v in pairs(info) do
-    Spring.Log(section, LOG.INFO, name, k, 'type: ' .. type(v), '<'..tostring(v)..'>')
-  end
-end
-
-
 function widgetHandler:Initialize()
   self:LoadConfigData()
 
@@ -367,7 +333,6 @@ function widgetHandler:Initialize()
   -- stuff the raw widgets into unsortedWidgets
   local widgetFiles = VFS.DirList(WIDGET_DIRNAME, "*.lua", VFS.RAW_ONLY)
   for k,wf in ipairs(widgetFiles) do
-    GetWidgetInfo(wf, VFS.RAW_ONLY)
     local widget = self:LoadWidget(wf, false)
     if (widget) then
       table.insert(unsortedWidgets, widget)
@@ -377,7 +342,6 @@ function widgetHandler:Initialize()
   -- stuff the zip widgets into unsortedWidgets
   local widgetFiles = VFS.DirList(WIDGET_DIRNAME, "*.lua", VFS.ZIP_ONLY)
   for k,wf in ipairs(widgetFiles) do
-    GetWidgetInfo(wf, VFS.ZIP_ONLY)
     local widget = self:LoadWidget(wf, true)
     if (widget) then
       table.insert(unsortedWidgets, widget)
@@ -1133,12 +1097,13 @@ function widgetHandler:Shutdown()
   return
 end
 
-function widgetHandler:Update()
-  local deltaTime = Spring.GetLastUpdateSeconds()
+function widgetHandler:Update(dt)
+  dt = dt or Spring.GetLastUpdateSeconds()
+
   -- update the hour timer
-  hourTimer = (hourTimer + deltaTime) % 3600.0
+  hourTimer = (hourTimer + dt) % 3600.0
   for _,w in ipairs(self.UpdateList) do
-    w:Update(deltaTime)
+    w:Update(dt)
   end
   return
 end
@@ -1200,6 +1165,24 @@ end
 function widgetHandler:CameraPositionChanged(posx, posy, posz)
   for _,w in ipairs(self.CameraPositionChangedList) do
     w:CameraPositionChanged(posx, posy, posz)
+  end
+end
+
+function widgetHandler:MiniMapRotationChanged(newRot, oldRot)
+  for _,w in ipairs(self.MiniMapRotationChangedList) do
+    w:MiniMapRotationChanged(newRot, oldRot)
+  end
+end
+
+function widgetHandler:MiniMapStateChanged(isMinimized, isMaximized, isSlaved)
+  for _,w in ipairs(self.MiniMapStateChangedList) do
+    w:MiniMapStateChanged(isMinimized, isMaximized, isSlaved)
+  end
+end
+
+function widgetHandler:MiniMapGeometryChanged(newPosX, newPosY, newDimX, newDimY, oldPosX, oldPosY, oldDimX, oldDimY)
+  for _,w in ipairs(self.MiniMapGeometryChangedList) do
+    w:MiniMapGeometryChanged(newPosX, newPosY, newDimX, newDimY, oldPosX, oldPosY, oldDimX, oldDimY)
   end
 end
 
@@ -1408,6 +1391,14 @@ end
 function widgetHandler:DrawInMiniMap(xSize, ySize)
   for _,w in ripairs(self.DrawInMiniMapList) do
     w:DrawInMiniMap(xSize, ySize)
+  end
+  return
+end
+
+
+function widgetHandler:DrawBuildSquare(unitDefID, x, z, facing, statuses)
+  for _,w in ripairs(self.DrawBuildSquareList) do
+    w:DrawBuildSquare(unitDefID, x, z, facing, statuses)
   end
   return
 end

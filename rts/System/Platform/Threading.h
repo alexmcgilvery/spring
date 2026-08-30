@@ -12,12 +12,13 @@
 #ifdef __APPLE__
 #include <libkern/OSAtomic.h> // OSAtomicIncrement64
 #endif
-
+#include "CpuTopology.h"
 #include "System/Platform/Win/win32.h"
 #include "System/Threading/SpringThreading.h"
 
 #include <atomic>
 #include <functional>
+#include <type_traits>
 
 #include <cinttypes>
 #include <cstring>
@@ -54,6 +55,19 @@ namespace Threading {
 #endif
 	NativeThreadHandle GetCurrentThread();
 	NativeThreadId GetCurrentThreadId();
+
+	// Convert a NativeThreadId to a 32-bit value for logging. NativeThreadId is a
+	// pointer (pthread_t) on macOS/BSD and an integer elsewhere; the template lets
+	// `if constexpr` select a cast that is valid for the actual type on each target
+	// (it would not be discarded in a non-template function).
+	template<class TId>
+	inline std::uint32_t ThreadIdAsU32(TId id) {
+		if constexpr (std::is_pointer_v<TId>)
+			return static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(id));
+		else
+			return static_cast<std::uint32_t>(id);
+	}
+	inline std::uint32_t GetCurrentThreadIdAsU32() { return ThreadIdAsU32(GetCurrentThreadId()); }
 
 #ifndef _WIN32
 	extern thread_local std::shared_ptr<ThreadControls> localThreadControls;
@@ -103,6 +117,7 @@ namespace Threading {
 
 	inline bool NativeThreadIdsEqual(const NativeThreadId thID1, const NativeThreadId thID2);
 
+	cpu_topology::ThreadPinPolicy GetChosenThreadPinPolicy();
 
 	/**
 	 * Sets the affinity of the current thread
@@ -124,9 +139,11 @@ namespace Threading {
 	int GetLogicalCpuCores();  /// physical + hyperthreading
 	int GetPerformanceCpuCores(); /// performance physical cores only (excluding hyperthreading or efficiency cores)
 	bool HasHyperThreading();
+	std::string GetCPUBrand();
 
-	uint32_t GetSystemAffinityMask();
-	uint32_t GetPreferredMainThreadMask();
+	uint32_t GetSystemAffinityMask(int forThreadCount = std::numeric_limits<int>::max());
+	uint32_t GetPreferredMainThreadMask(uint32_t affinityMask);
+	uint32_t GetOptimalThreadCount();
 
 	/**
 	 * Inform the OS kernel that we are a cpu-intensive task

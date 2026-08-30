@@ -41,10 +41,6 @@ struct UnitDef;
 struct UnitLoadParams;
 struct SLosInstance;
 
-namespace icon {
-	class CIconData;
-}
-
 // LOS state bits
 static constexpr uint8_t LOS_INLOS     = (1 << 0);  // the unit is currently in the los of the allyteam
 static constexpr uint8_t LOS_INRADAR   = (1 << 1);  // the unit is currently in radar from the allyteam
@@ -68,7 +64,7 @@ static constexpr uint8_t LOS_ALL_MASK_BITS = \
 class CUnit : public CSolidObject
 {
 public:
-	CR_DECLARE(CUnit)
+	CR_DECLARE_DERIVED(CUnit)
 
 	CUnit();
 	virtual ~CUnit();
@@ -76,7 +72,6 @@ public:
 	static void InitStatic();
 
 	void SanityCheck() const;
-	void PreUpdate() { preFramePos = pos; }
 
 	virtual void PreInit(const UnitLoadParams& params);
 	virtual void PostInit(const CUnit* builder);
@@ -84,40 +79,40 @@ public:
 	virtual void Update();
 	virtual void SlowUpdate();
 
-	const SolidObjectDef* GetDef() const { return ((const SolidObjectDef*) unitDef); }
+	const SolidObjectDef* GetDef() const override { return ((const SolidObjectDef*) unitDef); }
 
-	virtual void DoDamage(const DamageArray& damages, const float3& impulse, CUnit* attacker, int weaponDefID, int projectileID);
+	void DoDamage(const DamageArray& damages, const float3& impulse, CUnit* attacker, int weaponDefID, int projectileID) override;
 	virtual void DoWaterDamage();
 	virtual void FinishedBuilding(bool postInit);
 
 	void ApplyDamage(CUnit* attacker, const DamageArray& damages, float& baseDamage, float& experienceMod);
-	void ApplyImpulse(const float3& impulse);
+	void ApplyImpulse(const float3& impulse) override;
 
 	bool AttackUnit(CUnit* unit, bool isUserTarget, bool wantManualFire, bool fpsMode = false);
 	bool AttackGround(const float3& pos, bool isUserTarget, bool wantManualFire, bool fpsMode = false);
 	void DropCurrentAttackTarget();
 
-	int GetBlockingMapID() const { return id; }
+	int GetBlockingMapID() const override { return id; }
 
 	void ChangeLos(int losRad, int airRad);
 
 	void TurnIntoNanoframe();
 
 	// negative amount=reclaim, return= true -> build power was successfully applied
-	bool AddBuildPower(CUnit* builder, float amount);
+	bool AddBuildPower(CUnit* builder, float amount) override;
 
 	virtual void Activate();
 	virtual void Deactivate();
 
-	void ForcedMove(const float3& newPos);
+	void ForcedMove(const float3& newPos) override;
 
 	void DeleteScript();
 	void EnableScriptMoveType();
 	void DisableScriptMoveType();
 
-	CMatrix44f GetTransformMatrix(bool synced = false, bool fullread = false) const final;
+	CMatrix44f GetTransformMatrix(bool synced = false, bool fullread = false) const override final;
 
-	void DependentDied(CObject* o);
+	void DependentDied(CObject* o) override;
 
 	bool AllowedReclaim(CUnit* builder) const;
 
@@ -142,13 +137,13 @@ public:
 
 	void AddExperience(float exp);
 
-	void SetMass(float newMass);
+	void SetMass(float newMass) override;
 
 	void DoSeismicPing(float pingSize);
 
 	void CalculateTerrainType();
 	void UpdateTerrainType();
-	void UpdatePhysicalState(float eps);
+	void UpdatePhysicalState(float eps) override;
 
 	float3 GetErrorVector(int allyteam) const;
 	float3 GetErrorPos(int allyteam, bool aiming = false) const { return (aiming? aimPos: midPos) + GetErrorVector(allyteam); }
@@ -156,8 +151,6 @@ public:
 
 	float3 GetLuaErrorVector(int allyteam, bool fullRead) const { return (fullRead? ZeroVector: GetErrorVector(allyteam)); }
 	float3 GetLuaErrorPos(int allyteam, bool fullRead) const { return (midPos + GetLuaErrorVector(allyteam, fullRead)); }
-
-	float3 GetDrawDeltaPos(float dt) const { return ((pos - preFramePos) * dt); }
 
 	void UpdatePosErrorParams(bool updateError, bool updateDelta);
 
@@ -192,6 +185,8 @@ public:
 	void SetLosStatus(int allyTeam, unsigned short newStatus);
 	unsigned short CalcLosStatus(int allyTeam);
 	void UpdateLosStatus(int allyTeam);
+
+	void SetLeavesGhost(bool newLeavesGhost, bool leaveDeadGhost);
 
 	void UpdateWeapons();
 	void UpdateWeaponVectors();
@@ -242,6 +237,7 @@ public:
 	void ForcedKillUnit(CUnit* attacker, bool selfDestruct, bool reclaimed, int weaponDefID = 0);
 	virtual void KillUnit(CUnit* attacker, bool selfDestruct, bool reclaimed, int weaponDefID = 0);
 	virtual void IncomingMissile(CMissileProjectile* missile);
+	CFeature* CreateWreck(int wreckLevel, int smokeTime);
 
 	void TempHoldFire(int cmdID);
 	void SetHoldFire(bool b) { onTempHoldFire = b; }
@@ -272,7 +268,8 @@ public:
 		// limExperience ranges from 0.0 to 0.9999...
 		return std::max(0.0f, 1.0f - (limExperience * experienceWeight));
 	}
-
+private:
+	void UpdateRenderParams();
 public:
 	const UnitDef* unitDef = nullptr;
 
@@ -331,12 +328,6 @@ public:
 	std::vector<TransportedUnit> transportedUnits;
 	// incoming projectiles for which flares can cause retargeting
 	std::array<CMissileProjectile*, /*MAX_INCOMING_MISSILES*/ 8> incomingMissiles{{nullptr}};
-
-
-	// position at start of current simframe; updated by ForcedMove
-	// used as interpolation reference for drawpos since a unit can
-	// move along vectors other than its velocity
-	float3 preFramePos;
 
 	float3 lastMuzzleFlameDir = UpVector;
 	// units take less damage when attacked from this dir (encourage flanking fire)
@@ -536,7 +527,8 @@ public:
 	bool isCloaked = false;
 	// true if the unit currently wants to be cloaked
 	bool wantCloak = false;
-
+	// true if the unit leaves static ghosts
+	bool leavesGhost = false;
 
 	// unsynced vars
 	bool noMinimap = false;
@@ -548,7 +540,9 @@ public:
 
 	float iconRadius = 0.0f;
 
-	icon::CIconData* myIcon = nullptr;
+	mutable std::string definedIconName;
+	mutable size_t currentIconIndex = size_t(-1); // icon::INVALID_ICON_INDEX;
+	mutable size_t customIconIndex = size_t(-1); // icon::INVALID_ICON_INDEX;
 
 	bool drawIcon = true;
 private:

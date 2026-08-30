@@ -10,9 +10,12 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 find_package_static(ZLIB 1.2.7 REQUIRED)
 
 list(APPEND unitsync_libs ${CMAKE_DL_LIBS})
-list(APPEND unitsync_libs 7zip prd::jsoncpp lua headlessStubs archives_nothreadpool)
+list(APPEND unitsync_libs 7zip prd::jsoncpp lua headlessStubs archives_nothreadpool nowide::nowide fmt::fmt)
 list(APPEND unitsync_libs ZLIB::ZLIB)
 list(APPEND unitsync_libs ${SPRING_MINIZIP_LIBRARY})
+
+### base64 from pr-downloader
+list(APPEND unitsync_libs "prd::base64")
 
 ### smmalloc
 list(APPEND unitsync_libs "smmalloc")
@@ -47,6 +50,7 @@ include_directories(${SPRING_MINIZIP_INCLUDE_DIR})
 include_directories(${ENGINE_SRC_ROOT}/lib)
 include_directories(${ENGINE_SRC_ROOT}/lib/lua/include)
 include_directories(${ENGINE_SRC_ROOT}/lib/7zip)
+include_directories(${ENGINE_SRC_ROOT}/lib/nowide/include)
 include_directories(${ENGINE_SRC_ROOT})
 include_directories(${CMAKE_BINARY_DIR}/src-generated/engine)
 
@@ -57,10 +61,13 @@ set(main_files
 	"${ENGINE_SRC_ROOT}/ExternalAI/LuaAIImplHandler.cpp"
 	"${ENGINE_SRC_ROOT}/Game/GameVersion.cpp"
 	"${ENGINE_SRC_ROOT}/Lua/LuaConstEngine.cpp"
+	"${ENGINE_SRC_ROOT}/Lua/LuaEncoding.cpp"
+	"${ENGINE_SRC_ROOT}/Lua/LuaMathExtra.cpp"
 	"${ENGINE_SRC_ROOT}/Lua/LuaMemPool.cpp"
 	"${ENGINE_SRC_ROOT}/Lua/LuaParser.cpp"
 	"${ENGINE_SRC_ROOT}/Lua/LuaUtils.cpp"
 	"${ENGINE_SRC_ROOT}/Lua/LuaIO.cpp"
+	"${ENGINE_SRC_ROOT}/Lua/LuaLibs.cpp"
 	"${ENGINE_SRC_ROOT}/Map/MapParser.cpp"
 	"${ENGINE_SRC_ROOT}/Map/SMF/SMFMapFile.cpp"
 	"${ENGINE_SRC_ROOT}/Sim/Misc/SideParser.cpp"
@@ -79,8 +86,11 @@ set(main_files
 	"${ENGINE_SRC_ROOT}/System/Platform/ScopedFileLock.cpp"
 	"${ENGINE_SRC_ROOT}/System/Platform/Threading.cpp"
 	"${ENGINE_SRC_ROOT}/System/Threading/ThreadPool.cpp"
+	"${ENGINE_SRC_ROOT}/System/Sync/FPUCheck.cpp"
 	"${ENGINE_SRC_ROOT}/System/Sync/SHA512.cpp"
+	"${ENGINE_SRC_ROOT}/System/SpringMath.cpp"
 	"${ENGINE_SRC_ROOT}/System/CRC.cpp"
+	"${ENGINE_SRC_ROOT}/System/float3.cpp"
 	"${ENGINE_SRC_ROOT}/System/float4.cpp"
 	"${ENGINE_SRC_ROOT}/System/Info.cpp"
 	"${ENGINE_SRC_ROOT}/System/LogOutput.cpp"

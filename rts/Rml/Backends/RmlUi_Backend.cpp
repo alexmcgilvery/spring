@@ -115,6 +115,9 @@ public:
 
 	RmlGui::SVG::DynamicSVGPlugin* svgPlugin;
 	Rml::UniquePtr<Rml::ElementInstancerGeneric<RmlGui::ElementLuaTexture>> element_lua_texture_instancer;
+
+	// Deferred element deletion: elements removed during event processing are kept alive here
+	std::vector<Rml::ElementPtr> pending_deletes;
 };
 
 static Rml::UniquePtr<BackendState> state;
@@ -122,6 +125,14 @@ static Rml::UniquePtr<BackendState> state;
 bool RmlInitialized()
 {
 	return state && state->initialized;
+}
+
+// Deferred element deletion helper - called from Lua bindings
+// Elements are kept alive until RmlGui::Update() clears them
+void AddPendingDelete(Rml::ElementPtr element)
+{
+	if (RmlInitialized() && element)
+		state->pending_deletes.push_back(std::move(element));
 }
 
 bool RmlGui::Initialize()
@@ -134,6 +145,7 @@ bool RmlGui::Initialize()
 		LOG_L(L_ERROR, "[RmlGui::%s] Could not initialize render interface.", __func__);
 		return false;
 	}
+	state->system_interface.Reset();
 
 	auto winX = globalRendering->winSizeX;
 	auto winY = globalRendering->winSizeY;
@@ -175,6 +187,7 @@ bool RmlGui::InitializeLua(lua_State* lua_state)
 	sol::state_view lua(lua_state);
 	state->ls = lua_state;
 	state->luaPlugin = Rml::SolLua::Initialise(&lua, "rmlDocumentId");
+	state->luaPlugin->systemInterface = &state->system_interface;
 	state->system_interface.SetTranslationTable(&state->luaPlugin->translationTable);
 	return true;
 }
@@ -356,7 +369,7 @@ void RmlGui::Update()
 	if (!RmlInitialized()) {
 		return;
 	}
-#ifndef HEADLESS
+
 	for (const auto& context : state->contexts) {
 		context->Update();
 	}
@@ -378,7 +391,9 @@ void RmlGui::Update()
 		}
 		state->contexts_to_remove.clear();
 	}
-#endif
+
+	// Clear deferred element deletions - safe point outside event processing
+	state->pending_deletes.clear();
 }
 
 void RmlGui::RenderFrame()

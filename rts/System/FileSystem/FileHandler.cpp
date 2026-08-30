@@ -73,6 +73,9 @@ bool CFileHandler::TryReadFromRawFS(const string& fileName)
 {
 #ifndef TOOLS
 	const string rawpath = dataDirsAccess.LocateFile(fileName);
+	if (rawpath.empty())
+		return false;
+
 	ifs.open(rawpath.c_str(), std::ios::in | std::ios::binary);
 	if (ifs && !ifs.bad() && ifs.is_open()) {
 		ifs.seekg(0, std::ios_base::end);
@@ -266,7 +269,7 @@ bool CFileHandler::LoadStringData(string& data)
 
 std::string CFileHandler::GetFileExt() const
 {
-	return FileSystem::GetExtension(fileName);
+	return FileSystem::GetExtensionLowerCase(fileName);
 }
 
 std::string CFileHandler::GetFileAbsolutePath(const std::string& filePath, const std::string& modes)

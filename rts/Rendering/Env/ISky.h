@@ -50,6 +50,7 @@ public:
 	void SetUpdated() { updated = true; }
 public:
 	static void SetSky();
+	static void SetSkyLuaTexture(const MapTextureData& td);
 	static auto& GetSky() { return sky; }
 	static void KillSky() { sky = nullptr; }
 public:
@@ -67,7 +68,7 @@ public:
 protected:
 	float4 skyAxisAngle;
 protected:
-	static inline std::unique_ptr<ISky> sky = nullptr;
+	static std::unique_ptr<ISky> sky;
 
 	ISkyLight* skyLight;
 

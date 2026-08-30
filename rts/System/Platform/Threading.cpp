@@ -5,12 +5,17 @@
 #include "System/Log/ILog.h"
 #include "System/Platform/CpuID.h"
 
+#ifndef UNIT_TEST
+	#include "System/Config/ConfigHandler.h"
+#endif
+
 #ifndef DEDICATED
 	#include "System/Sync/FPUCheck.h"
 #endif
 
 #include <functional>
 #include <memory>
+#include <numeric>
 #include <cinttypes>
 #if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
 #elif defined(_WIN32)
@@ -30,7 +35,47 @@
 
 #include "System/Misc/TracyDefs.h"
 
+enum ConfigPinPolicy {
+	None,
+	SystemDefault,
+	ExclusivePerformanceCore,
+	SharedPerformanceCores,
+
+	MinimumValue = None,
+	MaximumValue = SharedPerformanceCores,
+};
+
+#ifndef UNIT_TEST
+CONFIG(int, ThreadPinPolicy)
+	.defaultValue(ConfigPinPolicy::SystemDefault)
+	.safemodeValue(ConfigPinPolicy::None)
+	.minimumValue(ConfigPinPolicy::MinimumValue)
+	.maximumValue(ConfigPinPolicy::MaximumValue)
+	.description("Thread to CPU Pinning Policy (0) = Off; (1) = System Default; (2) = Exclusive Performance Core; (3) = Share Performance Cores");
+#endif
+
 namespace Threading {
+
+	cpu_topology::ThreadPinPolicy GetChosenThreadPinPolicy() {
+#ifndef UNIT_TEST
+		int configPinPolicy = configHandler->GetInt("ThreadPinPolicy");
+		switch (configPinPolicy) {
+			case ConfigPinPolicy::None:
+				return cpu_topology::THREAD_PIN_POLICY_NONE;
+			case ConfigPinPolicy::ExclusivePerformanceCore:
+				return cpu_topology::THREAD_PIN_POLICY_PER_PERF_CORE;
+			case ConfigPinPolicy::SharedPerformanceCores:
+				return cpu_topology::THREAD_PIN_POLICY_ANY_PERF_CORE;
+			case ConfigPinPolicy::SystemDefault:
+			default:
+				return cpu_topology::GetThreadPinPolicy();
+		};
+#else
+				return cpu_topology::THREAD_PIN_POLICY_NONE;
+#endif
+	};
+
+
 #ifndef _WIN32
 	thread_local std::shared_ptr<ThreadControls> localThreadControls;
 #endif
@@ -82,10 +127,7 @@ namespace Threading {
 	static std::uint32_t CalcCoreAffinityMask(const cpu_set_t* cpuSet) {
 		std::uint32_t coreMask = 0;
 
-		// without the min(..., 32), `(1 << n)` could overflow
-		const int numCPUs = std::min(CPU_COUNT(&cpusSystem), 32);
-
-		for (int n = numCPUs - 1; n >= 0; --n) {
+		for (int n = 31; n >= 0; --n) {
 			if (CPU_ISSET(n, cpuSet))
 				coreMask |= (1 << n);
 		}
@@ -96,10 +138,8 @@ namespace Threading {
 	static void SetWantedCoreAffinityMask(cpu_set_t* cpuDstSet, std::uint32_t coreMask) {
 		CPU_ZERO(cpuDstSet);
 
-		const int numCPUs = std::min(CPU_COUNT(&cpusSystem), 32);
-
-		for (int n = numCPUs - 1; n >= 0; --n) {
-			if ((coreMask & (1 << n)) != 0)
+		for (int n = 31; n >= 0; --n) {
+			if (((coreMask & (1 << n)) != 0) && CPU_ISSET(n, &cpusSystem))
 				CPU_SET(n, cpuDstSet);
 		}
 
@@ -110,8 +150,14 @@ namespace Threading {
 
 	std::once_flag affinityMaskDetailsLogFlag;
 
-	uint32_t GetSystemAffinityMask() {
+	uint32_t GetSystemAffinityMask(int forThreadCount) {
+		cpu_topology::ProcessorCaches pc = springproc::CPUID::GetInstance().GetProcessorCaches();
 		cpu_topology::ProcessorMasks pm = springproc::CPUID::GetInstance().GetAvailableProcessorAffinityMask();
+
+		// The cache groups from GetProcessorCaches() are sorted in order of largest first.
+		const uint32_t optimal_mask = std::accumulate(pc.groupCaches.begin(), pc.groupCaches.end(), 0, [&](uint32_t mask, const cpu_topology::ProcessorGroupCaches& gc){
+			return mask | ( std::popcount(mask & ~pm.hyperThreadHighMask) < forThreadCount ? gc.groupMask : 0 );
+		});
 
 		std::call_once(affinityMaskDetailsLogFlag, [&](){
 			LOG("CPU Affinity Mask Details detected:");
@@ -119,9 +165,12 @@ namespace Threading {
 			LOG("-- Efficiency  Core Mask:      0x%08x", pm.efficiencyCoreMask);
 			LOG("-- Hyper Thread/SMT Low Mask:  0x%08x", pm.hyperThreadLowMask);
 			LOG("-- Hyper Thread/SMT High Mask: 0x%08x", pm.hyperThreadHighMask);
+			LOG("-- Optimal Cache Mask:         0x%08x", optimal_mask);
 		});
 
-		// Engine worker thread pool are primarily for mutli-threading activies of simulation; though, they are
+		const cpu_topology::ThreadPinPolicy chosenPinPolicy = GetChosenThreadPinPolicy();
+
+		// Engine worker thread pool are primarily for multi-threading activies of simulation; though, they are
 		// available to be used by other system while simulation is not running. As such the policy for pinning worker
 		// threads are to maximise performance of the multi-threaded tasks of simulation, which are a poor fit for
 		// cpu hardware threads (SMT/Hyper-Threading) and low-power cores.
@@ -132,25 +181,19 @@ namespace Threading {
 		//
 		// This doesn't preclude systems from using separate unpinned threads, which the OS should logically try to
 		// move to under used resources, such as low-power cores for example.
-		#if defined(THREADPOOL)
-		const uint32_t policy = pm.performanceCoreMask & (~pm.hyperThreadHighMask);
-		#else
-
-		/* Allow any core; keep it a "proper" mask though
-		 * since that has less risk of blowing up than 0 or 0xFF..FF */
-		const uint32_t policy = pm.performanceCoreMask | pm.efficiencyCoreMask;
-		#endif
+		const uint32_t smt_mask =
+			( chosenPinPolicy == cpu_topology::THREAD_PIN_POLICY_PER_PERF_CORE ) ? (~pm.hyperThreadHighMask) : (~0);
+		const uint32_t vcpu_mask =
+			( chosenPinPolicy != cpu_topology::THREAD_PIN_POLICY_NONE ) ? (pm.performanceCoreMask) : (pm.performanceCoreMask | pm.efficiencyCoreMask);
+		const uint32_t policy = vcpu_mask & smt_mask & optimal_mask;
 
 		return policy;
 	}
 
 	std::once_flag preferredMaskDetailsLogFlag;
 
-	uint32_t GetPreferredMainThreadMask() {
+	uint32_t GetPreferredMainThreadMask(uint32_t affinityMask) {
 		cpu_topology::ProcessorCaches pc = springproc::CPUID::GetInstance().GetProcessorCaches();
-
-	#if defined(THREADPOOL)
-		const uint32_t affinityMask = GetSystemAffinityMask();
 
 		// The cache groups from GetProcessorCaches() are sorted in order of largest first. Find the first group that
 		// has a logical processor that will be used to pin the main/worker threads.
@@ -158,23 +201,55 @@ namespace Threading {
 			, [affinityMask](const auto& gc) -> bool { return !!(affinityMask & gc.groupMask); });
 		
 		std::call_once(preferredMaskDetailsLogFlag, [&](){
-			if (preferredCache != pc.groupCaches.end())
+			if (preferredCache != pc.groupCaches.end()) {
 				LOG("[Threading] Preferred performance cache mask is: 0x%08x (L3 sized: %dKB)", preferredCache->groupMask, preferredCache->cacheSizes[2]/1024);
-			else
+			} else {
 				LOG_L(L_WARNING, "[Threading] Failed to find a preferred performance cache mask");
+			}
 		});
 
 		const uint32_t policy = affinityMask
 			& ( (preferredCache != pc.groupCaches.end()) ? preferredCache->groupMask : 0xffffffff );
-	#else
-		/* Allow any core; keep it a "proper" mask though
-		 * since that has less risk of blowing up than 0 or 0xFF..FF */
-		cpu_topology::ProcessorMasks pm = springproc::CPUID::GetInstance().GetAvailableProcessorAffinityMask();
-		const uint32_t policy = pm.performanceCoreMask | pm.efficiencyCoreMask;
-	#endif
 
 		// Choose last logical processor in the list.
 		return ( 0x80000000 >> std::countl_zero(policy) );
+	}
+
+	std::once_flag optimalThreadCountLogFlag;
+
+	uint32_t GetOptimalThreadCount() {
+		cpu_topology::ProcessorCaches pc = springproc::CPUID::GetInstance().GetProcessorCaches();
+		cpu_topology::ProcessorMasks pm = springproc::CPUID::GetInstance().GetAvailableProcessorAffinityMask();
+
+		// Excessive threads will overload the memory bus. We need to chose an optimal number based on cache groups.
+		// Try to get at least threadCountThreshold threads, but can be more.
+#if defined(__x86_64__) || defined(_M_X64) || defined(__amd64__)
+		// AMD Ryzen CCDs are grouped into either 6 or 8 cores - so we should try to avoid spreading the game
+		// across multiple CCDs, which is especially important for the X3D processors.
+		constexpr uint32_t threadCountThreshold = 6;
+#elif defined(__aarch64__) || defined(__arm__) || defined(_M_ARM64)
+		// Apple Silicon CCDs are grouped into a minimum of 4 cores with atrocious cross-CCD latency, so avoid
+		// multiple CCDs there as well.
+		constexpr uint32_t threadCountThreshold = 4;
+#else
+		#error "Unsupported architecture"
+#endif
+
+		// The cache groups from GetProcessorCaches() are sorted in order of largest first.
+		const uint32_t optimalThreadCount = std::accumulate(pc.groupCaches.begin(), pc.groupCaches.end(), 0, [&](uint32_t threadCount, const cpu_topology::ProcessorGroupCaches& gc){
+			return threadCount + ( threadCount < threadCountThreshold  ? std::popcount(gc.groupMask & (pm.performanceCoreMask) & (~pm.hyperThreadHighMask)) : 0 );
+		});
+		const uint32_t fallbackThreadCount = GetPerformanceCpuCores();
+		
+		std::call_once(optimalThreadCountLogFlag, [&](){
+			if (optimalThreadCount > 0) {
+				LOG("[Threading] Optimal thread count is %d", optimalThreadCount);
+			} else {
+				LOG_L(L_WARNING, "[Threading] Failed to determine optimal thread count. Falling back to %d", fallbackThreadCount);
+			}
+		});
+
+		return (optimalThreadCount > 0) ? optimalThreadCount : fallbackThreadCount;
 	}
 
 	std::uint32_t GetAffinity()
@@ -203,8 +278,8 @@ namespace Threading {
 			return (~0);
 
 	#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
-		// no-op
-		return 0;
+		// These platforms don't support thread affinity; return ~0 ("not set")
+		return (~0);
 
 	#elif defined(_WIN32)
 		// create mask
@@ -288,6 +363,10 @@ namespace Threading {
 
 	bool HasHyperThreading() {
 		return springproc::CPUID::GetInstance().HasHyperThreading();
+	}
+
+	std::string GetCPUBrand() {
+		return springproc::CPUID::GetInstance().GetCPUBrandString();
 	}
 
 
@@ -432,8 +511,11 @@ namespace Threading {
 		tracy::SetThreadName(newname.c_str());
 	#endif
 	#ifndef _WIN32
-		//alternative: pthread_setname_np(pthread_self(), newname.c_str());
+	#ifdef __APPLE__
+		pthread_setname_np(newname.c_str());
+	#else
 		prctl(PR_SET_NAME, newname.c_str(), 0, 0, 0);
+	#endif
 	#else
 		// adapted from SDL2 code
 		DllLib k32Lib("kernel32.dll");

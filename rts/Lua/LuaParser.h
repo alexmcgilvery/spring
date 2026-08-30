@@ -124,7 +124,7 @@ private:
 	struct boolean { bool b; };
 
 public:
-	LuaParser() = default;
+	LuaParser() = delete;
 	LuaParser(const std::string& fileName, const std::string& fileModes, const std::string& accessModes, const boolean& synced = {false}, const boolean& setup = {true});
 	LuaParser(const std::string& textChunk, const std::string& accessModes, int = 0, const boolean& synced = {false}, const boolean& setup = {true});
 	~LuaParser();
@@ -156,6 +156,7 @@ public:
 	void AddBool(const std::string& key, bool value);
 	void AddFloat(const std::string& key, float value);
 	void AddString(const std::string& key, const std::string& value);
+	void PushFunc(bool (*func)(lua_State*));
 
 	void SetLowerKeys(bool state) { lowerKeys = state; }
 	void SetLowerCppKeys(bool state) { lowerCppKeys = state; }

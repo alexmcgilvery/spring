@@ -9,14 +9,17 @@
 #include "Rendering/GL/myGL.h"
 
 
-/***
- * OpenGL Constants
+/*** Constants for OpenGL API
+ *
+ * For callouts related to OpenGL usage in Recoil, see `gl`.
+ *
+ * @see gl
  * @enum GL
  */
 
 bool LuaConstGL::PushEntries(lua_State* L)
 {
-#define PUSH_GL(cmd) LuaPushNamedNumber(L, #cmd, GL_ ## cmd)
+#define PUSH_GL(cmd) LuaPushNamedNumber(L, #cmd, static_cast<lua_Number>(GL_ ## cmd))
 
 	/***
 	 * Drawing Primitives
@@ -367,6 +370,22 @@ bool LuaConstGL::PushEntries(lua_State* L)
 	PUSH_GL(NICEST);
 
 	/***
+	 * Stencil ops
+	 * @section stencilops
+	 */
+	/*** @field GL.KEEP integer */
+	PUSH_GL(KEEP);
+	/*** @field GL.INCR integer */
+	PUSH_GL(INCR);
+	/*** @field GL.DECR integer */
+	PUSH_GL(DECR);
+	/*** @field GL.INCR_WRAP integer */
+	PUSH_GL(INCR_WRAP);
+	/*** @field GL.DECR_WRAP integer */
+	PUSH_GL(DECR_WRAP);
+	// INVERT, ZERO, REPLACE are also valid stencil ops but already defined in other categories
+
+	/***
 	 * Light Specification
 	 * @section lightspecification
 	 */
@@ -479,6 +498,8 @@ bool LuaConstGL::PushEntries(lua_State* L)
 	PUSH_GL(TEXTURE_1D);
 	/*** @field GL.TEXTURE_2D integer */
 	PUSH_GL(TEXTURE_2D);
+	/*** @field GL.TEXTURE_2D_ARRAY integer */
+	PUSH_GL(TEXTURE_2D_ARRAY);
 	/*** @field GL.TEXTURE_3D integer */
 	PUSH_GL(TEXTURE_3D);
 	/*** @field GL.TEXTURE_CUBE_MAP integer */
@@ -696,8 +717,6 @@ bool LuaConstGL::PushEntries(lua_State* L)
 	/*** @field GL.STENCIL_ATTACHMENT_EXT integer */
 	PUSH_GL(STENCIL_ATTACHMENT_EXT);
 
-	return true;
-
 	/******************************************************************************
 	 * OpenGL Object Types
 	 * @section objecttypes
@@ -723,6 +742,8 @@ bool LuaConstGL::PushEntries(lua_State* L)
 	PUSH_GL(FRAMEBUFFER);
 
 	return true;
+
+#undef PUSH_GL
 }
 
 

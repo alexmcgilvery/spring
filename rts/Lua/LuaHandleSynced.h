@@ -40,6 +40,9 @@ class CUnsyncedLuaHandle : public CLuaHandle
 			return static_cast<CUnsyncedLuaHandle*>(CLuaHandle::GetHandle(L));
 		}
 
+		static int GetWatchExplosionDef(lua_State* L);
+		static int SetWatchExplosionDef(lua_State* L);
+
 	protected:
 		CSplitLuaHandle& base;
 };
@@ -53,6 +56,8 @@ class CSyncedLuaHandle : public CLuaHandle
 	public: // call-ins
 		bool CommandFallback(const CUnit* unit, const Command& cmd) override;
 		bool AllowCommand(const CUnit* unit, const Command& cmd, int playerNum, bool fromSynced, bool fromLua) override;
+
+		bool ResourceExcess(const std::map <int, SResourcePack>& excess) override;
 
 		std::pair <bool, bool> AllowUnitCreation(const UnitDef* unitDef, const CUnit* builder, const BuildInfo* buildInfo) override;
 		bool AllowUnitTransfer(const CUnit* unit, int newTeam, bool capture) override;
@@ -124,6 +129,8 @@ class CSyncedLuaHandle : public CLuaHandle
 		virtual ~CSyncedLuaHandle();
 
 		bool Init(std::string code, const std::string& file);
+
+		void EnactDevMode() const override;
 
 		static CSyncedLuaHandle* GetSyncedHandle(lua_State* L) {
 			assert(dynamic_cast<CSyncedLuaHandle*>(CLuaHandle::GetHandle(L)));
@@ -260,7 +267,6 @@ class CSplitLuaHandle
 		virtual int GetInitSelectTeam() const = 0;
 
 		// call-outs
-		static int LoadStringData(lua_State* L);
 		static int CallAsTeam(lua_State* L);
 
 	public:

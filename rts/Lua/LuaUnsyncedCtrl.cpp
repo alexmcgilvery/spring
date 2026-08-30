@@ -56,7 +56,6 @@
 #include "Rendering/GL/myGL.h"
 #include "Rendering/CommandDrawer.h"
 #include "Rendering/IconHandler.h"
-#include "Rendering/Models/3DModel.h"
 #include "Rendering/Models/IModelParser.h"
 #include "Rendering/Features/FeatureDrawer.h"
 #include "Rendering/Units/UnitDrawer.h"
@@ -67,6 +66,8 @@
 #include "Sim/Features/FeatureDefHandler.h"
 #include "Sim/Features/FeatureHandler.h"
 #include "Sim/Misc/TeamHandler.h"
+#include "Sim/Misc/GlobalConstants.h"
+#include "Sim/Misc/CustomColorPalette.h"
 #include "Sim/Projectiles/Projectile.h"
 #include "Sim/Projectiles/ProjectileHandler.h"
 #include "Sim/Units/Unit.h"
@@ -102,7 +103,7 @@
 #include <cfloat>
 #include <cinttypes>
 
-#include <fstream>
+#include <nowide/fstream.hpp>
 
 #include <SDL_keyboard.h>
 #include <SDL_clipboard.h>
@@ -112,6 +113,7 @@
 #undef SendMessage
 #undef CreateDirectory
 #undef Yield
+
 
 
 /******************************************************************************
@@ -176,6 +178,10 @@ bool LuaUnsyncedCtrl::PushEntries(lua_State* L)
 
 	REGISTER_LUA_CFUNC(SetTeamColor);
 
+	REGISTER_LUA_CFUNC(SetCustomPaletteColor);
+	REGISTER_LUA_CFUNC(SetUnitPaletteIndex);
+	REGISTER_LUA_CFUNC(SetFeaturePaletteIndex);
+
 	REGISTER_LUA_CFUNC(AssignMouseCursor);
 	REGISTER_LUA_CFUNC(ReplaceMouseCursor);
 
@@ -187,6 +193,7 @@ bool LuaUnsyncedCtrl::PushEntries(lua_State* L)
 	REGISTER_LUA_CFUNC(SetDrawGround);
 	REGISTER_LUA_CFUNC(SetDrawGroundDeferred);
 	REGISTER_LUA_CFUNC(SetDrawModelsDeferred);
+	REGISTER_LUA_CFUNC(SetEngineBuildSquareRendering);
 	REGISTER_LUA_CFUNC(SetVideoCapturingMode);
 	REGISTER_LUA_CFUNC(SetVideoCapturingTimeOffset);
 
@@ -221,6 +228,7 @@ bool LuaUnsyncedCtrl::PushEntries(lua_State* L)
 	REGISTER_LUA_CFUNC(FreeUnitIcon);
 	REGISTER_LUA_CFUNC(UnitIconSetDraw); // deprecated
 	REGISTER_LUA_CFUNC(SetUnitIconDraw);
+	REGISTER_LUA_CFUNC(SetUnitIcon);
 
 
 	REGISTER_LUA_CFUNC(ExtractModArchiveFile);
@@ -324,6 +332,8 @@ bool LuaUnsyncedCtrl::PushEntries(lua_State* L)
 	REGISTER_LUA_CFUNC(SetGroundDecalTint);
 	REGISTER_LUA_CFUNC(SetGroundDecalMisc);
 	REGISTER_LUA_CFUNC(SetGroundDecalCreationFrame);
+	REGISTER_LUA_CFUNC(SetGroundDecalGlowParams);
+	REGISTER_LUA_CFUNC(SetGroundDecalUserData);
 
 	REGISTER_LUA_CFUNC(SDLSetTextInputRect);
 	REGISTER_LUA_CFUNC(SDLStartTextInput);
@@ -333,7 +343,9 @@ bool LuaUnsyncedCtrl::PushEntries(lua_State* L)
 	REGISTER_LUA_CFUNC(SetWindowMinimized);
 	REGISTER_LUA_CFUNC(SetWindowMaximized);
 	REGISTER_LUA_CFUNC(SetMiniMapRotation);
-	
+
+	REGISTER_LUA_CFUNC(RequestStartPosition);
+
 	REGISTER_LUA_CFUNC(Yield);
 
 	return true;
@@ -456,12 +468,11 @@ static inline CUnit* ParseSelectUnit(lua_State* L, const char* caller, int index
  * @section console
 ******************************************************************************/
 
-
 /*** Send a ping request to the server
  *
  * @function Spring.Ping
  *
- * @param pingTag number
+ * @param pingTag number?
  *
  * @return nil
  */
@@ -720,6 +731,32 @@ int LuaUnsyncedCtrl::SendMessageToAllyTeam(lua_State* L)
 	return 0;
 }
 
+/*** @function Spring.RequestStartPosition
+ *
+ * Requests a startpoint, as if clicking the spot with the native GUI.
+ *
+ * @param x number
+ * @param y number
+ * @param z number
+ * @param ready? boolean
+ */
+int LuaUnsyncedCtrl::RequestStartPosition(lua_State* L) {
+	const float3 pickPos =
+		{ luaL_checkfloat(L, 1)
+		, luaL_checkfloat(L, 2)
+		, luaL_checkfloat(L, 3)
+	};
+	const bool isReady = luaL_optboolean(L, 4, playerHandler.Player(gu->myPlayerNum)->IsReadyToStart());
+
+	const int readyState = isReady
+		? CPlayer::PLAYER_RDYSTATE_READIED
+		: CPlayer::PLAYER_RDYSTATE_UPDATED
+	;
+	clientNet->Send(CBaseNetProtocol::Get().SendStartPos(gu->myPlayerNum, gu->myTeam, readyState, pickPos.x, pickPos.y, pickPos.z));
+
+	return 0;
+}
+
 
 /******************************************************************************
  * Sounds
@@ -761,14 +798,14 @@ int LuaUnsyncedCtrl::LoadSoundDef(lua_State* L)
 
 /*** @function Spring.PlaySoundFile
  * @param soundfile string
- * @param volume number? (Default: 1.0)
- * @param posx number?
+ * @param volume number? (Default: 1.0) optional; all following arguments are optional
+ * @param posx number? world position X (use with `posy` and `posz`, or omit all three)
  * @param posy number?
  * @param posz number?
- * @param speedx number?
+ * @param speedx number? velocity X (use with `speedy` and `speedz` after position, or omit all three)
  * @param speedy number?
  * @param speedz number?
- * @param channel SoundChannel? (Default: `0|"general"`)
+ * @param channel SoundChannel? (Default: `0|"general"`) optional; parsed from the last argument index after position and speed triples
  * @return boolean playSound
  */
 int LuaUnsyncedCtrl::PlaySoundFile(lua_State* L)
@@ -1175,7 +1212,10 @@ static CCameraController::StateMap ParseCamStateMap(lua_State* L, int tableIdx)
  * @param x number
  * @param y number
  * @param z number
- * @param transTime number?
+ * @param transTime number? (Default: `0.5`) transition duration; values below zero are clamped to zero
+ * @param dirX number? (Default: current camera direction X)
+ * @param dirY number? (Default: current camera direction Y)
+ * @param dirZ number? (Default: current camera direction Z)
  * @return nil
  */
 int LuaUnsyncedCtrl::SetCameraTarget(lua_State* L)
@@ -1293,7 +1333,7 @@ int LuaUnsyncedCtrl::RunDollyCamera(lua_State* L)
 /*** Pause Dolly Camera
  *
  * @function Spring.PauseDollyCamera
- * @param fraction number Fraction of the total runtime to pause at, 0 to 1 inclusive. A null value pauses at current percent
+ * @param fraction number? Fraction of the total runtime to pause at, 0 to 1 inclusive. A null value pauses at current percent
  * @return nil
  */
 int LuaUnsyncedCtrl::PauseDollyCamera(lua_State* L)
@@ -1336,10 +1376,10 @@ int LuaUnsyncedCtrl::SetDollyCameraPosition(lua_State* L)
 	return 0;
 }
 
-/***
+/*** NURBS control point.
+ *
  * @class ControlPoint
- * 
- * NURBS control point.
+ * @x_helper
  * 
  * @field [1] number x
  * @field [2] number y
@@ -1590,6 +1630,7 @@ int LuaUnsyncedCtrl::SelectUnitMap(lua_State* L)
 /*** Parameters for lighting
  *
  * @class LightParams
+ * @x_helper
  * @field position { px: number, py: number, pz: number }
  * @field direction { dx: number, dy: number, dz: number }
  * @field ambientColor { red: number, green: number, blue: number }
@@ -1884,8 +1925,8 @@ static bool AddLightTrackingTarget(lua_State* L, GL::Light* light, bool trackEna
  *
  * @param lightHandle number
  * @param unitOrProjectileID integer
- * @param enableTracking boolean
- * @param unitOrProjectile boolean
+ * @param enableTracking boolean?
+ * @param unitOrProjectile boolean?
  * @return boolean success
  */
 int LuaUnsyncedCtrl::SetMapLightTrackingState(lua_State* L)
@@ -1920,8 +1961,8 @@ int LuaUnsyncedCtrl::SetMapLightTrackingState(lua_State* L)
  *
  * @param lightHandle number
  * @param unitOrProjectileID integer
- * @param enableTracking boolean
- * @param unitOrProjectile boolean
+ * @param enableTracking boolean?
+ * @param unitOrProjectile boolean?
  * @return boolean success
  */
 int LuaUnsyncedCtrl::SetModelLightTrackingState(lua_State* L)
@@ -2112,8 +2153,7 @@ int LuaUnsyncedCtrl::SetSkyBoxTexture(lua_State* L)
 	if (CLuaHandle::GetHandleSynced(L))
 		return 0;
 
-	if (const auto& sky = ISky::GetSky(); sky != nullptr)
-		sky->SetLuaTexture(ParseLuaTextureData(L, false));
+	ISky::SetSkyLuaTexture(ParseLuaTextureData(L, false));
 
 	return 0;
 }
@@ -2303,7 +2343,6 @@ int LuaUnsyncedCtrl::SetUnitLeaveTracks(lua_State* L)
  *
  * @function Spring.SetUnitSelectionVolumeData
  * @param unitID integer
- * @param featureID integer
  * @param scaleX number
  * @param scaleY number
  * @param scaleZ number
@@ -2455,6 +2494,10 @@ int LuaUnsyncedCtrl::SetFeatureSelectionVolumeData(lua_State* L)
  * @param size number?
  * @param dist number?
  * @param radAdjust number?
+ * @param u0 number?
+ * @param v0 number?
+ * @param u1 number?
+ * @param v1 number?
  *
  * @return boolean added
  */
@@ -2463,15 +2506,21 @@ int LuaUnsyncedCtrl::AddUnitIcon(lua_State* L)
 	if (CLuaHandle::GetHandleSynced(L))
 		return 0;
 
-	const string iconName  = luaL_checkstring(L, 1);
-	const string texName   = luaL_checkstring(L, 2);
+	const string iconName = luaL_checkstring(L, 1);
+	const string texName = luaL_checkstring(L, 2);
 
-	const float  size      = luaL_optnumber(L, 3, 1.0f);
-	const float  dist      = luaL_optnumber(L, 4, 1.0f);
+	const float  size = luaL_optnumber(L, 3, 1.0f);
+	const float  dist = luaL_optnumber(L, 4, 1.0f);
 
 	const bool   radAdjust = luaL_optboolean(L, 5, false);
 
-	lua_pushboolean(L, icon::iconHandler.AddIcon(iconName, texName, size, dist, radAdjust));
+	const float  u0 = luaL_optnumber(L, 6, 0.0f);
+	const float  v0 = luaL_optnumber(L, 7, 0.0f);
+
+	const float  u1 = luaL_optnumber(L, 8, 1.0f);
+	const float  v1 = luaL_optnumber(L, 9, 1.0f);
+
+	lua_pushboolean(L, icon::iconHandler.AddIcon(1, iconName, texName, size, dist, radAdjust, u0, v0, u1, v1));
 	return 1;
 }
 
@@ -2528,6 +2577,40 @@ int LuaUnsyncedCtrl::SetUnitIconDraw(lua_State* L)
 	return 0;
 }
 
+/***
+ *
+ * @function Spring.SetUnitIcon
+ * @param unitID integer
+ * @param iconName string? supply nil to reset to the default
+ * @return nil
+ */
+int LuaUnsyncedCtrl::SetUnitIcon(lua_State* L)
+{
+	CUnit* unit = ParseCtrlUnit(L, __func__, 1);
+
+	if (unit == nullptr)
+		return 0;
+
+	if (lua_isnoneornil(L, 2)) {
+	    unit->customIconIndex = icon::INVALID_ICON_INDEX;
+		unitDrawer->UpdateCurrentUnitIcon(unit);
+		return 0;
+	}
+
+	const auto iconName = luaL_checksstring(L, 2);
+	const auto iconIdx = icon::iconHandler.GetIconIdx(iconName);
+
+	if (iconIdx == icon::INVALID_ICON_INDEX) {
+		luaL_error(L, "Invalid icon name \"%s\"", iconName.c_str());
+		return 0;
+	}
+
+	unit->customIconIndex = iconIdx;
+	unitDrawer->UpdateCurrentUnitIcon(unit);
+
+	return 0;
+}
+
 
 /***
  *
@@ -2545,26 +2628,34 @@ int LuaUnsyncedCtrl::SetUnitDefIcon(lua_State* L)
 	if (ud == nullptr)
 		return 0;
 
-	ud->iconType = icon::iconHandler.GetIcon(luaL_checksstring(L, 2));
+	const auto iconName = luaL_checksstring(L, 2);
+	const auto& [found, _] = icon::iconHandler.FindIconIdx(iconName);
+
+	if (!found) {
+		luaL_error(L, "Invalid icon name \"%s\"", iconName.c_str());
+		return 0;
+	}
+
+	ud->iconName = iconName;
 
 	// set decoys to the same icon
 	if (ud->decoyDef != nullptr)
-		ud->decoyDef->iconType = ud->iconType;
+		ud->decoyDef->iconName = ud->iconName;
 
 	// spring::unordered_map<int, std::vector<int> >
 	const auto& decoyMap = unitDefHandler->GetDecoyDefIDs();
-	const auto decoyMapIt = decoyMap.find((ud->decoyDef != nullptr)? ud->decoyDef->id: ud->id);
+	const auto decoyMapIt = decoyMap.find((ud->decoyDef != nullptr) ? ud->decoyDef->id : ud->id);
 
 	if (decoyMapIt != decoyMap.end()) {
 		const auto& decoySet = decoyMapIt->second;
 
-		for (const int decoyDefID: decoySet) {
+		for (const int decoyDefID : decoySet) {
 			const UnitDef* decoyDef = unitDefHandler->GetUnitDefByID(decoyDefID);
-			decoyDef->iconType = ud->iconType;
+			decoyDef->iconName = ud->iconName;
 		}
 	}
 
-	unitDrawer->UpdateUnitDefMiniMapIcons(ud);
+	unitDrawer->UpdateUnitIconsByUnitDef(ud);
 	return 0;
 }
 
@@ -2574,7 +2665,7 @@ int LuaUnsyncedCtrl::SetUnitDefIcon(lua_State* L)
  * @function Spring.SetUnitDefImage
  *
  * @param unitDefID integer
- * @param image string luaTexture|texFile
+ * @param image string? luaTexture|texFile
  *
  * @return nil
  */
@@ -2662,7 +2753,7 @@ int LuaUnsyncedCtrl::ExtractModArchiveFile(lua_State* L)
 
 
 	std::vector<uint8_t> buffer;
-	std::fstream fstr(path.c_str(), std::ios::out | std::ios::binary);
+	nowide::fstream fstr(path.c_str(), std::ios::out | std::ios::binary);
 
 	if (!vfsFile.IsBuffered()) {
 		buffer.resize(vfsFile.FileSize(), 0);
@@ -2876,6 +2967,7 @@ int LuaUnsyncedCtrl::SetBoxSelectionByEngine(lua_State* L)
  * @param r number
  * @param g number
  * @param b number
+ * @param alpha number?
  * @return nil
  */
 int LuaUnsyncedCtrl::SetTeamColor(lua_State* L)
@@ -2892,6 +2984,83 @@ int LuaUnsyncedCtrl::SetTeamColor(lua_State* L)
 	team->color[1] = (unsigned char)(std::clamp(luaL_checkfloat(L, 3      ), 0.0f, 1.0f) * 255.0f);
 	team->color[2] = (unsigned char)(std::clamp(luaL_checkfloat(L, 4      ), 0.0f, 1.0f) * 255.0f);
 	team->color[3] = (unsigned char)(std::clamp(luaL_optfloat  (L, 5, 1.0f), 0.0f, 1.0f) * 255.0f);
+	return 0;
+}
+
+
+/***
+ *
+ * @function Spring.SetCustomPaletteColor
+ * @param index integer 0-based index into custom palette (0..1791, maps to palette slots 256..2047)
+ * @param r number
+ * @param g number
+ * @param b number
+ * @return nil
+ */
+int LuaUnsyncedCtrl::SetCustomPaletteColor(lua_State* L)
+{
+	const auto customIndex = LuaUtils::ParsePalette(L, 1);
+
+	const float r = std::clamp(luaL_checkfloat(L, 2), 0.0f, 1.0f);
+	const float g = std::clamp(luaL_checkfloat(L, 3), 0.0f, 1.0f);
+	const float b = std::clamp(luaL_checkfloat(L, 4), 0.0f, 1.0f);
+
+	customColorPalette.SetColor(customIndex, r, g, b);
+	return 0;
+}
+
+
+/***
+ * Sets a custom color for a unit from the palette. Custom assignments are permanent
+ * until explicitly reset by passing nil, and are NOT affected by team changes.
+ * @function Spring.SetUnitPaletteIndex
+ * @param unitID integer
+ * @param customIndex integer? [0..MAX_CUSTOM_COLORS) index into custom palette, or nil to reset to team color
+ * @return nil
+ */
+int LuaUnsyncedCtrl::SetUnitPaletteIndex(lua_State* L)
+{
+	const int unitID = luaL_checkint(L, 1);
+	CUnit* unit = unitHandler.GetUnit(unitID);
+	if (unit == nullptr)
+		return 0;
+
+	if (lua_isnoneornil(L, 2)) {
+		unit->paletteIndex = static_cast<uint16_t>(unit->team);
+		return 0;
+	}
+
+	const auto customIndex = LuaUtils::ParsePalette(L, 2);
+	unit->paletteIndex = CCustomColorPalette::EncodePaletteIndex(customIndex);
+	return 0;
+}
+
+
+/***
+ * Sets a custom color for a feature from the palette. Custom assignments are permanent
+ * until explicitly reset by passing nil, and are NOT affected by team changes.
+ * @function Spring.SetFeaturePaletteIndex
+ * @param featureID integer
+ * @param customIndex integer? [0..MAX_CUSTOM_COLORS) index into custom palette, or nil to reset to team color
+ * @return nil
+ */
+int LuaUnsyncedCtrl::SetFeaturePaletteIndex(lua_State* L)
+{
+	const int featureID = luaL_checkint(L, 1);
+	CFeature* feature = featureHandler.GetFeature(featureID);
+	if (feature == nullptr)
+		return 0;
+
+	if (lua_isnoneornil(L, 2)) {
+		feature->paletteIndex = static_cast<uint16_t>(feature->team);
+		return 0;
+	}
+
+	const int customIndex = luaL_checkint(L, 2);
+	if (customIndex < 0 || customIndex >= MAX_CUSTOM_COLORS)
+		return 0;
+
+	feature->paletteIndex = CCustomColorPalette::EncodePaletteIndex(static_cast<uint16_t>(customIndex));
 	return 0;
 }
 
@@ -3112,6 +3281,8 @@ int LuaUnsyncedCtrl::SetNanoProjectileParams(lua_State* L)
 ******************************************************************************/
 
 
+static constexpr const char* ConfigReadOnlyAdjectives[] = { "read-only", "deprecated" };
+
 /***
  *
  * @function Spring.SetConfigInt
@@ -3126,7 +3297,8 @@ int LuaUnsyncedCtrl::SetConfigInt(lua_State* L)
 
 	// don't allow to change a read-only variable
 	if (configHandler->IsReadOnly(key)) {
-		LOG_L(L_ERROR, "[%s] key \"%s\" is read-only", __func__, key.c_str());
+		const auto deprecated = configHandler->IsDeprecated(key);
+		LOG_L(L_ERROR, "[%s] key \"%s\" is %s", __func__, key.c_str(), ConfigReadOnlyAdjectives[deprecated]);
 		return 0;
 	}
 
@@ -3145,7 +3317,7 @@ int LuaUnsyncedCtrl::SetConfigInt(lua_State* L)
  * @function Spring.SetConfigFloat
  * @param name string
  * @param value number
- * @param useOverla boolean? (Default: `false`) If `true`, the value will only be set in memory, and not be restored for the next game.y
+ * @param useOverlay boolean? (Default: `false`) If `true`, the value will only be set in memory, and not be restored for the next game.
  * @return nil
  */
 int LuaUnsyncedCtrl::SetConfigFloat(lua_State* L)
@@ -3153,7 +3325,8 @@ int LuaUnsyncedCtrl::SetConfigFloat(lua_State* L)
 	const std::string& key = luaL_checkstring(L, 1);
 
 	if (configHandler->IsReadOnly(key)) {
-		LOG_L(L_ERROR, "[%s] key \"%s\" is read-only", __func__, key.c_str());
+		const auto deprecated = configHandler->IsDeprecated(key);
+		LOG_L(L_ERROR, "[%s] key \"%s\" is %s", __func__, key.c_str(), ConfigReadOnlyAdjectives[deprecated]);
 		return 0;
 	}
 
@@ -3177,7 +3350,8 @@ int LuaUnsyncedCtrl::SetConfigString(lua_State* L)
 	const std::string& val = luaL_checkstring(L, 2);
 
 	if (configHandler->IsReadOnly(key)) {
-		LOG_L(L_ERROR, "[%s] key \"%s\" is read-only", __func__, key.c_str());
+		const auto deprecated = configHandler->IsDeprecated(key);
+		LOG_L(L_ERROR, "[%s] key \"%s\" is %s", __func__, key.c_str(), ConfigReadOnlyAdjectives[deprecated]);
 		return 0;
 	}
 
@@ -3216,7 +3390,7 @@ static int ReloadOrRestart(const std::string& springArgs, const std::string& scr
 
 	if (!scriptText.empty()) {
 		// create file 'script.txt' with contents given by Lua code
-		std::ofstream scriptFile(scriptFullName.c_str());
+		nowide::ofstream scriptFile(scriptFullName.c_str());
 
 		scriptFile.write(scriptText.c_str(), scriptText.size());
 		scriptFile.close();
@@ -3358,7 +3532,7 @@ static bool CanGiveOrders(const lua_State* L)
  *
  * @function Spring.GiveOrder
  * @param cmdID CMD|integer The command ID.
- * @param params CreateCommandParams Parameters for the given command.
+ * @param params CreateCommandParams? Parameters for the given command.
  * @param options CreateCommandOptions?
  * @param timeout integer? Absolute frame number. The command will be discarded after this frame. Only respected by mobile units.
  * @return boolean
@@ -3627,7 +3801,7 @@ int LuaUnsyncedCtrl::SetBuildFacing(lua_State* L)
 
 /*** @function Spring.SendLuaUIMsg
  * @param message string
- * @param mode string "s"/"specs" | "a"/"allies"
+ * @param mode string? "s"/"specs" | "a"/"allies"
  * @return nil
  */
 int LuaUnsyncedCtrl::SendLuaUIMsg(lua_State* L)
@@ -3833,6 +4007,7 @@ int LuaUnsyncedCtrl::SetLastMessagePosition(lua_State* L)
  * @param z number
  * @param text string? (Default: `""`)
  * @param localOnly boolean?
+ * @param playerID number? Local labels pretend they are from this player
  * @return nil
  */
 int LuaUnsyncedCtrl::MarkerAddPoint(lua_State* L)
@@ -3935,20 +4110,16 @@ int LuaUnsyncedCtrl::MarkerErasePosition(lua_State* L)
 
 /***
  * @class AtmosphereParams
- * @field fogStart number
- * @field fogEnd number
- * @field sunColor rgba
- * @field skyColor rgba
- * @field cloudColor rgba
- * @field skyAxisAngle xyzw rotation axis and angle in radians of skybox orientation
+ * @x_helper
+ * @field fogStart number?
+ * @field fogEnd number?
+ * @field sunColor rgba?
+ * @field skyColor rgba?
+ * @field cloudColor rgba?
+ * @field skyAxisAngle xyzw? rotation axis and angle in radians of skybox orientation
  */
-/***
- * It can be used to modify the following atmosphere parameters
- *
- * Usage:
- * ```lua
- * Spring.SetAtmosphere({ fogStart = 0, fogEnd = 0.5, fogColor = { 0.7, 0.2, 0.2, 1 }})
- * ```
+
+/*** Set atmosphere parameters
  *
  * @function Spring.SetAtmosphere
  * @param params AtmosphereParams
@@ -4030,6 +4201,8 @@ int LuaUnsyncedCtrl::SetSunDirection(lua_State* L)
 	auto dir = float3(luaL_checkfloat(L, 1), luaL_checkfloat(L, 2), luaL_checkfloat(L, 3));
 	auto intensity = luaL_optfloat(L, 4, 1.0f); // seems broken atm, only toggles shadows off when set to 0
 	ISky::GetSky()->GetLight()->SetLightDir(float4(dir.SafeNormalize(), intensity));
+	sunLighting->SetUpdated();
+	eventHandler.SunChanged();
 	return 0;
 }
 
@@ -4084,11 +4257,12 @@ int LuaUnsyncedCtrl::SetSunLighting(lua_State* L)
 /*** Map rendering params
  *
  * @class MapRenderingParams
- * @field splatTexMults rgba
- * @field splatTexScales rgba
- * @field voidWater boolean
- * @field voidGround boolean
- * @field splatDetailNormalDiffuseAlpha boolean
+ * @x_helper
+ * @field splatTexMults rgba?
+ * @field splatTexScales rgba?
+ * @field voidWater boolean?
+ * @field voidGround boolean?
+ * @field splatDetailNormalDiffuseAlpha boolean?
  */
 
 
@@ -4362,6 +4536,17 @@ int LuaUnsyncedCtrl::SetDrawModelsDeferred(lua_State* L)
 }
 
 
+/*** @function Spring.SetEngineBuildSquareRendering
+ * @param enabled boolean
+ * @return nil
+ */
+int LuaUnsyncedCtrl::SetEngineBuildSquareRendering(lua_State* L)
+{
+	CUnitDrawer::EngineBuildSquareRendering() = !!luaL_checkboolean(L, 1);
+	return 0;
+}
+
+
 /*** This doesn't actually record the game in any way, it just regulates the framerate and interpolations.
  *
  * @function Spring.SetVideoCapturingMode
@@ -4390,44 +4575,45 @@ int LuaUnsyncedCtrl::SetVideoCapturingTimeOffset(lua_State* L)
  * Water params
  *
  * @class WaterParams
- * @field absorb rgb
- * @field baseColor rgb
- * @field minColor rgb
- * @field surfaceColor rgb
- * @field diffuseColor rgb
- * @field specularColor rgb
- * @field planeColor rgb
- * @field texture string file
- * @field foamTexture string file
- * @field normalTexture string file
- * @field damage number
- * @field repeatX number
- * @field repeatY number
- * @field surfaceAlpha number
- * @field ambientFactor number
- * @field diffuseFactor number
- * @field specularFactor number
- * @field specularPower number
- * @field fresnelMin number
- * @field fresnelMax number
- * @field fresnelPower number
- * @field reflectionDistortion number
- * @field blurBase number
- * @field blurExponent number
- * @field perlinStartFreq number
- * @field perlinLacunarity number
- * @field perlinAmplitude number
- * @field windSpeed number
- * @field waveOffsetFactor number
- * @field waveLength number
- * @field waveFoamDistortion number
- * @field waveFoamIntensity number
- * @field causticsResolution number
- * @field causticsStrength number
- * @field numTiles integer
- * @field shoreWaves boolean
- * @field forceRendering boolean
- * @field hasWaterPlane boolean
+ * @x_helper
+ * @field absorb rgb?
+ * @field baseColor rgb?
+ * @field minColor rgb?
+ * @field surfaceColor rgb?
+ * @field diffuseColor rgb?
+ * @field specularColor rgb?
+ * @field planeColor rgb?
+ * @field texture string? file
+ * @field foamTexture string? file
+ * @field normalTexture string? file
+ * @field damage number?
+ * @field repeatX number?
+ * @field repeatY number?
+ * @field surfaceAlpha number?
+ * @field ambientFactor number?
+ * @field diffuseFactor number?
+ * @field specularFactor number?
+ * @field specularPower number?
+ * @field fresnelMin number?
+ * @field fresnelMax number?
+ * @field fresnelPower number?
+ * @field reflectionDistortion number?
+ * @field blurBase number?
+ * @field blurExponent number?
+ * @field perlinStartFreq number?
+ * @field perlinLacunarity number?
+ * @field perlinAmplitude number?
+ * @field windSpeed number?
+ * @field waveOffsetFactor number?
+ * @field waveLength number?
+ * @field waveFoamDistortion number?
+ * @field waveFoamIntensity number?
+ * @field causticsResolution number?
+ * @field causticsStrength number?
+ * @field numTiles integer?
+ * @field shoreWaves boolean?
+ * @field forceRendering boolean?
+ * @field hasWaterPlane boolean?
  */
 
 /***
@@ -4704,7 +4890,7 @@ int LuaUnsyncedCtrl::PreloadSoundItem(lua_State* L)
 
 /*** @function Spring.LoadModelTextures
  *
- * @param modelName string
+ * @param modelName string?
  * @return boolean? success
  */
 int LuaUnsyncedCtrl::LoadModelTextures(lua_State* L)
@@ -4813,6 +4999,7 @@ int LuaUnsyncedCtrl::SetGroundDecalPosAndDims(lua_State* L)
 
 /***
  * @class xz
+ * @x_helper
  * @field x number
  * @field y number
  */
@@ -5057,6 +5244,67 @@ int LuaUnsyncedCtrl::SetGroundDecalCreationFrame(lua_State* L)
 	return 1;
 }
 
+/***
+ *
+ * @function Spring.SetGroundDecalGlowParams
+ *
+ * Set decal glow parameters
+ *
+ * @param decalID integer
+ * @param glow number? Between 0 and 1 (Default: currGlow)
+ * @param glowFalloff number? Between 0 and 1, per second (Default: currGlowFallOff)
+ * @return boolean decalSet
+ */
+int LuaUnsyncedCtrl::SetGroundDecalGlowParams(lua_State* L)
+{
+	auto* decal = groundDecals->GetDecalById(luaL_checkint(L, 1));
+	if (!decal) {
+		lua_pushboolean(L, false);
+		return 1;
+	}
+
+	decal->glow = luaL_optfloat(L, 2, decal->glow);
+	decal->glowFalloff = luaL_optfloat(L, 3, decal->glowFalloff * GAME_SPEED) / GAME_SPEED;
+
+	lua_pushboolean(L, true);
+	return 1;
+}
+
+/***
+ *
+ * @function Spring.SetGroundDecalUserData
+ *
+ * Set decal user data. Useful in conjunction with custom decal shaders
+ *
+ * @param decalID integer
+ * @param udQuad integer vec4 index, must be within [0;1] for now
+ * @param x number? Any valid Lua float number (Default: current data)
+ * @param y number? Any valid Lua float number (Default: current data)
+ * @param z number? Any valid Lua float number (Default: current data)
+ * @param w number? Any valid Lua float number (Default: current data)
+ * @return boolean decalSet
+ */
+int LuaUnsyncedCtrl::SetGroundDecalUserData(lua_State* L)
+{
+	auto* decal = groundDecals->GetDecalById(luaL_checkint(L, 1));
+	if (!decal) {
+		lua_pushboolean(L, false);
+		return 1;
+	}
+
+	const auto quad = static_cast<uint32_t>(luaL_checknumber(L, 2));
+	if (quad >= GroundDecal::NUM_USERDATA) {
+		lua_pushboolean(L, false);
+		return 1;
+	}
+
+	float4& userData = decal->userDefined[quad];
+	for (size_t i = 0; i < 4; ++i)
+		userData[i] = luaL_optfloat(L, 3 + i, userData[i]);
+
+	lua_pushboolean(L, true);
+	return 1;
+}
 
 /******************************************************************************
  * SDL Text
@@ -5227,6 +5475,7 @@ int LuaUnsyncedCtrl::Start(lua_State* L)
  * Note: *.ico images are not supported.
  *
  * @param iconFileName string
+ * @param autoFree boolean?
  * @return nil
  */
 int LuaUnsyncedCtrl::SetWMIcon(lua_State* L)
@@ -5246,16 +5495,17 @@ int LuaUnsyncedCtrl::SetWMIcon(lua_State* L)
 }
 
 
-/*** Sets the window title for the process (default: "Spring <version>").
+/*** Set the window title for the process
  *
- * @function SetWMCaption
+ * @function Spring.SetWMCaption
  *
- * The shortTitle is displayed in the OS task-bar (default: "Spring <version>").
+ * @param title string (Default: `"Spring <version>"`)
+ * @param titleShort string? (Default: `"Spring <version>"`) displayed in the OS task-bar .
  *
- * NOTE: shortTitle is only ever possibly used under X11 (Linux & OS X), but not with QT (KDE) and never under Windows.
+ * > [!NOTE]
+ * > shortTitle is only ever possibly used under X11 (Linux & OS X), but not
+ * > with QT (KDE) and never under Windows.
  *
- * @param title string
- * @param titleShort string? (Default: title)
  * @return nil
  */
 int LuaUnsyncedCtrl::SetWMCaption(lua_State* L)

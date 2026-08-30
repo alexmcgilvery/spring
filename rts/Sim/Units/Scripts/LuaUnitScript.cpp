@@ -1,6 +1,5 @@
 /* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
 
-#include "System/Misc/TracyDefs.h"
 #define LUA_SYNCED_ONLY
 
 #include "LuaUnitScript.h"
@@ -24,6 +23,7 @@
 #include "System/ContainerUtil.h"
 #include "System/SafeUtil.h"
 #include "System/StringUtil.h"
+#include "Rendering/Models/3DModelPiece.hpp"
 
 #include "System/Misc/TracyDefs.h"
 
@@ -50,7 +50,10 @@ void CLuaUnitScript::PostLoad()
 
 	for (auto& p: unit->localModel.pieces) {
 		pieces.push_back(&p);
+		if (!p.parent)
+			rootPiece = &p;
 	}
+	assert(rootPiece);
 
 	L = handle->GetLuaState();
 
@@ -83,10 +86,11 @@ static inline LocalModelPiece* ParseLocalModelPiece(lua_State* L, CUnitScript* s
 	RECOIL_DETAILED_TRACY_ZONE;
 	const int piece = luaL_checkint(L, 1) - 1;
 
-	if (!script->PieceExists(piece))
+	auto* p = script->SafeGetPiece(piece);
+	if (!p)
 		luaL_error(L, "%s(): Invalid piecenumber", caller);
 
-	return (script->GetScriptLocalModelPiece(piece));
+	return p;
 }
 
 static inline int ToLua(lua_State* L, const float3& v)
@@ -193,9 +197,13 @@ Spring.UnitScript.Turn(number piece, number axis, number destination[, number sp
 Spring.UnitScript.Move(number piece, number axis, number destination[, number speed]) -> nil
 	Same as COB's move iff speed is given and not zero, and move-now otherwise.
 
+Spring.UnitScript.Scale(number piece, number destination[, number speed]) -> nil
+	Same as COB's scale iff speed is given and not zero, and scale-now otherwise.
+
 Spring.UnitScript.IsInTurn(number piece, number axis) -> boolean
 Spring.UnitScript.IsInMove(number piece, number axis) -> boolean
 Spring.UnitScript.IsInSpin(number piece, number axis) -> boolean
+Spring.UnitScript.IsInScale(number piece) -> boolean
 	Returns true iff such an animation exists, false otherwise.
 
 Spring.UnitScript.WaitForTurn(number piece, number axis) -> boolean
@@ -205,6 +213,10 @@ Spring.UnitScript.WaitForTurn(number piece, number axis) -> boolean
 Spring.UnitScript.WaitForMove(number piece, number axis) -> boolean
 	Returns true iff such an animation exists, false otherwise.  Iff it returns
 	true, the MoveFinished callIn will be called once the move completes.
+
+Spring.UnitScript.WaitForScale(number piece) -> boolean
+	Returns true iff such an animation exists, false otherwise.  Iff it returns
+	true, the ScaleFinished callIn will be called once the scale completes.
 
 Spring.UnitScript.SetDeathScriptFinished(number wreckLevel])
 	Tells Spring the Killed script finished, and which wreckLevel to use.
@@ -260,7 +272,10 @@ CLuaUnitScript::CLuaUnitScript(lua_State* L, CUnit* unit)
 	}
 	for (auto& p: unit->localModel.pieces) {
 		pieces.push_back(&p);
+		if (!p.parent)
+			rootPiece = &p;
 	}
+	assert(rootPiece);
 }
 
 
@@ -916,7 +931,16 @@ float CLuaUnitScript::TargetWeight(int weaponNum, const CUnit* targetUnit)
 void CLuaUnitScript::AnimFinished(AnimType type, int piece, int axis)
 {
 	ZoneScoped;
-	Call((type == AMove)? LUAFN_MoveFinished : LUAFN_TurnFinished, piece + 1, axis + 1);
+	switch (type) {
+	case ATurn:
+		Call(LUAFN_TurnFinished, piece + 1, axis + 1); break;
+	case AMove:
+		Call(LUAFN_MoveFinished, piece + 1, axis + 1); break;
+	case AScale:
+		Call(LUAFN_ScaleFinished, piece + 1); break;
+	default:
+		assert(false);
+	}
 }
 
 
@@ -999,6 +1023,13 @@ void CLuaUnitScript::EndBurst(int weaponNum) { ZoneScoped; Call(LUAFN_EndBurst, 
 /******************************************************************************/
 
 
+/***
+ * UnitScript API — controls unit animation, piece visibility, and COB values.
+ * Accessed via `Spring.UnitScript` (synced only).
+ *
+ * @see Spring.UnitScript
+ * @class UnitScriptTable
+ */
 bool CLuaUnitScript::PushEntries(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1028,22 +1059,27 @@ bool CLuaUnitScript::PushEntries(lua_State* L)
 	REGISTER_LUA_CFUNC(StopSpin);
 	REGISTER_LUA_CFUNC(Turn);
 	REGISTER_LUA_CFUNC(Move);
+	REGISTER_LUA_CFUNC(Scale);
 	REGISTER_LUA_CFUNC(MultiSetPieceVisibility);
 	REGISTER_LUA_CFUNC(MultiSpin);
 	REGISTER_LUA_CFUNC(MultiStopSpin);
 	REGISTER_LUA_CFUNC(MultiTurn);
 	REGISTER_LUA_CFUNC(MultiMove);
 	REGISTER_LUA_CFUNC(MultiExplode);
+	REGISTER_LUA_CFUNC(MultiScale);
 	REGISTER_LUA_CFUNC(IsInTurn);
 	REGISTER_LUA_CFUNC(IsInMove);
 	REGISTER_LUA_CFUNC(IsInSpin);
+	REGISTER_LUA_CFUNC(IsInScale);
 	REGISTER_LUA_CFUNC(WaitForTurn);
 	REGISTER_LUA_CFUNC(WaitForMove);
+	REGISTER_LUA_CFUNC(WaitForScale);
 
 	REGISTER_LUA_CFUNC(SetDeathScriptFinished);
 
 	REGISTER_LUA_CFUNC(GetPieceTranslation);
 	REGISTER_LUA_CFUNC(GetPieceRotation);
+	REGISTER_LUA_CFUNC(GetPieceScale);
 	REGISTER_LUA_CFUNC(GetPiecePosDir);
 
 	REGISTER_LUA_CFUNC(GetActiveUnitID);
@@ -1115,6 +1151,13 @@ static inline int ParseAxis(lua_State* L, const char* caller, int index)
 /******************************************************************************/
 
 
+/*** Create a Lua unit script for the given unit, replacing any existing script.
+ *
+ * @function UnitScriptTable.CreateScript
+ * @param unitID integer
+ * @param callIns table<string, function>
+ * @return nil
+ */
 int CLuaUnitScript::CreateScript(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1143,6 +1186,14 @@ int CLuaUnitScript::CreateScript(lua_State* L)
 }
 
 
+/*** Update or remove a callIn on a unit script.
+ *
+ * @function UnitScriptTable.UpdateCallIn
+ * @param unitID integer
+ * @param callin string
+ * @param func function?
+ * @return nil
+ */
 int CLuaUnitScript::UpdateCallIn(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1167,6 +1218,14 @@ int CLuaUnitScript::UpdateCallIn(lua_State* L)
 }
 
 
+/*** Execute a function in the context of a unit's script environment.
+ *
+ * @function UnitScriptTable.CallAsUnit
+ * @param unitID integer
+ * @param func function
+ * @param ... any arguments passed to func
+ * @return any ... values returned by func
+ */
 int CLuaUnitScript::CallAsUnit(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1235,6 +1294,14 @@ int CLuaUnitScript::GetUnitValue(lua_State* L, CUnitScript* script, int arg)
 }
 
 
+/*** Get a COB/script value for a unit (synced gadget API).
+ *
+ * @function UnitScriptTable.GetUnitCOBValue
+ * @param unitID integer
+ * @param val integer COB value ID (use COB constants)
+ * @param ... number optional extra args for certain COB values
+ * @return integer value
+ */
 int CLuaUnitScript::GetUnitCOBValue(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1247,6 +1314,12 @@ int CLuaUnitScript::GetUnitCOBValue(lua_State* L)
 }
 
 
+/*** Get a COB/script value. Must be called from within a UnitScript callin.
+ *
+ * @function UnitScriptTable.GetUnitValue
+ * @param val integer COB value ID (use COB constants)
+ * @return integer value
+ */
 int CLuaUnitScript::GetUnitValue(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1278,6 +1351,14 @@ int CLuaUnitScript::SetUnitValue(lua_State* L, CUnitScript* script, int arg)
 }
 
 
+/*** Set a COB/script value for a unit (synced gadget API).
+ *
+ * @function UnitScriptTable.SetUnitCOBValue
+ * @param unitID integer
+ * @param val integer COB value ID (use COB constants)
+ * @param param integer|boolean value to set
+ * @return nil
+ */
 int CLuaUnitScript::SetUnitCOBValue(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1290,6 +1371,13 @@ int CLuaUnitScript::SetUnitCOBValue(lua_State* L)
 }
 
 
+/*** Set a COB/script value. Must be called from within a UnitScript callin.
+ *
+ * @function UnitScriptTable.SetUnitValue
+ * @param val integer COB value ID (use COB constants)
+ * @param param integer|boolean value to set
+ * @return nil
+ */
 int CLuaUnitScript::SetUnitValue(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1300,6 +1388,13 @@ int CLuaUnitScript::SetUnitValue(lua_State* L)
 }
 
 
+/*** Set visibility of a piece. Must be called from within a UnitScript callin.
+ *
+ * @function UnitScriptTable.SetPieceVisibility
+ * @param piece integer 1-indexed piece number
+ * @param visible boolean
+ * @return nil
+ */
 int CLuaUnitScript::SetPieceVisibility(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1317,6 +1412,13 @@ int CLuaUnitScript::SetPieceVisibility(lua_State* L)
 }
 
 
+/*** Emit a special effect at a piece. Must be called from within a UnitScript callin.
+ *
+ * @function UnitScriptTable.EmitSfx
+ * @param piece integer 1-indexed piece number
+ * @param type integer|string SFX type constant or CEG name
+ * @return nil
+ */
 int CLuaUnitScript::EmitSfx(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1333,6 +1435,13 @@ int CLuaUnitScript::EmitSfx(lua_State* L)
 }
 
 
+/*** Attach a unit to a piece of another unit.
+ *
+ * @function UnitScriptTable.AttachUnit
+ * @param piece integer 1-indexed piece number
+ * @param transporteeID integer
+ * @return nil
+ */
 int CLuaUnitScript::AttachUnit(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1350,6 +1459,12 @@ int CLuaUnitScript::AttachUnit(lua_State* L)
 }
 
 
+/*** Drop a transported unit.
+ *
+ * @function UnitScriptTable.DropUnit
+ * @param transporteeID integer
+ * @return nil
+ */
 int CLuaUnitScript::DropUnit(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1367,6 +1482,13 @@ int CLuaUnitScript::DropUnit(lua_State* L)
 }
 
 
+/*** Explode a piece with the given flags.
+ *
+ * @function UnitScriptTable.Explode
+ * @param piece integer 1-indexed piece number
+ * @param flags integer SFX explosion flags (bitfield)
+ * @return nil
+ */
 int CLuaUnitScript::Explode(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1381,6 +1503,12 @@ int CLuaUnitScript::Explode(lua_State* L)
 }
 
 
+/*** Show a flare at a piece.
+ *
+ * @function UnitScriptTable.ShowFlare
+ * @param piece integer 1-indexed piece number
+ * @return nil
+ */
 int CLuaUnitScript::ShowFlare(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1394,6 +1522,15 @@ int CLuaUnitScript::ShowFlare(lua_State* L)
 }
 
 
+/*** Start spinning a piece around an axis.
+ *
+ * @function UnitScriptTable.Spin
+ * @param piece integer 1-indexed piece number
+ * @param axis integer axis (1=x, 2=y, 3=z)
+ * @param speed number angular speed in radians/frame
+ * @param accel number? angular acceleration (Default: `0`, instant)
+ * @return nil
+ */
 int CLuaUnitScript::Spin(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1411,6 +1548,14 @@ int CLuaUnitScript::Spin(lua_State* L)
 }
 
 
+/*** Stop spinning a piece.
+ *
+ * @function UnitScriptTable.StopSpin
+ * @param piece integer 1-indexed piece number
+ * @param axis integer axis (1=x, 2=y, 3=z)
+ * @param decel number? angular deceleration (Default: `0`, instant)
+ * @return nil
+ */
 int CLuaUnitScript::StopSpin(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1427,6 +1572,15 @@ int CLuaUnitScript::StopSpin(lua_State* L)
 }
 
 
+/*** Turn a piece to an angle. If speed is 0 or omitted, turns instantly.
+ *
+ * @function UnitScriptTable.Turn
+ * @param piece integer 1-indexed piece number
+ * @param axis integer axis (1=x, 2=y, 3=z)
+ * @param destination number target angle in radians
+ * @param speed number? angular speed (Default: `0`, instant)
+ * @return nil
+ */
 int CLuaUnitScript::Turn(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1450,6 +1604,15 @@ int CLuaUnitScript::Turn(lua_State* L)
 }
 
 
+/*** Move a piece along an axis. If speed is 0 or omitted, moves instantly.
+ *
+ * @function UnitScriptTable.Move
+ * @param piece integer 1-indexed piece number
+ * @param axis integer axis (1=x, 2=y, 3=z)
+ * @param destination number target position
+ * @param speed number? movement speed (Default: `0`, instant)
+ * @return nil
+ */
 int CLuaUnitScript::Move(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1467,6 +1630,36 @@ int CLuaUnitScript::Move(lua_State* L)
 		activeScript->MoveNow(piece, axis, dest);
 	} else {
 		activeScript->Move(piece, axis, speed, dest);
+	}
+
+	return 0;
+}
+
+/*** Scale a piece. If speed is 0 or omitted, scales instantly.
+ *
+ * @function UnitScriptTable.Scale
+ * @param piece integer 1-indexed piece number
+ * @param destination number target scale factor
+ * @param speed number? scaling speed (Default: `0`, instant)
+ * @return nil
+ */
+int CLuaUnitScript::Scale(lua_State* L)
+{
+	RECOIL_DETAILED_TRACY_ZONE;
+	// void Scale(int speed, int destination);
+	// void ScaleNow(int destination);
+	if (activeScript == nullptr)
+		return 0;
+
+	const int piece = luaL_checkint(L, 1) - 1;
+	const float dest = luaL_checkfloat(L, 2);
+	const float speed = luaL_optfloat(L, 3, 0.0f); // speed == 0 -> ScaleNow
+
+	if (speed == 0.0f) {
+		activeScript->ScaleNow(piece, dest);
+	}
+	else {
+		activeScript->Scale(piece, speed, dest);
 	}
 
 	return 0;
@@ -1523,6 +1716,11 @@ int CLuaUnitScript::MultiMove(lua_State* L)
 	return MultiExec(L, &Move, 4);
 }
 
+int CLuaUnitScript::MultiScale(lua_State* L)
+{
+	return MultiExec(L, &Scale, 3);
+}
+
 int CLuaUnitScript::IsInAnimation(lua_State* L, const char* caller, AnimType type)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1537,6 +1735,13 @@ int CLuaUnitScript::IsInAnimation(lua_State* L, const char* caller, AnimType typ
 }
 
 
+/*** Check if a piece is currently turning.
+ *
+ * @function UnitScriptTable.IsInTurn
+ * @param piece integer 1-indexed piece number
+ * @param axis integer axis (1=x, 2=y, 3=z)
+ * @return boolean
+ */
 int CLuaUnitScript::IsInTurn(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1544,6 +1749,13 @@ int CLuaUnitScript::IsInTurn(lua_State* L)
 }
 
 
+/*** Check if a piece is currently moving.
+ *
+ * @function UnitScriptTable.IsInMove
+ * @param piece integer 1-indexed piece number
+ * @param axis integer axis (1=x, 2=y, 3=z)
+ * @return boolean
+ */
 int CLuaUnitScript::IsInMove(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1551,10 +1763,35 @@ int CLuaUnitScript::IsInMove(lua_State* L)
 }
 
 
+/*** Check if a piece is currently spinning.
+ *
+ * @function UnitScriptTable.IsInSpin
+ * @param piece integer 1-indexed piece number
+ * @param axis integer axis (1=x, 2=y, 3=z)
+ * @return boolean
+ */
 int CLuaUnitScript::IsInSpin(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
 	return IsInAnimation(L, __func__, ASpin);
+}
+
+/*** Check if a piece is currently scaling.
+ *
+ * @function UnitScriptTable.IsInScale
+ * @param piece integer 1-indexed piece number
+ * @return boolean
+ */
+int CLuaUnitScript::IsInScale(lua_State* L)
+{
+	RECOIL_DETAILED_TRACY_ZONE;
+	if (activeScript == nullptr)
+		return 0;
+
+	const int piece = luaL_checkint(L, 1) - 1;
+
+	lua_pushboolean(L, activeScript->IsInAnimation(AScale, piece, -1));
+	return 1;
 }
 
 
@@ -1577,6 +1814,13 @@ int CLuaUnitScript::WaitForAnimation(lua_State* L, const char* caller, AnimType 
 }
 
 
+/*** Check whether the calling thread needs to wait for a turn to finish.
+ *
+ * @function UnitScriptTable.WaitForTurn
+ * @param piece integer 1-indexed piece number
+ * @param axis integer axis (1=x, 2=y, 3=z)
+ * @return boolean needsWait
+ */
 int CLuaUnitScript::WaitForTurn(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1584,13 +1828,50 @@ int CLuaUnitScript::WaitForTurn(lua_State* L)
 }
 
 
+/*** Check whether the calling thread needs to wait for a move to finish.
+ *
+ * @function UnitScriptTable.WaitForMove
+ * @param piece integer 1-indexed piece number
+ * @param axis integer axis (1=x, 2=y, 3=z)
+ * @return boolean needsWait
+ */
 int CLuaUnitScript::WaitForMove(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
 	return WaitForAnimation(L, __func__, AMove);
 }
 
+/*** Check whether the calling thread needs to wait for a scale to finish.
+ *
+ * @function UnitScriptTable.WaitForScale
+ * @param piece integer 1-indexed piece number
+ * @return boolean needsWait
+ */
+int CLuaUnitScript::WaitForScale(lua_State* L)
+{
+	RECOIL_DETAILED_TRACY_ZONE;
 
+	if (activeScript == nullptr)
+		return 0;
+
+	CLuaUnitScript* script = dynamic_cast<CLuaUnitScript*>(activeScript);
+
+	if (script == nullptr)
+		luaL_error(L, "%s(): not a Lua unit script", __func__);
+
+	const int piece = luaL_checkint(L, 1) - 1;
+
+	lua_pushboolean(L, script->NeedsWait(AScale, piece, -1));
+	return 1;
+}
+
+
+/*** Signal that the Killed callin has finished. Must be called from Killed.
+ *
+ * @function UnitScriptTable.SetDeathScriptFinished
+ * @param wreckLevel integer? (Default: `-1`)
+ * @return nil
+ */
 int CLuaUnitScript::SetDeathScriptFinished(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1608,6 +1889,14 @@ int CLuaUnitScript::SetDeathScriptFinished(lua_State* L)
 
 /******************************************************************************/
 
+/*** Get the local translation of a piece relative to its rest position.
+ *
+ * @function UnitScriptTable.GetPieceTranslation
+ * @param piece integer 1-indexed piece number
+ * @return number x
+ * @return number y
+ * @return number z
+ */
 int CLuaUnitScript::GetPieceTranslation(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1619,6 +1908,14 @@ int CLuaUnitScript::GetPieceTranslation(lua_State* L)
 }
 
 
+/*** Get the rotation of a piece in radians.
+ *
+ * @function UnitScriptTable.GetPieceRotation
+ * @param piece integer 1-indexed piece number
+ * @return number rx
+ * @return number ry
+ * @return number rz
+ */
 int CLuaUnitScript::GetPieceRotation(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1629,7 +1926,35 @@ int CLuaUnitScript::GetPieceRotation(lua_State* L)
 	return ToLua(L, piece->GetRotation());
 }
 
+/*** Get the scale factor of a piece.
+ *
+ * @function UnitScriptTable.GetPieceScale
+ * @param piece integer 1-indexed piece number
+ * @return number scale
+ */
+int CLuaUnitScript::GetPieceScale(lua_State* L)
+{
+	RECOIL_DETAILED_TRACY_ZONE;
+	if (activeScript == nullptr)
+		return 0;
 
+	LocalModelPiece* piece = ParseLocalModelPiece(L, activeScript, __func__);
+	lua_pushnumber(L, piece->GetScaling());
+	return 1;
+}
+
+
+/*** Get the world-space emit position and direction of a piece.
+ *
+ * @function UnitScriptTable.GetPiecePosDir
+ * @param piece integer 1-indexed piece number
+ * @return number posX
+ * @return number posY
+ * @return number posZ
+ * @return number dirX
+ * @return number dirY
+ * @return number dirZ
+ */
 int CLuaUnitScript::GetPiecePosDir(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1652,6 +1977,11 @@ int CLuaUnitScript::GetPiecePosDir(lua_State* L)
 /******************************************************************************/
 /******************************************************************************/
 
+/*** Get the unit ID of the currently executing unit script.
+ *
+ * @function UnitScriptTable.GetActiveUnitID
+ * @return integer? unitID
+ */
 int CLuaUnitScript::GetActiveUnitID(lua_State* L)
 {
 	RECOIL_DETAILED_TRACY_ZONE;

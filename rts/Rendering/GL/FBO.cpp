@@ -14,6 +14,7 @@
 #include "System/Config/ConfigHandler.h"
 
 #include "System/Misc/TracyDefs.h"
+#include "Rendering/GlobalRendering.h"
 
 CONFIG(bool, AtiSwapRBFix).defaultValue(false);
 
@@ -30,6 +31,11 @@ GLsizei FBO::maxSamples = -1;
 bool FBO::IsSupported()
 {
 	return (GLAD_GL_EXT_framebuffer_object);
+}
+
+bool FBO::IsReady()
+{
+	return globalRendering->active;
 }
 
 
@@ -443,6 +449,16 @@ void FBO::AttachTexture(const GLuint texId, const GLenum texTarget, const GLenum
 	} else {
 		glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, attachment, texTarget, texId, mipLevel);
 	}
+}
+
+void FBO::AttachTextureLayer(const GLuint texId, const GLenum attachment, const int mipLevel, const int layer)
+{
+	RECOIL_DETAILED_TRACY_ZONE;
+#ifndef HEADLESS
+	assert(GetCurrentBoundFBO() == fboId);
+#endif
+
+	glFramebufferTextureLayerEXT(GL_FRAMEBUFFER_EXT, attachment, texId, mipLevel, layer);
 }
 
 

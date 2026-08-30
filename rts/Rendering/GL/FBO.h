@@ -25,6 +25,7 @@ public:
 	 * if FrameBuffers are supported by the current platform
 	 */
 	static bool IsSupported();
+	static bool IsReady();
 	static GLint GetCurrentBoundFBO();
 
 	FBO(         ) { Init(false); }
@@ -87,6 +88,8 @@ public:
 	 * @param zSlice z offset (3d textures only)
 	 */
 	void AttachTexture(const GLuint texId, const GLenum texTarget = GL_TEXTURE_2D, const GLenum attachment = GL_COLOR_ATTACHMENT0_EXT, const int mipLevel = 0, const int zSlice = 0);
+
+	void AttachTextureLayer(const GLuint texId, const GLenum attachment = GL_COLOR_ATTACHMENT0_EXT, const int mipLevel = 0, const int layer = 0);
 
 	/**
 	 * @brief AttachRenderBuffer
@@ -185,9 +188,9 @@ private:
 		}
 
 	public:
-		GLuint id;
-		GLsizei xsize, ysize, zsize;
-		GLenum target, format, type;
+		GLuint id = 0;
+		GLsizei xsize = 0, ysize = 0, zsize = 0;
+		GLenum target = 0, format = 0, type = 0;
 		std::vector<unsigned char> pixels;
 	};
 

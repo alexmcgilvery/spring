@@ -53,6 +53,7 @@
 #include "Rendering/Textures/NamedTextures.h"
 #include "Lua/LuaGaia.h"
 #include "Lua/LuaHandle.h"
+#include "Lua/LuaDebugExtra.h"
 #include "Lua/LuaInputReceiver.h"
 #include "Lua/LuaMenu.h"
 #include "Lua/LuaRules.h"
@@ -134,6 +135,8 @@
 
 #include "System/Misc/TracyDefs.h"
 
+#include "fmt/ranges.h"
+
 
 #undef CreateDirectory
 
@@ -169,8 +172,6 @@ CR_REG_METADATA(CGame, (
 	CR_IGNORED(lastSimFrameNetPacketTime),
 	CR_IGNORED(lastUnsyncedUpdateTime),
 	CR_IGNORED(skipLastDrawTime),
-
-	CR_IGNORED(lastActionList), //IGNORED?
 
 	CR_IGNORED(updateDeltaSeconds),
 	CR_MEMBER(totalGameTime),
@@ -212,10 +213,9 @@ CR_REG_METADATA(CGame, (
 	CR_MEMBER(luaGCControl),
 
 	CR_IGNORED(jobDispatcher),
-	CR_IGNORED(curKeyCodeChain),
-	CR_IGNORED(curScanCodeChain),
 	CR_IGNORED(worldDrawer),
 	CR_IGNORED(saveFileHandler),
+	CR_IGNORED(gameInputReceiver),
 
 	// Post Load
 	CR_POSTLOAD(PostLoad)
@@ -681,7 +681,7 @@ void CGame::PostLoadSimulation(LuaParser* defsParser)
 	CUnitScriptFactory::InitStatic();
 	CUnitScriptEngine::InitStatic();
 	MoveTypeFactory::InitStatic();
-	CWeaponLoader::InitStatic();
+	CWeaponLoader::InitStatic(unitDefHandler);
 
 	unitHandler.Init();
 	featureHandler.Init();
@@ -739,8 +739,11 @@ void CGame::PreLoadRendering()
 	geometricObjects = new CGeometricObjects();
 
 	// load components that need to exist before PostLoadSimulation
-	matrixUploader.Init();
-	modelsUniformsUploader.Init();
+	modelUniformsStorage.Init();
+	//transformsMemStorage.Init(); // Add?
+
+	transformsUploader.Init();
+	modelUniformsUploader.Init();
 	worldDrawer.InitPre();
 }
 
@@ -1000,8 +1003,12 @@ void CGame::KillRendering()
 	icon::iconHandler.Kill();
 	spring::SafeDelete(geometricObjects);
 	worldDrawer.Kill();
-	matrixUploader.Kill();
-	modelsUniformsUploader.Kill();
+
+	modelUniformsStorage.Kill();
+	//transformsMemStorage.Kill(); //Add?
+
+	transformsUploader.Kill();
+	modelUniformsUploader.Kill();
 }
 
 void CGame::KillInterface()
@@ -1016,6 +1023,9 @@ void CGame::KillInterface()
 	spring::SafeDelete(tooltip); // CTooltipConsole*
 
 	LOG("[Game::%s][2]", __func__);
+	// drop emulated input state (game-scoped, like the bindings below); no-fire
+	// since the Lua handles are being destroyed
+	LuaDebugExtra::ClearEmulatedInput(false);
 	keyBindings.Kill();
 	selectionKeys.Kill(); // CSelectionKeyHandler*
 	spring::SafeDelete(inMapDrawerModel);
@@ -1026,6 +1036,12 @@ void CGame::KillSimulation()
 {
 	RECOIL_DETAILED_TRACY_ZONE;
 	LOG("[Game::%s][1]", __func__);
+
+	// a failed load leaves half-initialized objects behind, freeing them crashes
+	if (spring::exitCode == spring::EXIT_CODE_NOLOAD && gu->globalQuit) {
+		LOG_L(L_WARNING, "[Game::%s] simulation never finished loading, leaking it", __func__);
+		return;
+	}
 
 	// Kill all teams that are still alive, in
 	// case the game did not do so through Lua.
@@ -1103,89 +1119,21 @@ void CGame::ResizeEvent()
 	}
 }
 
-
 int CGame::KeyPressed(int keyCode, int scanCode, bool isRepeat)
 {
-	RECOIL_DETAILED_TRACY_ZONE;
-	if (!gameOver && !isRepeat)
-		playerHandler.Player(gu->myPlayerNum)->currentStats.keyPresses++;
-
-	const CKeySet kc(keyCode, CKeySet::KSKeyCode);
-	const CKeySet ks(scanCode, CKeySet::KSScanCode);
-
-	curKeyCodeChain.push_back(kc, spring_gettime(), isRepeat);
-	curScanCodeChain.push_back(ks, spring_gettime(), isRepeat);
-
-	lastActionList = keyBindings.GetActionList(curKeyCodeChain, curScanCodeChain);
-
-	if (RmlGui::ProcessKeyPressed(keyCode, scanCode, isRepeat))
-		return 0;
-
-	if (gameTextInput.ConsumePressedKey(keyCode, scanCode, lastActionList))
-		return 0;
-
-	if (luaInputReceiver->KeyPressed(keyCode, scanCode, isRepeat))
-		return 0;
-
-
-	// try the input receivers
-	for (CInputReceiver* recv: CInputReceiver::GetReceivers()) {
-		if (recv != nullptr && recv->KeyPressed(keyCode, scanCode, isRepeat))
-			return 0;
-	}
-
-	// try our list of actions
-	for (const Action& action: lastActionList) {
-		if (ActionPressed(action, isRepeat)) {
-			return 0;
-		}
-	}
-
-	// maybe a widget is interested?
-	if (luaUI != nullptr) {
-		for (const Action& action: lastActionList) {
-			luaUI->GotChatMsg(action.rawline, false);
-		}
-	}
-
-	if (luaMenu != nullptr) {
-		for (const Action& action: lastActionList) {
-			luaMenu->GotChatMsg(action.rawline, false);
-		}
-	}
-
+	gameInputReceiver.KeyPressed(keyCode, scanCode, isRepeat);
 	return 0;
 }
 
-
 int CGame::KeyReleased(int keyCode, int scanCode)
 {
-	RECOIL_DETAILED_TRACY_ZONE;
-	if (RmlGui::ProcessKeyReleased(keyCode, scanCode))
-		return 0;
-
-	if (gameTextInput.ConsumeReleasedKey(keyCode, scanCode))
-		return 0;
-
-	// update actionlist for lua consumer
-	lastActionList = keyBindings.GetActionList(keyCode, scanCode);
-
-	if (luaInputReceiver->KeyReleased(keyCode, scanCode))
-		return 0;
-
-	// try the input receivers
-	for (CInputReceiver* recv: CInputReceiver::GetReceivers()) {
-		if (recv != nullptr && recv->KeyReleased(keyCode, scanCode)) {
-			return 0;
-		}
-	}
-
-	for (const Action& action: lastActionList) {
-		if (ActionReleased(action))
-			return 0;
-	}
-
+	gameInputReceiver.KeyReleased(keyCode, scanCode);
 	return 0;
+}
+
+CInputReceiver* CGame::GetInputReceiver()
+{
+	return &gameInputReceiver;
 }
 
 int CGame::KeyMapChanged()
@@ -1420,6 +1368,7 @@ bool CGame::UpdateUnsynced(const spring_time currentTime)
 
 	lineDrawer.UpdateLineStipple();
 
+	icon::iconHandler.Update();
 	CNamedTextures::Update();
 
 	// always update InfoTexture and SoundListener at <= 30Hz (even when paused)
@@ -1473,8 +1422,8 @@ bool CGame::UpdateUnsynced(const spring_time currentTime)
 	shadowHandler.Update();
 	{
 		worldDrawer.Update(newSimFrame);
-		matrixUploader.Update();
-		modelsUniformsUploader.Update();
+		transformsUploader.Update();
+		modelUniformsUploader.Update();
 	}
 
 	mouse->UpdateCursorCameraDir(); // make sure mouse->dir is in sync with camera
@@ -1748,6 +1697,9 @@ void CGame::SimFrame() {
 
 	// note: starts at -1, first actual frame is 0
 	gs->frameNum += 1;
+#ifdef SYNC_HISTORY
+	CSyncChecker::NewGameFrame();
+#endif
 	lastFrameTime = spring_gettime();
 	// This is not very ideal, as the timeoffset of each new draw frame is also calculated from this
 	// with a strange side effect: if the timeOffset was a high number, like 0.9, then this will force the next draw frame to have an offset of 0.0x
@@ -1801,6 +1753,11 @@ void CGame::SimFrame() {
 	{
 		SCOPED_SPECIAL_TIMER("Sim");
 
+		// Lua unit scripts change piece positions and orientations in eventHandler.GameFrame(gs->frameNum);
+		// so we need to save the previous unit state before it happened
+		unitHandler.UpdatePreFrame();
+		featureHandler.UpdatePreFrame();
+
 		{
 			SCOPED_TIMER("Sim::GameFrame");
 
@@ -1831,6 +1788,8 @@ void CGame::SimFrame() {
 
 			SCOPED_TIMER("Sim::Script");
 			unitScriptEngine->Tick(tickMs);
+
+			unitHandler.UpdatePostAnimation();
 		}
 		envResHandler.Update();
 		losHandler->Update();
@@ -2250,3 +2209,9 @@ bool CGame::ActionReleased(const Action& action)
 {
 	return unsyncedGameCommands->ActionReleased(action);
 }
+
+const ActionList& CGame::GetLastActionList()
+{
+	return gameInputReceiver.lastActionList;
+}
+

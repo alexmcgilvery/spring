@@ -1,5 +1,7 @@
 
-if (TRACY_PROFILE_MEMORY)
+# When USE_MIMALLOC is enabled, MemoryOverride.cpp handles operator new/delete with Tracy tracking.
+# Only compile TraceMemory.cpp when Tracy memory profiling is enabled but mimalloc is not used.
+if (TRACY_PROFILE_MEMORY AND NOT USE_MIMALLOC)
 	set(memoryProfileSource "${CMAKE_CURRENT_SOURCE_DIR}/TraceMemory.cpp")
 endif()
 
@@ -25,6 +27,7 @@ make_global_var(sources_engine_System_common
 		"${CMAKE_CURRENT_SOURCE_DIR}/Input/MouseInput.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/LoadSave/CregLoadSaveHandler.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/LoadSave/Demo.cpp"
+		"${CMAKE_CURRENT_SOURCE_DIR}/LoadSave/DemoFileExtension.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/LoadSave/DemoReader.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/LoadSave/DemoRecorder.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/LoadSave/LoadSaveHandler.cpp"
@@ -41,6 +44,7 @@ make_global_var(sources_engine_System_common
 		"${CMAKE_CURRENT_SOURCE_DIR}/GameLoadThread.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Option.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Platform/Clipboard.cpp"
+		"${CMAKE_CURRENT_SOURCE_DIR}/Platform/ConsoleInit.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Platform/errorhandler.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Platform/Misc.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Platform/ScopedFileLock.cpp"
@@ -54,6 +58,7 @@ make_global_var(sources_engine_System_common
 		"${CMAKE_CURRENT_SOURCE_DIR}/SpringApp.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/StartScriptGen.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Sync/DumpState.cpp"
+		"${CMAKE_CURRENT_SOURCE_DIR}/Sync/DumpHistory.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Sync/FPUCheck.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Sync/Logger.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Sync/SHA512.cpp"
@@ -73,7 +78,7 @@ make_global_var(sources_engine_System_common
 		"${CMAKE_CURRENT_SOURCE_DIR}/float3.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/float4.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/SpringMath.cpp"
-		"${CMAKE_CURRENT_SOURCE_DIR}/SpringMem.cpp"
+		"${CMAKE_CURRENT_SOURCE_DIR}/MemoryOverride.cpp"
 		"${memoryProfileSource}"
 	)
 if    (NO_CREG)
@@ -97,7 +102,6 @@ make_global_var(sources_engine_System_FileSystem
 		"${CMAKE_CURRENT_SOURCE_DIR}/FileSystem/FileFilter.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/FileSystem/FileHandler.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/FileSystem/FileSystem.cpp"
-		"${CMAKE_CURRENT_SOURCE_DIR}/FileSystem/FileSystemAbstraction.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/FileSystem/FileSystemInitializer.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/FileSystem/GZFileHandler.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/FileSystem/Misc.cpp"
@@ -232,3 +236,10 @@ endif  ()
 
 add_subdirectory(FileSystem)
 add_subdirectory(Net)
+
+# Natvis files for MSVC debugging visualization
+set(RECOIL_NATVIS_FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/SpringHashMap.natvis"
+    "${CMAKE_CURRENT_SOURCE_DIR}/SpringHashSet.natvis"
+    CACHE INTERNAL "Recoil Natvis files for MSVC debugging"
+)

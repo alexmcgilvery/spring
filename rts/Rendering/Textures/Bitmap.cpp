@@ -5,7 +5,6 @@
 #include <utility>
 #include <cstring>
 #include <memory>
-#include <span>
 
 #include <IL/il.h>
 #include <SDL_video.h>
@@ -16,13 +15,12 @@
 #endif
 
 #include "Bitmap.h"
-#include "newRendering/GlobalRendering.h"
-#include "System/bitops.h"
+#include "Rendering/GL/TexBind.h"
 #include "System/ScopedFPUSettings.h"
 #include "System/ContainerUtil.h"
 #include "System/SafeUtil.h"
 #include "System/Log/ILog.h"
-#include "System/SpringMem.h"
+#include "System/MemoryOverride.hpp"
 #include "System/SpringMath.h"
 #include "System/StringUtil.h"
 #include "System/Threading/ThreadPool.h"
@@ -74,12 +72,13 @@ public:
 
 	virtual const uint8_t* GetRawMem(size_t memIdx) const = 0;
 	virtual       uint8_t* GetRawMem(size_t memIdx)       = 0;
+	virtual std::span<const uint8_t> GetSpan(size_t memIdx) const = 0;
 
 	spring::mutex& GetMutex() { return bmpMutex; }
 public:
 	static void Init(size_t size);
 	static void Kill();
-	static inline std::unique_ptr<ITexMemPool> texMemPool = {};
+	static std::unique_ptr<ITexMemPool> texMemPool;
 protected:
 	size_t numAllocs = 0;
 	size_t allocSize = 0;
@@ -89,6 +88,8 @@ protected:
 	// libIL is not thread-safe, neither are {Alloc,Free}
 	spring::mutex bmpMutex;
 };
+
+std::unique_ptr<ITexMemPool> ITexMemPool::texMemPool = {};
 
 class TexMemPool : public ITexMemPool {
 private:
@@ -102,7 +103,7 @@ private:
 	      uint8_t* Base()       { return memArray.data(); }
 public:
 	~TexMemPool() override {
-		spring::FreeAlignedMemory(memArray.data());
+		recoil::aligned_free(memArray.data());
 		memArray = {};
 		freeList = {};
 	}
@@ -167,7 +168,7 @@ public:
 		return mem;
 	}
 
-	void FreeRaw(uint8_t* mem, size_t size) {
+	void FreeRaw(uint8_t* mem, size_t size) override {
 		RECOIL_DETAILED_TRACY_ZONE;
 		if (mem == nullptr)
 			return;
@@ -206,7 +207,7 @@ public:
 			DefragRaw();
 	}
 
-	void Resize(size_t size) {
+	void Resize(size_t size) override {
 		RECOIL_DETAILED_TRACY_ZONE;
 		size = AlignUp(size, sizeof(uint64_t));
 
@@ -221,7 +222,7 @@ public:
 
 			const size_t oldSize = Size();
 			memArray = std::span(
-				reinterpret_cast<uint8_t*>(spring::ReallocateAlignedMemory(memArray.data(), size, 64)),
+				reinterpret_cast<uint8_t*>(recoil::aligned_realloc(memArray.data(), oldSize, size, 64)),
 				size
 			);
 			std::fill(memArray.begin() + oldSize, memArray.end(), 0);
@@ -232,7 +233,7 @@ public:
 
 			const size_t oldSize = Size();
 			memArray = std::span(
-				reinterpret_cast<uint8_t*>(spring::ReallocateAlignedMemory(memArray.data(), size, 64)),
+				reinterpret_cast<uint8_t*>(recoil::aligned_realloc(memArray.data(), oldSize, size, 64)),
 				size
 			);
 			std::fill(memArray.begin() + oldSize, memArray.end(), 0);
@@ -252,6 +253,11 @@ public:
 
 	const uint8_t* GetRawMem(size_t memIdx) const override { return ((memIdx == size_t(-1))? nullptr: (Base() + memIdx)); }
 	      uint8_t* GetRawMem(size_t memIdx)       override { return ((memIdx == size_t(-1))? nullptr: (Base() + memIdx)); }
+	std::span<const uint8_t> GetSpan(size_t memIdx) const override {
+		return (memIdx == size_t(-1))
+			? std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(0), size_t(0))
+			: std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(Base() + memIdx), Size());
+	}
 
 private:
 	bool DefragRaw() {
@@ -322,7 +328,7 @@ public:
 		numAllocs += 1;
 		allocSize += size;
 
-		return static_cast<uint8_t*>(spring::AllocateAlignedMemory(size, sizeof(uint64_t)));
+		return static_cast<uint8_t*>(recoil::aligned_alloc(sizeof(uint64_t), size));
 	}
 	void FreeRaw(uint8_t* mem, size_t size) override
 	{
@@ -333,23 +339,28 @@ public:
 		freeSize += size;
 		allocSize -= size;
 
-		spring::FreeAlignedMemory(mem);
+		recoil::aligned_free(mem);
 	}
 	void Resize(size_t size) override {}
 	bool Defrag() override { return true; }
 	const uint8_t* GetRawMem(size_t memIdx) const override { return (memIdx == size_t(-1)) ? nullptr : reinterpret_cast<uint8_t*>(memIdx); }
 		  uint8_t* GetRawMem(size_t memIdx)       override { return (memIdx == size_t(-1)) ? nullptr : reinterpret_cast<uint8_t*>(memIdx); }
+	std::span<const uint8_t> GetSpan(size_t memIdx) const override {
+		return (memIdx == size_t(-1))
+			? std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(0), size_t(0))
+			: std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(memIdx), Size());
+	}
 };
 
 void ITexMemPool::Init(size_t size)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
 	if (size == 0) {
-		if (texMemPool == nullptr || typeid(*texMemPool.get()) != typeid(TexNoMemPool))
+		if (dynamic_cast<TexNoMemPool*>(texMemPool.get()) == nullptr)
 			texMemPool = std::make_unique<TexNoMemPool>();
 	}
 	else {
-		if (texMemPool == nullptr || typeid(*texMemPool.get()) != typeid(  TexMemPool))
+		if (dynamic_cast<  TexMemPool*>(texMemPool.get()) == nullptr)
 			texMemPool = std::make_unique<  TexMemPool>();
 	}
 	texMemPool->Resize(size);
@@ -394,6 +405,7 @@ public:
 	BitmapAction(CBitmap* bmp_)
 		: bmp{ bmp_ }
 	{}
+	virtual ~BitmapAction() = default;
 
 	BitmapAction(const BitmapAction& ba) = delete;
 	BitmapAction(BitmapAction&& ba) noexcept = delete;
@@ -408,7 +420,7 @@ public:
 	virtual void SetTransparent(const SColor& c, const SColor trans = SColor(0, 0, 0, 0)) = 0;
 
 	virtual void Renormalize(const float3& newCol) = 0;
-	virtual void Blur(int iterations = 1, float weight = 1.0f) = 0;
+	virtual void Blur(int iterations = 1, float weight = 1.0f, int x = 0, int y = 0, int width = 0, int height = 0) = 0;
 	virtual void Fill(const SColor& c) = 0;
 
 	virtual void InvertColors() = 0;
@@ -466,7 +478,7 @@ public:
 	void SetTransparent(const SColor& c, const SColor trans) override;
 
 	void Renormalize(const float3& newCol) override;
-	void Blur(int iterations = 1, float weight = 1.0f) override;
+	void Blur(int iterations = 1, float weight = 1.0f, int x = 0, int y = 0, int width = 0, int height = 0) override;
 	void Fill(const SColor& c) override;
 
 	void InvertColors() override;
@@ -665,7 +677,7 @@ void TBitmapAction<T, ch>::Renormalize(const float3& newCol)
 }
 
 template<typename T, uint32_t ch>
-void TBitmapAction<T, ch>::Blur(int iterations, float weight)
+void TBitmapAction<T, ch>::Blur(int iterations, float weight, int startx, int starty, int width, int height)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
 	// We use an axis-separated blur algorithm. Applies BLUR_KERNEL in both the x
@@ -678,40 +690,45 @@ void TBitmapAction<T, ch>::Blur(int iterations, float weight)
 	};
 	static constexpr int BLUR_KERNEL_HS = BLUR_KERNEL.size() >> 1;
 
+	if (width == 0)
+		width = bmp->xsize;
+	if (height == 0)
+		height = bmp->ysize;
+
 	// note ysize and xsize are swapped
-	CBitmap tmp(nullptr, bmp->ysize, bmp->xsize, ch, bmp->dataType);
+	CBitmap tmp(nullptr, height, width, ch, bmp->dataType);
 	auto tempAction = BitmapAction::GetBitmapAction(&tmp); // lifetime thing, not used furher
 
 	auto* tempTypedAction = static_cast<TBitmapAction<T, ch>*>(tempAction.get());
 	auto* currTypedAction = this;
 
 	const std::array blurPassTuples {
-		std::tuple( bmp, currTypedAction, tempTypedAction), // horizontal pass
-		std::tuple(&tmp, tempTypedAction, currTypedAction)  // vertical   pass
+		std::tuple( bmp, &tmp, currTypedAction, tempTypedAction, startx, starty, 0, 0, width, height), // horizontal pass
+		std::tuple(&tmp, bmp, tempTypedAction, currTypedAction, 0, 0, startx, starty, height, width)  // vertical   pass
 	};
 
 	const auto w0 = BLUR_KERNEL[BLUR_KERNEL_HS] * BLUR_KERNEL[BLUR_KERNEL_HS] * (weight - 1.0f);
 
-	#define MT_EXECUTION 1
+	#define MT_EXECUTION 0
 
 	for (int iter = 0; iter < iterations; ++iter) {
 		for (size_t bpi = 0; bpi < blurPassTuples.size(); ++bpi) {
 			// everything is a pointer here, can assign with just auto
-			auto [src, srcAction, dstAction] = blurPassTuples[bpi];
+			auto [src, dst, srcAction, dstAction, sx, sy, dx, dy, w, h] = blurPassTuples[bpi];
 		#if MT_EXECUTION == 1
-			for_mt_chunk(0, src->ysize, [this, src, srcAction, dstAction, bpi, w0](int y) {
+			for_mt_chunk(0, h, [this, src, dst, srcAction, dstAction, bpi, w0, sx, sy, dx, dy, w, h](int y) {
 		#else
-			for (int y = 0; y < src->ysize; y++) {
+			for (int y = 0; y < h; y++) {
 		#endif
-				int yBaseOffset = (y * src->xsize);
-				for (int x = 0; x < src->xsize; x++) {
+				int yBaseOffset = ((sy + y) * src->xsize);
+				for (int x = 0; x < w; x++) {
 
 					// don't use AccumChanType for additional precision
 					std::array<float, ch> val{ 0.0f };
 					float wSum = 0.0f;
 
 					for (int off = -BLUR_KERNEL_HS; off <= BLUR_KERNEL_HS; ++off) {
-						const int xo = x + off;
+						const int xo = (sx + x) + off;
 						// check bounds
 						if ((xo < 0) || (xo > src->xsize - 1))
 							continue;
@@ -725,7 +742,7 @@ void TBitmapAction<T, ch>::Blur(int iterations, float weight)
 						}
 					}
 
-					auto& dstRef = dstAction->GetRef(x * src->ysize + y);
+					auto& dstRef = dstAction->GetRef((dy + x) * dst->xsize + (dx + y));
 					for (int a = 0; a < ch; a++) {
 						auto rawDstVal = val[a] / wSum;
 
@@ -899,7 +916,7 @@ CBitmap TBitmapAction<T, ch>::CreateRescaled(int newx, int newy)
 	RECOIL_DETAILED_TRACY_ZONE;
 	CBitmap dst;
 
-	if (ch != 4) {
+	if (ch > 4) {
 		assert(false);
 		dst.AllocDummy();
 		return dst;
@@ -1089,6 +1106,7 @@ void CBitmap::KillPool()
 
 const uint8_t* CBitmap::GetRawMem() const { return ITexMemPool::texMemPool->GetRawMem(memIdx); }
       uint8_t* CBitmap::GetRawMem()       { return ITexMemPool::texMemPool->GetRawMem(memIdx); }
+std::span<const uint8_t> CBitmap::GetSpan() const { return ITexMemPool::texMemPool->GetSpan(memIdx); }
 
 void CBitmap::Alloc(int w, int h, int c, uint32_t glType)
 {
@@ -1120,22 +1138,7 @@ int32_t CBitmap::GetReqNumLevels() const
 uint32_t CBitmap::GetDataTypeSize(uint32_t glType)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
-	switch (glType) {
-	case GL_FLOAT:
-		return sizeof(float);
-	case GL_INT: [[fallthrough]];
-	case GL_UNSIGNED_INT:
-		return sizeof(uint32_t);
-	case GL_SHORT: [[fallthrough]];
-	case GL_UNSIGNED_SHORT:
-		return sizeof(uint16_t);
-	case GL_BYTE: [[fallthrough]];
-	case GL_UNSIGNED_BYTE:
-		return sizeof(uint8_t);
-	default:
-		assert(false);
-		return 0;
-	}
+	return GL::GetDataTypeSize(glType);
 }
 
 int32_t CBitmap::GetExtFmt(uint32_t ch)
@@ -1228,7 +1231,7 @@ bool CBitmap::Load(std::string const& filename, float defaultAlpha, uint32_t req
 	// files ending in ".DDS" would appear upside-down if loaded by nv_dds
 	//
 	// const bool loadDDS = (filename.find(".dds") != std::string::npos || filename.find(".DDS") != std::string::npos);
-	const bool loadDDS = (FileSystem::GetExtension(filename) == "dds"); // always lower-case
+	const bool loadDDS = (FileSystem::GetExtensionLowerCase(filename) == "dds");
 	const bool flipDDS = (filename.find("unitpics") == std::string::npos); // keep buildpics as-is
 
 	const size_t curMemSize = GetMemSize();
@@ -1485,24 +1488,50 @@ namespace {
 		RECOIL_DETAILED_TRACY_ZONE;
 		bool success = false;
 
-		switch (hashString(ext)) {
-			case hashString("bmp"): { success = ilSave(IL_BMP, p); } break;
-			case hashString("jpg"): { success = ilSave(IL_JPG, p); } break;
-			case hashString("png"): { success = ilSave(IL_PNG, p); } break;
-			case hashString("tga"): { success = ilSave(IL_TGA, p); } break;
-			case hashString("tif"): [[fallthrough]];
-			case hashString("tiff"): { success = ilSave(IL_TIF, p); } break;
-			case hashString("dds"): { success = ilSave(IL_DDS, p); } break;
-			case hashString("pbm"): [[fallthrough]];
-			case hashString("pgm"): [[fallthrough]];
-			case hashString("ppm"): [[fallthrough]];
-			case hashString("pnm"): { success = ilSave(IL_PNM, p); } break;
-			case hashString("hdr"): { success = ilSave(IL_HDR, p); } break;
-			case hashString("raw"): { success = ilSave(IL_RAW, p); } break;
-		}
+		const auto SaveImage = [](ILenum type, const ILchar* p) -> bool {
+			ILenum err = 0;
+			while (err = ilGetError(), err != IL_NO_ERROR);
 
-		assert(ilGetError() == IL_NO_ERROR);
-		while (auto err = ilGetError() != IL_NO_ERROR);
+			auto sz = ilSaveL(type, nullptr, 0);
+			if (!sz)
+				return false;
+
+			if (err = ilGetError(); err != IL_NO_ERROR)
+				return false;
+
+			std::vector<uint8_t> buffer; buffer.resize(sz);
+
+			if (ilSaveL(type, buffer.data(), sz) != sz)
+				return false;
+
+			if (err = ilGetError(); err != IL_NO_ERROR)
+				return false;
+
+			nowide::fstream fstr(p, std::ios::out | std::ios::binary);
+			if (!fstr.is_open())
+				return false;
+
+			fstr.write(reinterpret_cast<const char*>(buffer.data()), buffer.size());
+			fstr.close();
+
+			return true;
+		};
+
+		switch (hashString(ext)) {
+			case hashString("bmp") : { success = SaveImage(IL_BMP, p); } break;
+			case hashString("jpg") : { success = SaveImage(IL_JPG, p); } break;
+			case hashString("png") : { success = SaveImage(IL_PNG, p); } break;
+			case hashString("tga") : { success = SaveImage(IL_TGA, p); } break;
+			case hashString("tif") : [[fallthrough]];
+			case hashString("tiff"): { success = SaveImage(IL_TIF, p); } break;
+			case hashString("dds") : { success  = SaveImage(IL_DDS, p); } break;
+			case hashString("pbm") : [[fallthrough]];
+			case hashString("pgm") : [[fallthrough]];
+			case hashString("ppm") : [[fallthrough]];
+			case hashString("pnm") : { success = SaveImage(IL_PNM, p); } break;
+			case hashString("hdr") : { success = SaveImage(IL_HDR, p); } break;
+			case hashString("raw") : { success = SaveImage(IL_RAW, p); } break;
+		}
 
 		return success;
 	}
@@ -1552,12 +1581,12 @@ bool CBitmap::Save(const std::string& filename, bool dontSaveAlpha, bool logged,
 	ilTexImage(xsize, ysize, 1, channels, Channels2Formats[channels], dataType, flippedCopy.GetRawMem());
 	assert(ilGetError() == IL_NO_ERROR);
 
-	if (dontSaveAlpha && (channels == 2 || channels == 4)) {
+	if (dontSaveAlpha && channels == 4) {
 		ilConvertImage(Channels2Formats[channels - 1], dataType);
 		assert(ilGetError() == IL_NO_ERROR);
 	}
 
-	const std::string& fsImageExt = FileSystem::GetExtension(filename);
+	const std::string& fsImageExt = FileSystem::GetExtensionLowerCase(filename);
 	const std::string& fsFullPath = dataDirsAccess.LocateFile(filename, FileQueryFlags::WRITE);
 	const std::wstring& ilFullPath = std::wstring(fsFullPath.begin(), fsFullPath.end());
 
@@ -1674,7 +1703,7 @@ bool CBitmap::SaveFloat(std::string const& filename) const
 
 	ITexMemPool::texMemPool->FreeRaw(reinterpret_cast<uint8_t*>(ctb), channels * xsize * ysize * sizeof(ConvertType));
 
-	const std::string fsImageExt = FileSystem::GetExtension(filename);
+	const std::string fsImageExt = FileSystem::GetExtensionLowerCase(filename);
 	const std::string fsFullPath = dataDirsAccess.LocateFile(filename, FileQueryFlags::WRITE);
 	const std::wstring ilFullPath = std::wstring(fsFullPath.begin(), fsFullPath.end());
 
@@ -1690,7 +1719,7 @@ bool CBitmap::SaveFloat(std::string const& filename) const
 
 
 #ifndef HEADLESS
-uint32_t CBitmap::CreateTexture(const TextureCreationParams& tcp) const
+uint32_t CBitmap::CreateTexture(const GL::TextureCreationParams& tcp) const
 {
 	RECOIL_DETAILED_TRACY_ZONE;
 	if (compressed)
@@ -1735,7 +1764,7 @@ static void HandleDDSMipmap(GLenum target, int32_t numEmbeddedLevels, uint32_t m
 		glGenerateMipmap(target);
 }
 
-uint32_t CBitmap::CreateDDSTexture(const TextureCreationParams& tcp) const
+uint32_t CBitmap::CreateDDSTexture(const GL::TextureCreationParams& tcp) const
 {
 	RECOIL_DETAILED_TRACY_ZONE;
 	glPushAttrib(GL_TEXTURE_BIT);
@@ -1813,12 +1842,12 @@ uint32_t CBitmap::CreateDDSTexture(const TextureCreationParams& tcp) const
 }
 #else  // !HEADLESS
 
-uint32_t CBitmap::CreateTexture(const TextureCreationParams& tcp) const {
+uint32_t CBitmap::CreateTexture(const GL::TextureCreationParams& tcp) const {
 	RECOIL_DETAILED_TRACY_ZONE;
 	return 0;
 }
 
-uint32_t CBitmap::CreateDDSTexture(const TextureCreationParams& tcp) const {
+uint32_t CBitmap::CreateDDSTexture(const GL::TextureCreationParams& tcp) const {
 	RECOIL_DETAILED_TRACY_ZONE;
 	return 0;
 }
@@ -1827,7 +1856,7 @@ uint32_t CBitmap::CreateDDSTexture(const TextureCreationParams& tcp) const {
 
 uint32_t CBitmap::CreateMipMapTexture(float aniso, float lodBias, int32_t reqNumLevels, uint32_t texID) const
 {
-	TextureCreationParams tcp;
+	GL::TextureCreationParams tcp;
 	tcp.texID = texID;
 	tcp.aniso = aniso;
 	tcp.lodBias = lodBias;
@@ -1874,7 +1903,7 @@ void CBitmap::Renormalize(const float3& newCol)
 #endif
 }
 
-void CBitmap::Blur(int iterations, float weight)
+void CBitmap::Blur(int iterations, float weight, int x, int y, int width, int height)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
 #ifndef HEADLESS
@@ -1883,7 +1912,7 @@ void CBitmap::Blur(int iterations, float weight)
 
 
 	auto action = BitmapAction::GetBitmapAction(this);
-	action->Blur(iterations, weight);
+	action->Blur(iterations, weight, x, y, width, height);
 #endif
 }
 
@@ -1928,14 +1957,29 @@ void CBitmap::CopySubImage(const CBitmap& src, int xpos, int ypos)
 
 	const uint8_t* srcMem = src.GetRawMem();
 	      uint8_t* dstMem =     GetRawMem();
-
 	const auto dts = GetDataTypeSize();
-	for (int y = 0; y < src.ysize; ++y) {
-		const int pixelDst = (((ypos + y) *     xsize) + xpos) * channels * dts;
-		const int pixelSrc = ((        y  * src.xsize) +    0) * channels * dts;
 
-		// copy the whole line
-		std::copy(&srcMem[pixelSrc], &srcMem[pixelSrc] + src.xsize * channels * dts, &dstMem[pixelDst]);
+	if (src.channels == channels) {
+		for (int y = 0; y < src.ysize; ++y) {
+			const int pixelDst = (((ypos + y) *     xsize) + xpos) * channels * dts;
+			const int pixelSrc = ((        y  * src.xsize) +    0) * channels * dts;
+
+			// copy the whole line
+			std::copy(&srcMem[pixelSrc], &srcMem[pixelSrc] + src.xsize * channels * dts, &dstMem[pixelDst]);
+		}
+	} else if (src.channels == 1 && channels == 4 && dts == 1 && src.GetDataTypeSize() == 1) {
+		// set rgb to 255 and alpha to src tex value
+		constexpr uint32_t baseColor = ((255<<16)|(255<<8)|(255));
+		uint32_t* dst32 = reinterpret_cast<uint32_t*>(dstMem);
+		for (int y = 0; y < src.ysize; ++y) {
+			const int pixelDst = (((ypos + y) *     xsize) + xpos) * dts;
+			const int pixelSrc = ((        y  * src.xsize) +    0) * src.channels * dts;
+			for (int x = 0; x < src.xsize; ++x) {
+				dst32[pixelDst+x] =  baseColor | (srcMem[pixelSrc+x]<<24);
+			}
+		}
+	} else {
+		LOG_L(L_WARNING, "CBitmap::CopySubImage channels/datasize mismatch!");
 	}
 }
 
@@ -1996,8 +2040,8 @@ CBitmap CBitmap::CreateRescaled(int newx, int newy) const
 		return bm;
 	}
 
-	if (channels != 4) {
-		LOG_L(L_WARNING, "CBitmap::CreateRescaled only works with RGBA data!");
+	if (channels > 4) {
+		LOG_L(L_WARNING, "CBitmap::CreateRescaled only works with up to four channels!");
 		CBitmap bm;
 		bm.AllocDummy();
 		return bm;
@@ -2089,24 +2133,4 @@ void CBitmap::ReverseYAxis()
 
 	ITexMemPool::texMemPool->Free(tmp, memSize);
 #endif
-}
-
-uint32_t TextureCreationParams::GetMinFilter(int32_t numLevels) const
-{
-	if (numLevels == 1) {
-		return linearTextureFilter ? GL_LINEAR : GL_NEAREST;
-	}
-	else {
-		if (linearMipMapFilter) {
-			return linearTextureFilter ? GL_LINEAR_MIPMAP_LINEAR : GL_NEAREST_MIPMAP_NEAREST;
-		}
-		else {
-			return linearTextureFilter ? GL_LINEAR_MIPMAP_NEAREST : GL_NEAREST_MIPMAP_NEAREST;
-		}
-	}
-}
-
-uint32_t TextureCreationParams::GetMagFilter() const
-{
-	return linearTextureFilter ? GL_LINEAR : GL_NEAREST;
 }

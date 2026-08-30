@@ -74,6 +74,8 @@ public: // call-ins
 
 	void ShockFront(const float3& pos, float power, float areaOfEffect, const float* distMod = NULL);
 
+	static int GetWatchExplosionDef(lua_State* L);
+	static int SetWatchExplosionDef(lua_State* L);
 protected:
 	CLuaUI();
 	virtual ~CLuaUI();
@@ -81,7 +83,6 @@ protected:
 	string LoadFile(const string& name, const std::string& mode) const;
 
 	bool LoadCFunctions(lua_State* L);
-	void InitLuaSocket(lua_State* L);
 
 	bool BuildCmdDescTable(lua_State* L, const vector<SCommandDescription>& cmds);
 	bool GetLuaIntMap(lua_State* L, int index, spring::unordered_map<int, int>& intList);

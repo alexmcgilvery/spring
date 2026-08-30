@@ -16,7 +16,7 @@
 #include <variant>
 #include <span>
 
-#include "lib/fmt/format.h"
+#include <fmt/format.h>
 
 #include "LuaOpenGL.h"
 
@@ -58,7 +58,8 @@
 #include "Rendering/Env/MapRendering.h"
 #include "Rendering/GL/glExtra.h"
 #include "Rendering/GL/TexBind.h"
-#include "Rendering/Models/3DModel.h"
+#include "Rendering/Models/3DModelMisc.hpp"
+#include "Rendering/Models/3DModelPiece.hpp"
 #include "Rendering/Shaders/Shader.h"
 #include "Rendering/Textures/Bitmap.h"
 #include "Rendering/Textures/TextureAtlas.h"
@@ -83,8 +84,11 @@
 CONFIG(bool, LuaShaders).defaultValue(true).headlessValue(false).safemodeValue(false);
 CONFIG(int, DeprecatedGLWarnLevel).defaultValue(0).headlessValue(0).safemodeValue(0);
 
-/***
- * Lua OpenGL API
+/*** Callouts for OpenGL API
+ *
+ * Only setters and getters for OpenGL usage in Recoil, see `GL` for constants.
+ *
+ * @see GL
  * @table gl
  */
 
@@ -133,6 +137,8 @@ std::unordered_map<GLenum, std::string> LuaOpenGL::fixedStateEnumToString = {
 
 		FillFixedStateEnumToString(GL_FLAT),
 		FillFixedStateEnumToString(GL_SMOOTH),
+
+		FillFixedStateEnumToString(GL_POINT_SMOOTH),
 
 		FillFixedStateEnumToString(GL_FRONT),
 		FillFixedStateEnumToString(GL_BACK),
@@ -1181,6 +1187,7 @@ int LuaOpenGL::GetNumber(lua_State* L)
  * Get a string describing the current OpenGL connection.
  * @function gl.GetString
  * @param pname GL
+ * @return string value `"[NULL]"` if the driver returns no string for `pname`.
  */
 int LuaOpenGL::GetString(lua_State* L)
 {
@@ -1248,7 +1255,7 @@ int LuaOpenGL::GetViewRange(lua_State* L)
 
 
 /***
- * @function gl.SetSlaveMode
+ * @function gl.SlaveMiniMap
  * @param newMode boolean
  */
 int LuaOpenGL::SlaveMiniMap(lua_State* L)
@@ -1324,13 +1331,26 @@ int LuaOpenGL::DrawMiniMap(lua_State* L)
 ******************************************************************************/
 
 
-/***
+/*** Begin a block of text commands.
+ *
  * @function gl.BeginText
+ *
+ * Text can be drawn without Start/End, but when doing several operations it's more optimal
+ * if done inside a block.
+ *
+ * Also allows disabling automatic setting of the blend mode. Otherwise the font will always print
+ * with `BlendFunc(GL.SRC_ALPHA, GL.ONE_MINUS_SRC_ALPHA)`.
+ *
+ * @param userDefinedBlending boolean? When `true` doesn't set the gl.BlendFunc automatically. Defaults to `false`.
+ *
+ * @see gl.BlendFunc
+ * @see gl.BlendFuncSeparate
  */
 int LuaOpenGL::BeginText(lua_State* L)
 {
 	CheckDrawingEnabled(L, __func__);
-	font->Begin();
+	auto userDefinedBlending = luaL_optboolean(L, 2, false);
+	font->Begin(userDefinedBlending);
 	return 0;
 }
 
@@ -1350,7 +1370,7 @@ int LuaOpenGL::EndText(lua_State* L)
  * @param text string
  * @param x number
  * @param y number
- * @param size number
+ * @param size number?
  * @param options string? concatenated string of option characters.
  *
  *   - horizontal alignment:
@@ -2046,8 +2066,8 @@ int LuaOpenGL::DrawFuncAtUnit(lua_State* L)
  * @param radius number
  * @param resolution integer
  * @param slope number
- * @param gravity number
- * @param weaponDefID integer
+ * @param gravity number?
+ * @param weaponDefID integer?
  */
 int LuaOpenGL::DrawGroundCircle(lua_State* L)
 {
@@ -2090,7 +2110,7 @@ int LuaOpenGL::DrawGroundCircle(lua_State* L)
 
 
 /***
- * @function gl.DrawGroundCircle
+ * @function gl.DrawGroundQuad
  * @param x0 number
  * @param z0 number
  * @param x1 number
@@ -2099,7 +2119,7 @@ int LuaOpenGL::DrawGroundCircle(lua_State* L)
  * @param useTxcd boolean? (Default: `false`)
  */
 /***
- * @function gl.DrawGroundCircle
+ * @function gl.DrawGroundQuad
  * @param x0 number
  * @param z0 number
  * @param x1 number
@@ -2215,6 +2235,7 @@ int LuaOpenGL::DrawGroundQuad(lua_State* L)
 
 /***
  * @class VertexData
+ * @x_helper
  * @field vert xyz?
  * @field v xyz? Short for `vert`.
  * @field norm float3?
@@ -2805,7 +2826,7 @@ int LuaOpenGL::Rect(lua_State* L)
 
 
 /***
- * @function gl.Rect
+ * @function gl.TexRect
  * @param x1 number
  * @param y1 number
  * @param x2 number
@@ -2814,7 +2835,7 @@ int LuaOpenGL::Rect(lua_State* L)
  * @param flipTCoords boolean?
  */
 /***
- * @function gl.Rect
+ * @function gl.TexRect
  * @param x1 number
  * @param y1 number
  * @param x2 number
@@ -2881,10 +2902,10 @@ int LuaOpenGL::TexRect(lua_State* L)
 
 /***
  * @function gl.DispatchCompute
- * @param numGroupX integer
+ * @param numGroupX integer?
  * @param numGroupY integer
  * @param numGroupZ integer
- * @param barriers integer? (Default: `4`)
+ * @param barriers integer? (Default: `0`)
  */
 int LuaOpenGL::DispatchCompute(lua_State* L)
 {
@@ -2902,14 +2923,14 @@ int LuaOpenGL::DispatchCompute(lua_State* L)
 
 	static std::array<GLint, 3> maxNumGroups = maxCompWGFunc();
 
-	if (numGroupX < 0 && numGroupX > maxNumGroups[0] ||
-		numGroupY < 0 && numGroupY > maxNumGroups[1] ||
-		numGroupZ < 0 && numGroupZ > maxNumGroups[2])
-		luaL_error(L, "%s Incorrect number of work groups specified x: 0 > %d < %d; y: 0 > %d < %d; z: 0 > %d < %d", __func__, numGroupX, maxNumGroups[0], numGroupY, maxNumGroups[1], numGroupZ, maxNumGroups[2]);
+	if (numGroupX > maxNumGroups[0] ||
+		numGroupY > maxNumGroups[1] ||
+		numGroupZ > maxNumGroups[2])
+		luaL_error(L, "%s: work groups count exceeds GL_MAX_COMPUTE_WORK_GROUP_COUNT. (x=%u > %d, y=%u > %d, z=%u > %d)", __func__, numGroupX, maxNumGroups[0], numGroupY, maxNumGroups[1], numGroupZ, maxNumGroups[2]);
 
 	glDispatchCompute(numGroupX, numGroupY, numGroupZ);
 
-	GLbitfield barriers = (GLbitfield)luaL_optint(L, 1, 4);
+	GLbitfield barriers = (GLbitfield)luaL_optint(L, 4, 0);
 	//skip checking the correctness of values :)
 
 	if (barriers > 0u)
@@ -2993,6 +3014,7 @@ int LuaOpenGL::Color(lua_State* L)
 
 /***
  * @class Material
+ * @x_helper
  * @field shininess number
  * @field ambidiff rgb|rgba
  * @field ambient rgb|rgba
@@ -4069,6 +4091,7 @@ int LuaOpenGL::Texture(lua_State* L)
 
 /***
  * @class Texture
+ * @x_helper
  * @field target GL?
  * @field format integer?
  * @field min_filter GL?
@@ -4272,6 +4295,7 @@ int LuaOpenGL::DeleteTextureFBO(lua_State* L)
 
 /***
  * @class TextureInfo
+ * @x_helper
  * @field xsize integer
  * @field ysize integer
  * @field zsize integer
@@ -4293,14 +4317,14 @@ int LuaOpenGL::TextureInfo(lua_State* L)
 
 	lua_createtable(L, 0, 5);
 	const auto [xsize, ysize, zsize] = tex.GetSize();
-	HSTR_PUSH_NUMBER(L, "xsize", xsize)
-	HSTR_PUSH_NUMBER(L, "ysize", ysize)
-	HSTR_PUSH_NUMBER(L, "zsize", zsize)
+	LuaPushNamedNumber(L, "xsize", xsize);
+	LuaPushNamedNumber(L, "ysize", ysize);
+	LuaPushNamedNumber(L, "zsize", zsize);
 
-	HSTR_PUSH_NUMBER(L, "id"    , tex.GetTextureID());
-	HSTR_PUSH_NUMBER(L, "target", tex.GetTextureTarget());
-	// HSTR_PUSH_BOOL(L,   "alpha", texInfo.alpha);  FIXME
-	// HSTR_PUSH_NUMBER(L, "type",  texInfo.type);
+	LuaPushNamedNumber(L, "id"    , tex.GetTextureID());
+	LuaPushNamedNumber(L, "target", tex.GetTextureTarget());
+	// LuaPushNamedBool  (L, "alpha", texInfo.alpha); // FIXME
+	// LuaPushNamedNumber(L, "type", texInfo.type);
 	return 1;
 }
 
@@ -4467,13 +4491,13 @@ int LuaOpenGL::ActiveTexture(lua_State* L)
 
 
 /***
- * @function gl.TextEnv
+ * @function gl.TexEnv
  * @param target GL
  * @param pname GL
  * @param value number
  */
 /***
- * @function gl.TextEnv
+ * @function gl.TexEnv
  * @param target GL
  * @param pname GL
  * @param r number? (Default: `0.0`)
@@ -4515,7 +4539,7 @@ int LuaOpenGL::TexEnv(lua_State* L)
  * @param texNum integer
  * @param target GL
  * @param pname GL
- * @param value number
+ * @param value number?
  */
 /***
  * @function gl.MultiTexEnv
@@ -4586,7 +4610,7 @@ static void SetTexGenState(GLenum target, bool state)
  * @function gl.TexGen
  * @param target GL
  * @param pname GL
- * @param value number
+ * @param value number?
  */
 /***
  * @function gl.TexGen
@@ -4646,7 +4670,7 @@ int LuaOpenGL::TexGen(lua_State* L)
  * @param texNum integer
  * @param target GL
  * @param pname GL
- * @param value number
+ * @param value number?
  */
 /***
  * @function gl.MultiTexGen
@@ -4708,12 +4732,30 @@ int LuaOpenGL::MultiTexGen(lua_State* L)
 
 /***
  * @function gl.BindImageTexture
+ * 
+ * For format parameters refer to
+ * https://registry.khronos.org/OpenGL-Refpages/gl4/html/glBindImageTexture.xhtml
+ * and
+ * https://recoilengine.org/docs/lua-api/#GL.RGBA32F and further
+ * 
+ * Example uses
+ * local my_texture_id = gl.CreateTexture(...)
+ * 
+ * -- bind layer 1 of my_texture_id if it supports layered bindings to image unit 0
+ * gl.BindImageTexture(0, my_texture_id, 0, 1, GL.READ_WRITE, GL.RGBA16F)
+ * 
+ * -- bind all layers of my_texture_id if it supports layered bindings to image unit 0
+ * gl.BindImageTexture(0, my_texture_id, 0, nil, GL.READ_WRITE, GL.RGBA16F)
+ * 
+ * -- unbind any texture attached to image unit 0
+ * gl.BindImageTexture(0, nil, nil, nil, nil, GL.RGBA16F)
+ * 
  * @param unit integer
- * @param texID string?
- * @param level integer?
- * @param layer integer?
- * @param access integer?
- * @param format integer?
+ * @param texID nil | string (nil breaks any existing binding to the image unit)
+ * @param level nil | integer (Default: 0)
+ * @param layer nil | integer (nil binds the entire texture(array/cube), an integer binds a specific layer, ignored by gl if the texture does not support layered bindings)
+ * @param access GL? (Default: GL.READ_WRITE) Accepts `GL.READ_ONLY`, `GL.WRITE_ONLY` or `GL.READ_WRITE`.
+ * @param format integer (Example: GL.RGBA16F)
  */
 int LuaOpenGL::BindImageTexture(lua_State* L)
 {
@@ -4759,15 +4801,15 @@ int LuaOpenGL::BindImageTexture(lua_State* L)
 	++argNum;
 	//layer
 	GLint layer = 0;
-	GLboolean layered = GL_FALSE;
+	GLboolean layered = GL_TRUE;
 	if (!lua_isnil(L, argNum)) {
 		layer = luaL_optnumber(L, argNum, 0);
-		layered = GL_TRUE;
+		layered = GL_FALSE;
 	}
 
 	++argNum;
 	//access
-	GLenum access = luaL_optnumber(L, argNum, 0);
+	GLenum access = luaL_optnumber(L, argNum, GL_READ_WRITE);
 	if (access != GL_READ_ONLY && access != GL_WRITE_ONLY && access != GL_READ_WRITE)
 		luaL_error(L, "%s Invalid access specified %d. The access must be GL_READ_ONLY or GL_WRITE_ONLY or GL_READ_WRITE.", __func__, access);
 
@@ -4966,7 +5008,7 @@ int LuaOpenGL::GetAtlasTexture(lua_State* L)
 
 	const std::string subAtlasTexName = luaL_checksstring(L, 2);
 
-	AtlasedTexture atlTex = atlas->GetTexture(subAtlasTexName);
+	auto atlTex = atlas->GetTexture(subAtlasTexName);
 	if (atlTex == AtlasedTexture::DefaultAtlasTexture)
 		luaL_error(L, "gl.%s() Invalid atlas named texture specified %s", __func__, subAtlasTexName.c_str());
 
@@ -4974,7 +5016,8 @@ int LuaOpenGL::GetAtlasTexture(lua_State* L)
 	lua_pushnumber(L, atlTex.x2);
 	lua_pushnumber(L, atlTex.y1);
 	lua_pushnumber(L, atlTex.y2);
-	return 4;
+	lua_pushnumber(L, atlTex.pageNum);
+	return 5;
 }
 
 /***
@@ -5031,6 +5074,10 @@ int LuaOpenGL::GetEngineAtlasTextures(lua_State* L) {
 /******************************************************************************/
 
 
+/***
+ * @function gl.Clear
+ * @param bits GL any buffer bit mask (e.g. `GL.STENCIL_BUFFER_BIT`). Clears with current/default values.
+ */
 /***
  * @function gl.Clear
  * @param bits GL `GL.DEPTH_BUFFER_BIT` or `GL.STENCIL_BUFFER_BIT`.
@@ -5397,6 +5444,7 @@ int LuaOpenGL::LoadIdentity(lua_State* L)
 
 /***
  * @class Matrix4x4
+ * @x_helper
  * @field [1] number Element at [1,1]
  * @field [2] number Element at [1,2]
  * @field [3] number Element at [1,3]
@@ -5724,7 +5772,7 @@ int LuaOpenGL::GetMatrixData(lua_State* L)
 int LuaOpenGL::PushAttrib(lua_State* L)
 {
 	CheckDrawingEnabled(L, __func__);
-	int mask = luaL_optnumber(L, 1, GL_ALL_ATTRIB_BITS);
+	int mask = luaL_optnumber(L, 1, static_cast<lua_Number>(GL_ALL_ATTRIB_BITS));
 	if (mask < 0) {
 		mask = -mask;
 		mask |= GL_ALL_ATTRIB_BITS;
@@ -5802,9 +5850,9 @@ int LuaOpenGL::GetFixedState(lua_State* L)
 		GLint val = 0; glGetIntegerv(key, &val); \
 		if (toStr) { \
 			auto strIter = fixedStateEnumToString.find(val); \
-			HSTR_PUSH_STRING(L, #key, strIter != fixedStateEnumToString.end() ? strIter->second : fixedStateEnumToStringUnk); \
+			LuaPushNamedString(L, #key, strIter != fixedStateEnumToString.end() ? strIter->second : fixedStateEnumToStringUnk); \
 		} else { \
-			HSTR_PUSH_NUMBER(L, #key, val); \
+			LuaPushNamedNumber(L, #key, val); \
 		}; \
 	}
 
@@ -5848,10 +5896,10 @@ int LuaOpenGL::GetFixedState(lua_State* L)
 			glGetIntegerv(GL_SCISSOR_BOX, rect);
 
 			lua_createtable(L, 0, 4);
-			HSTR_PUSH_NUMBER(L, "GL_SCISSOR_BOX_X", rect[0]);
-			HSTR_PUSH_NUMBER(L, "GL_SCISSOR_BOX_Y", rect[1]);
-			HSTR_PUSH_NUMBER(L, "GL_SCISSOR_BOX_W", rect[2]);
-			HSTR_PUSH_NUMBER(L, "GL_SCISSOR_BOX_H", rect[3]);
+			LuaPushNamedNumber(L, "GL_SCISSOR_BOX_X", rect[0]);
+			LuaPushNamedNumber(L, "GL_SCISSOR_BOX_Y", rect[1]);
+			LuaPushNamedNumber(L, "GL_SCISSOR_BOX_W", rect[2]);
+			LuaPushNamedNumber(L, "GL_SCISSOR_BOX_H", rect[3]);
 
 			return 2;
 		} break;
@@ -5868,10 +5916,10 @@ int LuaOpenGL::GetFixedState(lua_State* L)
 			glGetBooleanv(GL_COLOR_WRITEMASK, mask);
 
 			lua_createtable(L, 0, 4);
-			HSTR_PUSH_BOOL(L, "GL_COLOR_WRITEMASK_R", mask[0]);
-			HSTR_PUSH_BOOL(L, "GL_COLOR_WRITEMASK_G", mask[1]);
-			HSTR_PUSH_BOOL(L, "GL_COLOR_WRITEMASK_B", mask[2]);
-			HSTR_PUSH_BOOL(L, "GL_COLOR_WRITEMASK_A", mask[3]);
+			LuaPushNamedBool(L, "GL_COLOR_WRITEMASK_R", mask[0]);
+			LuaPushNamedBool(L, "GL_COLOR_WRITEMASK_G", mask[1]);
+			LuaPushNamedBool(L, "GL_COLOR_WRITEMASK_B", mask[2]);
+			LuaPushNamedBool(L, "GL_COLOR_WRITEMASK_A", mask[3]);
 
 			return 1;
 		} break;
@@ -5903,7 +5951,7 @@ int LuaOpenGL::GetFixedState(lua_State* L)
 
 			lua_createtable(L, 0, 2);
 			PushFixedState(GL_ALPHA_TEST_FUNC);
-			HSTR_PUSH_NUMBER(L, "GL_ALPHA_TEST_REF", alphaRef);
+			LuaPushNamedNumber(L, "GL_ALPHA_TEST_REF", alphaRef);
 
 			return 2;
 		} break;
@@ -5923,14 +5971,14 @@ int LuaOpenGL::GetFixedState(lua_State* L)
 			glGetFloatv(GL_FOG_END, &fogEnd);
 
 			lua_createtable(L, 0, 8);
-			HSTR_PUSH_NUMBER(L, "GL_FOG_COLOR_R", fogColor[0]);
-			HSTR_PUSH_NUMBER(L, "GL_FOG_COLOR_G", fogColor[1]);
-			HSTR_PUSH_NUMBER(L, "GL_FOG_COLOR_B", fogColor[2]);
-			HSTR_PUSH_NUMBER(L, "GL_FOG_COLOR_A", fogColor[3]);
+			LuaPushNamedNumber(L, "GL_FOG_COLOR_R", fogColor[0]);
+			LuaPushNamedNumber(L, "GL_FOG_COLOR_G", fogColor[1]);
+			LuaPushNamedNumber(L, "GL_FOG_COLOR_B", fogColor[2]);
+			LuaPushNamedNumber(L, "GL_FOG_COLOR_A", fogColor[3]);
 
-			HSTR_PUSH_NUMBER(L, "GL_FOG_DENSITY", fogDensity);
-			HSTR_PUSH_NUMBER(L, "GL_FOG_START", fogStart);
-			HSTR_PUSH_NUMBER(L, "GL_FOG_END", fogEnd);
+			LuaPushNamedNumber(L, "GL_FOG_DENSITY", fogDensity);
+			LuaPushNamedNumber(L, "GL_FOG_START",   fogStart);
+			LuaPushNamedNumber(L, "GL_FOG_END",     fogEnd);
 
 			PushFixedState(GL_FOG_MODE);
 
@@ -5960,8 +6008,8 @@ int LuaOpenGL::GetFixedState(lua_State* L)
 			glGetIntegerv(GL_LINE_STIPPLE_REPEAT, &strippleRepeat);
 
 			lua_createtable(L, 0, 2);
-			HSTR_PUSH_NUMBER(L, "GL_LINE_STIPPLE_PATTERN", stripplePattern);
-			HSTR_PUSH_NUMBER(L, "GL_LINE_STIPPLE_REPEAT", strippleRepeat);
+			LuaPushNamedNumber(L, "GL_LINE_STIPPLE_PATTERN", stripplePattern);
+			LuaPushNamedNumber(L, "GL_LINE_STIPPLE_REPEAT",  strippleRepeat);
 
 			return 1;
 		} break;
@@ -5981,11 +6029,11 @@ int LuaOpenGL::GetFixedState(lua_State* L)
 			glGetFloatv(GL_POLYGON_OFFSET_UNITS, &offsetDensity);
 
 			lua_createtable(L, 0, 5);
-			HSTR_PUSH_BOOL(L, "GL_POLYGON_OFFSET_FILL", glIsEnabled(GL_POLYGON_OFFSET_FILL));
-			HSTR_PUSH_BOOL(L, "GL_POLYGON_OFFSET_LINE", glIsEnabled(GL_POLYGON_OFFSET_LINE));
-			HSTR_PUSH_BOOL(L, "GL_POLYGON_OFFSET_POINT", glIsEnabled(GL_POLYGON_OFFSET_POINT));
-			HSTR_PUSH_NUMBER(L, "GL_POLYGON_OFFSET_FACTOR", offsetFactor);
-			HSTR_PUSH_NUMBER(L, "GL_POLYGON_OFFSET_UNITS", offsetDensity);
+			LuaPushNamedBool  (L, "GL_POLYGON_OFFSET_FILL",   glIsEnabled(GL_POLYGON_OFFSET_FILL));
+			LuaPushNamedBool  (L, "GL_POLYGON_OFFSET_LINE",   glIsEnabled(GL_POLYGON_OFFSET_LINE));
+			LuaPushNamedBool  (L, "GL_POLYGON_OFFSET_POINT",  glIsEnabled(GL_POLYGON_OFFSET_POINT));
+			LuaPushNamedNumber(L, "GL_POLYGON_OFFSET_FACTOR", offsetFactor);
+			LuaPushNamedNumber(L, "GL_POLYGON_OFFSET_UNITS",  offsetDensity);
 
 			return 2;
 		} break;
@@ -6002,12 +6050,12 @@ int LuaOpenGL::GetFixedState(lua_State* L)
 			glGetIntegerv(GL_STENCIL_VALUE_MASK, &stencilValueMask);
 
 			lua_createtable(L, 0, 8);
-			HSTR_PUSH_NUMBER(L, "GL_STENCIL_WRITEMASK", stencilWriteMask);
+			LuaPushNamedNumber(L, "GL_STENCIL_WRITEMASK", stencilWriteMask);
 
-			HSTR_PUSH_NUMBER(L, "GL_STENCIL_BITS", stencilBits);
+			LuaPushNamedNumber(L, "GL_STENCIL_BITS", stencilBits);
 
-			HSTR_PUSH_NUMBER(L, "GL_STENCIL_VALUE_MASK", stencilValueMask);
-			HSTR_PUSH_NUMBER(L, "GL_STENCIL_REF", stencilValueMask);
+			LuaPushNamedNumber(L, "GL_STENCIL_VALUE_MASK", stencilValueMask);
+			LuaPushNamedNumber(L, "GL_STENCIL_REF", stencilValueMask);
 
 			PushFixedState(GL_STENCIL_FUNC);
 
@@ -6021,9 +6069,9 @@ int LuaOpenGL::GetFixedState(lua_State* L)
 				GLint stencilBackRef;
 				glGetIntegerv(GL_STENCIL_BACK_REF, &stencilBackRef);
 
-				HSTR_PUSH_NUMBER(L, "GL_STENCIL_BACK_WRITEMASK", stencilBackWriteMask);
-				HSTR_PUSH_NUMBER(L, "GL_STENCIL_BACK_VALUE_MASK", stencilBackValueMask);
-				HSTR_PUSH_NUMBER(L, "GL_STENCIL_BACK_REF", stencilBackRef);
+				LuaPushNamedNumber(L, "GL_STENCIL_BACK_WRITEMASK", stencilBackWriteMask);
+				LuaPushNamedNumber(L, "GL_STENCIL_BACK_VALUE_MASK", stencilBackValueMask);
+				LuaPushNamedNumber(L, "GL_STENCIL_BACK_REF", stencilBackRef);
 
 				PushFixedState(GL_STENCIL_BACK_FUNC);
 			}
@@ -6048,6 +6096,17 @@ int LuaOpenGL::GetFixedState(lua_State* L)
 
 			return 2;
 		} break;
+		case hashString("pointSmooth"):
+		case hashString("pointsmooth"): {
+			CondWarnDeprecatedGL(L, __func__);
+
+			GLboolean pointSmoothFlag;
+
+			glGetBooleanv(GL_POINT_SMOOTH, &pointSmoothFlag);
+			lua_pushnumber(L, pointSmoothFlag);
+
+			return 1;
+		} break;
 		default: {
 			luaL_error(L, "Incorrect first argument (%s) to gl.GetFixedState", param);
 		};
@@ -6065,6 +6124,7 @@ int LuaOpenGL::GetFixedState(lua_State* L)
  * @function gl.CreateList
  * @param func fun()
  * @param ... any Arguments to the function.
+ * @return integer listID `0` if the list could not be generated or `func` errored.
  */
 int LuaOpenGL::CreateList(lua_State* L)
 {
@@ -6342,10 +6402,11 @@ int LuaOpenGL::ReadPixels(lua_State* L)
 
 /***
  * @class SaveImageOptions
- * @field alpha boolean (Default: `false`)
- * @field yflip boolean (Default: `true`)
- * @field grayscale16bit boolean (Default: `false`)
- * @field readbuffer GL (Default: current read buffer)
+ * @x_helper
+ * @field alpha boolean? (Default: `false`)
+ * @field yflip boolean? (Default: `true`)
+ * @field grayscale16bit boolean? (Default: `false`)
+ * @field readbuffer GL? (Default: current read buffer)
  */
 
 /***
@@ -7026,7 +7087,7 @@ int LuaOpenGL::ObjectLabel(lua_State* L) {
  * @function gl.PushDebugGroup 
  * @param id integer A numeric identifier for the group, can be any unique number.
  * @param message string A human-readable string describing the debug group. Will be truncated if longer than driver-specific limit
- * @param sourceIsThirdParty boolean Set the source tag, true for GL_DEBUG_SOURCE_THIRD_PARTY, false for GL_DEBUG_SOURCE_APPLICATION. default false
+ * @param sourceIsThirdParty boolean? Set the source tag, true for GL_DEBUG_SOURCE_THIRD_PARTY, false for GL_DEBUG_SOURCE_APPLICATION. default false
  * @return nil
  */
 int LuaOpenGL::PushDebugGroup(lua_State* L) {

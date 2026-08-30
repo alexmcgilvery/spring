@@ -3,6 +3,8 @@
 #include "System/float3.h"
 
 #include <algorithm>
+#include <cstring>
+#include <format>
 
 #include "System/creg/creg_cond.h"
 #include "System/SpringMath.h"
@@ -13,6 +15,11 @@ CR_REG_METADATA(float3, (CR_MEMBER(x), CR_MEMBER(y), CR_MEMBER(z)))
 //! gets initialized later when the map is loaded
 float float3::maxxpos = -1.0f;
 float float3::maxzpos = -1.0f;
+
+std::string float3::str() const
+{
+	return std::format("float3({:.3f}, {:.3f}, {:.3f})", x, y, z);
+}
 
 float3 float3::PickNonParallel() const
 {
@@ -83,6 +90,11 @@ float3 float3::sign(const float3 v)
 bool float3::equals(const float3& f, const float3& eps) const
 {
 	return (epscmp(x, f.x, eps.x) && epscmp(y, f.y, eps.y) && epscmp(z, f.z, eps.z));
+}
+
+bool float3::binarySame(const float3& f) const
+{
+	return !std::memcmp(&x, &f.x, sizeof(float3));
 }
 
 float3 float3::snapToAxis() const {

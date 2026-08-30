@@ -12,7 +12,7 @@
 #include "lib/sol2/forward.hpp"
 
 #include "Rendering/GL/myGL.h"
-#include "Rendering/Models/3DModelVAO.h"
+#include "Rendering/Models/3DModelVAO.hpp"
 
 class VBO;
 class LuaVAOImpl;
@@ -52,6 +52,9 @@ public:
 	int UnbindBufferRange(const GLuint index, const sol::optional<int> elemOffsetOpt, const sol::optional<int> elemCountOpt, const sol::optional<GLenum> targetOpt);
 
 	void DumpDefinition();
+
+	bool CopyTo(const std::shared_ptr<LuaVBOImpl>& destVBO, int copySizeInBytes);
+
 	uint32_t GetID() const;
 public:
 	static bool Supported(GLenum target);
@@ -78,13 +81,13 @@ private:
 	inline void InstanceBufferCheckAndFormatCheck(int attrID, const char* func);
 
 	template<typename TObj>
-	static SInstanceData InstanceDataFromGetData(int id, int attrID, uint8_t defTeamID);
+	static SInstanceData InstanceDataFromGetData(int id, int attrID, uint16_t defPaletteIndex);
 
 	template<typename TObj>
-	size_t InstanceDataFromImpl(int id, int attrID, uint8_t defTeamID, const sol::optional<int>& elemOffsetOpt);
+	size_t InstanceDataFromImpl(int id, int attrID, uint16_t defPaletteIndex, const sol::optional<int>& elemOffsetOpt);
 
 	template<typename TObj>
-	size_t InstanceDataFromImpl(const sol::stack_table& ids, int attrID, uint8_t defTeamID, const sol::optional<int>& elemOffsetOpt);
+	size_t InstanceDataFromImpl(const sol::stack_table& ids, int attrID, uint16_t defPaletteIndex, const sol::optional<int>& elemOffsetOpt);
 
 	template<typename Iterable>
 	size_t MatrixDataFromProjectileIDsImpl(const Iterable& ids, int attrID, sol::optional<int> elemOffsetOpt, const char* func);

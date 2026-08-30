@@ -25,6 +25,8 @@ class LuaUnsyncedCtrl {
 		static int SendMessageToAllyTeam(lua_State* L);
 		static int SendMessageToSpectators(lua_State* L);
 
+		static int RequestStartPosition(lua_State* L);
+
 		static int SendPublicChat(lua_State* L);
 		static int SendAllyChat(lua_State* L);
 		static int SendSpectatorChat(lua_State* L);
@@ -66,6 +68,10 @@ class LuaUnsyncedCtrl {
 
 		static int SetTeamColor(lua_State* L);
 
+		static int SetCustomPaletteColor(lua_State* L);
+		static int SetUnitPaletteIndex(lua_State* L);
+		static int SetFeaturePaletteIndex(lua_State* L);
+
 		static int AssignMouseCursor(lua_State* L);
 		static int ReplaceMouseCursor(lua_State* L);
 
@@ -77,6 +83,7 @@ class LuaUnsyncedCtrl {
 		static int SetDrawGround(lua_State* L);
 		static int SetDrawGroundDeferred(lua_State* L);
 		static int SetDrawModelsDeferred(lua_State* L);
+		static int SetEngineBuildSquareRendering(lua_State* L);
 		static int SetVideoCapturingMode(lua_State* L);
 		static int SetVideoCapturingTimeOffset(lua_State* L);
 
@@ -112,6 +119,7 @@ class LuaUnsyncedCtrl {
 		static int AddUnitIcon(lua_State* L);
 		static int FreeUnitIcon(lua_State* L);
 		static int SetUnitIconDraw(lua_State* L);
+		static int SetUnitIcon(lua_State* L);
 		static int UnitIconSetDraw(lua_State* L);
 
 		static int ExtractModArchiveFile(lua_State* L);
@@ -218,6 +226,8 @@ class LuaUnsyncedCtrl {
 		static int SetGroundDecalTint(lua_State* L);
 		static int SetGroundDecalMisc(lua_State* L);
 		static int SetGroundDecalCreationFrame(lua_State* L);
+		static int SetGroundDecalGlowParams(lua_State* L);
+		static int SetGroundDecalUserData(lua_State* L);
 
 		static int SDLSetTextInputRect(lua_State* L);
 		static int SDLStartTextInput(lua_State* L);

@@ -305,6 +305,33 @@ void CMouseHandler::MouseMove(int x, int y, int dx, int dy)
 }
 
 
+void CMouseHandler::SetButtonEmulated(int button, bool pressed)
+{
+	if (button < 1 || button > NUM_BUTTONS)
+		return;
+
+	const bool physicalDown = (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON(button)) != 0;
+	const bool wasDown = physicalDown || buttons[button].emulated;
+
+	buttons[button].emulated = pressed;
+
+	// fire only on an effective (physical-or-emulated) edge, so a real press
+	// underneath an emulated one doesn't produce a duplicate event
+	if (pressed && !wasDown) {
+		MousePress(lastx, lasty, button);
+	} else if (!pressed && wasDown && !physicalDown) {
+		MouseRelease(lastx, lasty, button);
+	}
+}
+
+
+void CMouseHandler::ClearEmulatedButtons()
+{
+	for (int button = 1; button <= NUM_BUTTONS; ++button)
+		buttons[button].emulated = false;
+}
+
+
 void CMouseHandler::MousePress(int x, int y, int button)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -334,6 +361,24 @@ void CMouseHandler::MousePress(int x, int y, int button)
 
 	pressedBitMask |= 1 << button;
 
+	const bool isXButton = (button == SDL_BUTTON_X1 || button == SDL_BUTTON_X2);
+	if (isXButton) {
+
+		// 1. Lua first
+		if (luaInputReceiver->MousePress(x, y, button)) {
+			return;
+		}
+
+		// 2. GameInputReceiver via the same path as mouse buttons
+		auto activeControllerReceiver = (activeController == nullptr) ? nullptr : activeController->GetInputReceiver();
+		if (activeControllerReceiver && activeControllerReceiver->MousePress(x, y, button)) {
+			// NOTE: X‑buttons bypass ownership so they can be pressed/released without stealing or confusing activeReceiver
+			return;
+		}
+		return;
+	}
+
+
 	if (activeReceiver != nullptr && activeReceiver->MousePress(x, y, button))
 		return;
 
@@ -342,22 +387,8 @@ void CMouseHandler::MousePress(int x, int y, int button)
 		return;
 	}
 
-	// limited receivers for MMB
-	if (button == SDL_BUTTON_MIDDLE) {
-		if (!locked) {
-			if (luaInputReceiver->MousePress(x, y, button)) {
-				activeReceiver = luaInputReceiver;
-				return;
-			}
-			if ((minimap != nullptr) && minimap->FullProxy()) {
-				if (minimap->MousePress(x, y, button)) {
-					activeReceiver = minimap;
-					return;
-				}
-			}
-		}
+	if (button == SDL_BUTTON_MIDDLE && locked)
 		return;
-	}
 
 	if (luaInputReceiver->MousePress(x, y, button)) {
 		if (activeReceiver == nullptr)
@@ -371,10 +402,20 @@ void CMouseHandler::MousePress(int x, int y, int button)
 				if (activeReceiver == nullptr)
 					activeReceiver = recv;
 
-				break;
+				return;
 			}
 		}
 
+	}
+
+	auto activeControllerReceiver = (activeController == nullptr) ? nullptr : activeController->GetInputReceiver();
+	if (button >= ACTION_BUTTON_MIN && activeControllerReceiver && activeControllerReceiver->MousePress(x, y, button)) {
+		activeReceiver = activeControllerReceiver;
+		return;
+	}
+
+	if (game != nullptr && !game->hideInterface) {
+		// skip guihandler in this case
 		return;
 	}
 
@@ -507,12 +548,32 @@ void CMouseHandler::MouseRelease(int x, int y, int button)
 		return;
 	}
 
+	const bool isXButton = (button == SDL_BUTTON_X1 || button == SDL_BUTTON_X2);
+	if (isXButton) {
+
+		// 1. Lua first
+		luaInputReceiver->MouseRelease(x, y, button);
+
+		// 2. GameInputReceiver via the same path as mouse buttons
+		auto activeControllerReceiver = (activeController == nullptr) ? nullptr : activeController->GetInputReceiver();
+		if (activeControllerReceiver) {
+			activeControllerReceiver->MouseRelease(x, y, button);
+		}
+
+		// 3. Skip ownership funnel
+		return;
+	}
+
 	if (activeReceiver != nullptr) {
 		activeReceiver->MouseRelease(x, y, button);
 
 		if (!buttons[SDL_BUTTON_LEFT].pressed && !buttons[SDL_BUTTON_MIDDLE].pressed && !buttons[SDL_BUTTON_RIGHT].pressed)
 			activeReceiver = nullptr;
 
+		return;
+	}
+
+	if (button >= ACTION_BUTTON_MIN && activeController != nullptr && activeController->MouseRelease(x, y, button)) {
 		return;
 	}
 

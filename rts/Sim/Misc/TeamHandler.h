@@ -156,9 +156,12 @@ public:
 	void GameFrame(int frameNum);
 
 	void UpdateTeamUnitLimitsPreSpawn(int liveTeamNum);
-	void UpdateTeamUnitLimitsPreDeath(int deadTeamNum);
+	void UpdateTeamUnitLimitsOnDeath(int deadTeamNum);
+
+	bool TransferTeamMaxUnits(CTeam* fromTeam, CTeam* toTeam, int transferAmnt);
 
 private:
+	void HandleFrameExcess();
 
 	/**
 	 * @brief gaia team

@@ -88,12 +88,16 @@ inline ResultTupleType FetchEffectualStateAttribValues(ParamName paramName)
 	return resultTuple;
 }
 
-inline GLuint FetchCurrentSlotTextureID(GLenum target) {
+inline GLuint FetchCurrentSlotBoundTextureID(GLenum target) {
 	GLenum query = GL::GetBindingQueryFromTarget(target);
 	assert(query);
 	GLuint currentSlotTextureID;
 	glGetAny(query, &currentSlotTextureID, 1);
 	return currentSlotTextureID;
+}
+
+inline GLuint FetchActiveTextureSlot() {
+	return GL::FetchEffectualStateAttribValue<GLenum>(GL_ACTIVE_TEXTURE);
 }
 
 }
@@ -103,7 +107,7 @@ inline GLuint FetchCurrentSlotTextureID(GLenum target) {
 template<auto DedicatedGLFuncPtrPtr, GLenum... GLParamName, class AttribValuesTupleType>
 inline void glSetAny(AttribValuesTupleType&& newValues)
 {
-	if constexpr(DedicatedGLFuncPtrPtr)
+	if constexpr(DedicatedGLFuncPtrPtr != nullptr)
 	{
 		static auto HelperFunc = [](auto&& ... p) {
 			(*DedicatedGLFuncPtrPtr)(std::forward<decltype(p)>(p)...);

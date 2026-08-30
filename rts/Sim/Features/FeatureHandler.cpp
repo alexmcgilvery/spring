@@ -128,6 +128,7 @@ void CFeatureHandler::InsertActiveFeature(CFeature* feature)
 	assert(features[feature->id] == nullptr);
 
 	activeFeatureIDs.insert(feature->id);
+
 	features[feature->id] = feature;
 }
 
@@ -185,7 +186,14 @@ CFeature* CFeatureHandler::CreateWreckage(const FeatureLoadParams& cparams)
 	return (LoadFeature(params));
 }
 
+void CFeatureHandler::UpdatePreFrame()
+{
+	SCOPED_TIMER("Sim::Features::UpdatePreFrame");
 
+	for (auto fid : activeFeatureIDs) {
+		features[fid]->UpdatePrevFrameTransform();
+	}
+}
 
 void CFeatureHandler::Update()
 {

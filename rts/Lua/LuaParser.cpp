@@ -14,9 +14,12 @@
 
 #include "LuaConstGame.h"
 #include "LuaConstEngine.h"
+#include "LuaEncoding.h"
 #include "LuaIO.h"
+#include "LuaLibs.h"
 #include "LuaVFS.h"
 #include "LuaUtils.h"
+#include "LuaMathExtra.h"
 
 #include "Sim/Misc/GlobalSynced.h" // gsRNG
 #include "System/Log/ILog.h"
@@ -121,14 +124,7 @@ void LuaParser::SetupLua(bool isSyncedCtxt, bool isDefsParser)
 
 void LuaParser::SetupEnv(bool isSyncedCtxt, bool isDefsParser)
 {
-	LUA_OPEN_LIB(L, luaopen_base);
-	LUA_OPEN_LIB(L, luaopen_math);
-	LUA_OPEN_LIB(L, luaopen_table);
-	LUA_OPEN_LIB(L, luaopen_string);
-	//LUA_OPEN_LIB(L, luaopen_io);
-	//LUA_OPEN_LIB(L, luaopen_os);
-	//LUA_OPEN_LIB(L, luaopen_package);
-	//LUA_OPEN_LIB(L, luaopen_debug);
+	LuaLibs::OpenSynced(L, false);
 
 	// delete some dangerous/unsynced functions
 	lua_pushnil(L); lua_setglobal(L, "dofile");
@@ -141,6 +137,7 @@ void LuaParser::SetupEnv(bool isSyncedCtxt, bool isDefsParser)
 
 	{
 		lua_getglobal(L, "math");
+		LuaMathExtra::PushEntries(L);
 		if (isSyncedCtxt) {
 			LuaPushNamedCFunc(L, "random", Random);
 			LuaPushNamedCFunc(L, "randomseed", RandomSeed);
@@ -157,6 +154,10 @@ void LuaParser::SetupEnv(bool isSyncedCtxt, bool isDefsParser)
 	AddFunc("Echo", LuaUtils::Echo);
 	AddFunc("Log", LuaUtils::Log);
 	AddFunc("TimeCheck", TimeCheck);
+	EndTable();
+
+	GetTable("Encoding");
+	LuaEncoding::PushEntries(L);
 	EndTable();
 
 	GetTable("Script");
@@ -429,6 +430,12 @@ void LuaParser::AddString(const std::string& key, const std::string& value)
 	PushParam();
 }
 
+void LuaParser::PushFunc(bool(*func)(lua_State*))
+{
+	assert(initDepth > 0);
+	func(L);
+}
+
 
 /******************************************************************************/
 
@@ -494,12 +501,13 @@ void LuaParser::AddString(int key, const std::string& value)
 
 int LuaParser::TimeCheck(lua_State* L)
 {
-	#if (!defined(UNITSYNC) && !defined(DEDICATED))
 	if (!lua_isstring(L, 1) || !lua_isfunction(L, 2))
 		luaL_error(L, "Invalid arguments to TimeCheck('string', func, ...)");
 
 	{
+		#if (!defined(UNITSYNC) && !defined(DEDICATED))
 		ScopedOnceTimer timer(lua_tostring(L, 1));
+		#endif
 
 		lua_remove(L, 1);
 
@@ -512,9 +520,6 @@ int LuaParser::TimeCheck(lua_State* L)
 	}
 
 	return lua_gettop(L);
-	#else
-	return 0;
-	#endif
 }
 
 

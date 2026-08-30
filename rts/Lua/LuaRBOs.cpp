@@ -41,9 +41,9 @@ bool LuaRBOs::PushEntries(lua_State* L)
 bool LuaRBOs::CreateMetatable(lua_State* L)
 {
 	luaL_newmetatable(L, "RBO");
-	HSTR_PUSH_CFUNC(L, "__gc",        meta_gc);
-	HSTR_PUSH_CFUNC(L, "__index",     meta_index);
-	HSTR_PUSH_CFUNC(L, "__newindex",  meta_newindex);
+	LuaPushNamedCFunc(L, "__gc",        meta_gc);
+	LuaPushNamedCFunc(L, "__index",     meta_index);
+	LuaPushNamedCFunc(L, "__newindex",  meta_newindex);
 	lua_pop(L, 1);
 	return true;
 }
@@ -149,6 +149,7 @@ int LuaRBOs::meta_newindex(lua_State* L)
 
 /***
  * @class CreateRBOData
+ * @x_helper
  * @field target GL
  * @field format GL
  * @field samples number? any number here will result in creation of multisampled RBO

@@ -6,10 +6,9 @@
 #include <cassert>
 #include <array>
 #include <utility>
-#include <format>
+#include <string>
 
 #include "System/BranchPrediction.h"
-#include "lib/streflop/streflop_cond.h"
 #include "System/creg/creg_cond.h"
 #include "System/FastMath.h"
 #include "System/type2.h"
@@ -336,14 +335,22 @@ public:
 
 
 	/**
-	 * @brief binary float3 equality
+	 * @brief float3 equality
 	 * @param f float3 to compare to
-	 * @return const whether the two float3 are binary same
+	 * @return const whether the two float3 are same
 	 *
 	 */
 	bool same(const float3& f) const {
 		return x == f.x && y == f.y && z == f.z;
 	}
+
+	/**
+	 * @brief binary float3 equality
+	 * @param f float3 to compare to
+	 * @return const whether the two float3 are binary same
+	 *
+	 */
+	bool binarySame(const float3& f) const;
 
 	/**
 	 * @brief dot product
@@ -410,6 +417,7 @@ public:
 
 	template<bool synced>
 	float3 rotate(float angle, const float3& axis) const {
+		assert(axis.Normalized());
 		float ca;
 		float sa;
 		if constexpr (synced) {
@@ -826,12 +834,11 @@ public:
 	static float3 fabs(const float3 v);
 	static float3 sign(const float3 v);
 
+	static constexpr float apx_eps() { return 1e-02f; }
 	static constexpr float cmp_eps() { return 1e-04f; }
 	static constexpr float nrm_eps() { return 1e-12f; }
 
-	std::string str() const {
-		return std::format("float3({:.3f}, {:.3f}, {:.3f})", x, y, z);
-	}
+	std::string str() const;
 
 	/**
 	 * @brief max x pos

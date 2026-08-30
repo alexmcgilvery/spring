@@ -42,6 +42,8 @@ ISky::~ISky()
 	spring::SafeDelete(skyLight);
 }
 
+std::unique_ptr<ISky> ISky::sky = nullptr;
+
 
 
 void ISky::SetupFog() {
@@ -85,6 +87,30 @@ void ISky::SetSky()
 		LOG_L(L_ERROR, "[ISky::%s] error creating %s (falling back to NullSky)", __func__, sky->GetName().c_str());
 		sky = std::make_unique<CNullSky>();
 	}
+}
+
+void ISky::SetSkyLuaTexture(const MapTextureData& td)
+{
+	if (sky == nullptr)
+		return;
+
+	/* TODO: consider if perhaps there should be some way to set the
+	 * sky to one of the other classes (CModernSky, etc) via Lua. */
+
+	if (td.id != 0u && dynamic_cast<CSkyBox*>(sky.get()) == nullptr) {
+		auto luaSky = std::make_unique<CSkyBox>(td.id, td.size.x, td.size.y);
+
+		if (luaSky->IsValid()) {
+			sky = std::move(luaSky);
+			return;
+		}
+
+		LOG_L(L_WARNING, "[ISky::%s] failed to create SkyBox from Lua texture (%u), keeping current sky", __func__, td.id);
+		return;
+	}
+
+	/* FIXME: td.id == 0 reaches here. Untested in recent times */
+	sky->SetLuaTexture(td);
 }
 
 void ISky::SetSkyAxisAngle(const float4& skyAxisAngleRaw)

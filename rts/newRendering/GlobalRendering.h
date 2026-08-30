@@ -15,6 +15,7 @@
 
 struct IRendererCore;
 
+class SharedLib;
 struct SDL_version;
 struct SDL_Rect;
 struct SDL_Window;
@@ -448,6 +449,17 @@ public:
 	bool rendererDebug;
 	bool rendererDebugErrors;
 
+	
+	/** 
+	 * @brief Forces Window's desktop compositing before(1)/after(2) each glSwapWindow
+	*/
+	int forceDWMFlush;
+
+	#ifdef _WIN32
+		std::unique_ptr<SharedLib> dwmApiLib;
+		void* DwmGetWindowAttribute = nullptr;
+		void* DwmFlush = nullptr;
+	#endif
 public:
 	SDL_Window* sdlWindow;
 

@@ -3,7 +3,6 @@
 
 #include <cmath>
 #include <cstdlib>
-#include <cstdio>
 
 #if !defined(HEADLESS)
 	#include "lib/squish/squish.h"
@@ -34,8 +33,6 @@
 #include "System/Threading/ThreadPool.h" // for_mt
 
 #include "System/Misc/TracyDefs.h"
-
-using std::sprintf;
 
 #define LOG_SECTION_SMF_GROUND_TEXTURES "CSMFGroundTextures"
 LOG_REGISTER_SECTION_GLOBAL(LOG_SECTION_SMF_GROUND_TEXTURES)
@@ -86,6 +83,12 @@ CSMFGroundTextures::CSMFGroundTextures(CSMFReadMap* rm): smfMap(rm)
 	}
 }
 
+CSMFGroundTextures::~CSMFGroundTextures()
+{
+	// explicitly kill textures, as doing so in the static destructor is too late (GLAD is already unloaded)
+	squares.clear();
+}
+
 void CSMFGroundTextures::LoadTiles(CSMFMapFile& file)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -111,8 +114,7 @@ void CSMFGroundTextures::LoadTiles(CSMFMapFile& file)
 
 	tileMap.clear();
 	tileMap.resize(smfMap->tileCount);
-	tiles.clear();
-	tiles.resize(tileHeader.numTiles * SMALL_TILE_SIZE);
+	tiles.assign(static_cast<size_t>(tileHeader.numTiles) * SMALL_TILE_SIZE, 0);
 	squares.clear();
 	squares.resize(smfMap->numBigTexX * smfMap->numBigTexY);
 

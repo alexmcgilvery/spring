@@ -71,6 +71,7 @@ CONFIG(bool, MiniMapIcons).defaultValue(true).headlessValue(false);
 CONFIG(int, MiniMapDrawCommands).defaultValue(1).headlessValue(0).minimumValue(0);
 
 CONFIG(bool, MiniMapDrawProjectiles).defaultValue(true).headlessValue(false);
+CONFIG(bool, MiniMapDrawPings).defaultValue(true).headlessValue(false).description("Whether to draw pings on the minimap.");
 CONFIG(bool, SimpleMiniMapColors).defaultValue(false);
 
 CONFIG(bool, MiniMapRenderToTexture).defaultValue(true).safemodeValue(false).description("Asynchronous render MiniMap to a texture independent of screen FPS.");
@@ -107,7 +108,7 @@ CMiniMap::CMiniMap()
 
 	ConfigUpdate();
 
-	configHandler->NotifyOnChange(this, {"DualScreenMiniMapAspectRatio", "MiniMapCanFlip", "MiniMapDrawProjectiles", "MiniMapCursorScale", "MiniMapIcons", "MiniMapDrawCommands", "MiniMapButtonSize"});
+	configHandler->NotifyOnChange(this, {"DualScreenMiniMapAspectRatio", "MiniMapCanFlip", "MiniMapDrawProjectiles", "MiniMapDrawPings", "MiniMapCursorScale", "MiniMapIcons", "MiniMapDrawCommands", "MiniMapButtonSize"});
 
 	UpdateGeometry();
 
@@ -191,6 +192,7 @@ void CMiniMap::ConfigUpdate()
 	aspectRatio = configHandler->GetBool("DualScreenMiniMapAspectRatio");
 	buttonSize = configHandler->GetInt("MiniMapButtonSize");
 	drawProjectiles = configHandler->GetBool("MiniMapDrawProjectiles");
+	drawPings = configHandler->GetBool("MiniMapDrawPings");
 	drawCommands = configHandler->GetInt("MiniMapDrawCommands");
 	cursorScale = configHandler->GetFloat("MiniMapCursorScale");
 	useIcons = configHandler->GetBool("MiniMapIcons");
@@ -252,18 +254,33 @@ void CMiniMap::ToggleMaximized(bool _maxspect)
 		curDim = oldDim;
 	}
 
+	eventHandler.MiniMapStateChanged(minimized,maximized, slaveDrawMode);
+
 	// needed for SetMaximizedGeometry
 	UpdateGeometry();
 }
 
 void CMiniMap::SetRotation(RotationOptions state) // 0 1 2 3: 0 90 180 270
 {
-    RECOIL_DETAILED_TRACY_ZONE;
+	RECOIL_DETAILED_TRACY_ZONE;
 
-    if (state == rotation)
-        return;
+	if (state == rotation)
+		return;
 
-    rotation = state;
+	const float oldRotation = static_cast<int>(rotation) * math::HALFPI;
+	rotation = state;
+	eventHandler.MiniMapRotationChanged(static_cast<int>(rotation) * math::HALFPI, oldRotation);
+}
+
+void CMiniMap::SetMinimized(bool state)
+{
+	RECOIL_DETAILED_TRACY_ZONE;
+	
+	if (minimized == state)
+		return;
+
+	minimized = state;
+	eventHandler.MiniMapStateChanged(minimized, maximized, slaveDrawMode);
 }
 
 void CMiniMap::SetAspectRatioGeometry(const float& viewSizeX, const float& viewSizeY,
@@ -357,6 +374,7 @@ void CMiniMap::SetSlaveMode(bool newMode)
 	}
 
 	slaveDrawMode = newMode;
+	eventHandler.MiniMapStateChanged(minimized, maximized, slaveDrawMode);
 	UpdateGeometry();
 }
 
@@ -398,6 +416,12 @@ void CMiniMap::ConfigCommand(const std::string& line)
 		case hashString("drawprojectiles"): {
 			drawProjectiles = (words.size() >= 2) ? !!atoi(words[1].c_str()) : !drawProjectiles;
 		} break;
+		case hashString("drawpings"): {
+			drawPings = (words.size() >= 2) ? !!atoi(words[1].c_str()) : !drawPings;
+			if (!drawPings) {
+				notes.clear();
+			}
+		} break;
 		case hashString("simplecolors"): {
 			simpleColors = (words.size() >= 2) ? !!atoi(words[1].c_str()) : !simpleColors;
 		} break;
@@ -419,7 +443,8 @@ void CMiniMap::ConfigCommand(const std::string& line)
 			if (globalRendering->dualScreenMode)
 				return;
 
-			minimized = (words.size() >= 2) ? !!atoi(words[1].c_str()) : !minimized;
+			const bool newMinimized = (words.size() >= 2) ? !!atoi(words[1].c_str()) : !minimized;
+			SetMinimized(newMinimized);
 		} break;
 
 		case hashString("max"):
@@ -432,7 +457,7 @@ void CMiniMap::ConfigCommand(const std::string& line)
 			const bool wantMaximized = (words.size() >= 2) ? !!atoi(words[1].c_str()) : !isMaximized;
 
 			if (isMaximized != wantMaximized)
-				ToggleMaximized(StrCaseStr(words[0].c_str(), "maxspect") == 0);
+				ToggleMaximized(hashStringLower(words[0].c_str()) != hashString("maxspect"));
 		} break;
 
 		case hashString("mouseevents"): {
@@ -662,7 +687,7 @@ bool CMiniMap::MousePress(int x, int y, int button)
 
 	if (minimized) {
 		if ((x < buttonSize) && (y < buttonSize)) {
-			minimized = false;
+			SetMinimized(false);
 			return true;
 		}
 
@@ -818,7 +843,7 @@ void CMiniMap::MouseRelease(int x, int y, int button)
 		}
 
 		if (showButtons && minimizeBox.Inside(x, y)) {
-			minimized = true;
+			SetMinimized(true);
 			return;
 		}
 	}
@@ -995,6 +1020,11 @@ std::string CMiniMap::GetTooltip(int x, int y)
 void CMiniMap::AddNotification(float3 pos, float3 color, float alpha)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
+
+	if (!drawPings) {
+		return;
+	}
+
 	Notification n;
 	n.pos = pos;
 	n.color[0] = color.x;
@@ -1069,7 +1099,8 @@ void CMiniMap::Update()
 	 * does not support minimap flipping. */
 	if (minimapCanFlip){
 		const float rotY = ClampRad(camHandler->GetCurrentController().GetRot().y);
-		rotation = rotY > math::HALFPI && rotY <= 3 * math::HALFPI ? ROTATION_180 : ROTATION_0;
+		const RotationOptions newRot = rotY > math::HALFPI && rotY <= 3 * math::HALFPI ? ROTATION_180 : ROTATION_0;
+		SetRotation(newRot);
 	}
 
 	float refreshRate = minimapRefreshRate;
@@ -1087,6 +1118,14 @@ void CMiniMap::Update()
 
 	fbo.Bind();
 	UpdateTextureCache();
+
+	/* Would need a larger refactor for this to become SetGeometry since the entire file
+	 * continuously changes dim and pos from curDim and curPos regularly from many functions */
+	if (curPos != lastPos || curDim != lastDim) {
+		eventHandler.MiniMapGeometryChanged(curPos, curDim, lastPos, lastDim);
+		lastPos = curPos;
+		lastDim = curDim;
+	}
 
 	// gets done in CGame
 	// fbo.Unbind();
@@ -1675,7 +1714,7 @@ void CMiniMap::DrawButtons()
 void CMiniMap::DrawNotes()
 {
 	RECOIL_DETAILED_TRACY_ZONE;
-	if (notes.empty()) {
+	if (notes.empty() || !drawPings) {
 		return;
 	}
 

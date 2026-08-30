@@ -2,10 +2,11 @@
 
 #include <algorithm>
 #include <array>
-#include <cstdio>
 #include <memory>
 #include <random>
 #include <chrono>
+
+#include <nowide/cstdio.hpp>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -58,7 +59,7 @@ LOG_REGISTER_SECTION_GLOBAL(LOG_SECTION_ARCHIVESCANNER)
  * but mapping them all, every time to make the list is)
  */
 
-constexpr static int INTERNAL_VER = 20;
+constexpr static int INTERNAL_VER = 22;
 
 
 /*
@@ -543,8 +544,8 @@ void CArchiveScanner::ScanDir(const std::string& curPath, std::deque<std::string
 		subDirs.pop_front();
 
 		for (const std::string& fileName: foundFiles) {
-			const std::string& fileNameNoSep = FileSystem::EnsureNoPathSepAtEnd(fileName);
-			const std::string& lcFilePath = StringToLower(FileSystem::GetDirectory(fileNameNoSep));
+			const std::string fileNameNoSep = FileSystem::EnsureNoPathSepAtEnd(fileName);
+			const std::string lcFilePath = StringToLower(FileSystem::GetDirectory(fileNameNoSep));
 
 			// Exclude archive files found inside directory archives (.sdd)
 			if (lcFilePath.find(".sdd") != std::string::npos)
@@ -604,7 +605,7 @@ std::string CArchiveScanner::SearchMapFile(const IArchive* ar, std::string& erro
 	// check for smf and if the uncompression of important files is too costy
 	for (uint32_t fid = 0; fid != ar->NumFiles(); ++fid) {
 		const auto& fn = ar->FileName(fid);
-		const std::string ext = FileSystem::GetExtension(StringToLower(fn));
+		const std::string ext = FileSystem::GetExtensionLowerCase(StringToLower(fn));
 
 		if (ext == "smf")
 			return fn;
@@ -633,6 +634,9 @@ void CArchiveScanner::ReadCache()
 		for (const auto& prevCacheFile : prevCacheFiles) {
 			if (!ReadCacheData(prevCacheFile, true))
 				continue;
+
+			brokenArchives.clear();
+			brokenArchivesIndex.clear();
 
 			// nullify hashes, filesInfo
 			for (auto& ai : archiveInfos) {
@@ -810,7 +814,7 @@ void CArchiveScanner::ScanArchive(const std::string& fullName, bool doChecksum)
 	// Store modinfo.lua/mapinfo.lua modified timestamp for directory archives, as only they can change.
 	if (ar->GetType() == ARCHIVE_TYPE_SDD && !luaInfoFile.empty()) {
 		ai.archiveDataPath = ar->GetArchiveFile() + "/" + static_cast<const CDirArchive*>(ar.get())->FileName(ar->FindFile(luaInfoFile));
-		ai.modifiedArchiveData = FileSystemAbstraction::GetFileModificationTime(ai.archiveDataPath);
+		ai.modifiedArchiveData = FileSystem::GetFileModificationTime(ai.archiveDataPath);
 	}
 
 	ai.origName = fname;
@@ -828,13 +832,13 @@ bool CArchiveScanner::CheckCachedData(const std::string& fullName, uint32_t& mod
 {
 	// virtual archives do not exist on disk, and thus do not have a modification time
 	// they should still be scanned as normal archives so we only skip the cache-check
-	if (FileSystem::GetExtension(fullName) == "sva")
+	if (FileSystem::GetExtensionLowerCase(fullName) == "sva")
 		return false;
 
 	// if stat fails, assume the archive is not broken nor cached
 	// it would also fail in the case of virtual archives and cause
 	// warning-spam which is suppressed by the extension-test above
-	if ((modified = FileSystemAbstraction::GetFileModificationTime(fullName)) == 0)
+	if ((modified = FileSystem::GetFileModificationTime(fullName)) == 0)
 		return false;
 
 	const std::string& fileName      = FileSystem::GetFilename(fullName);
@@ -869,7 +873,7 @@ bool CArchiveScanner::CheckCachedData(const std::string& fullName, uint32_t& mod
 
 	const bool haveValidCacheData = (modified == ai.modified && filePath == ai.path);
 	// check if the archive data file (modinfo.lua/mapinfo.lua) has changed
-	const bool archiveDataChanged = (!ai.archiveDataPath.empty() && FileSystemAbstraction::GetFileModificationTime(ai.archiveDataPath) != ai.modifiedArchiveData);
+	const bool archiveDataChanged = (!ai.archiveDataPath.empty() && FileSystem::GetFileModificationTime(ai.archiveDataPath) != ai.modifiedArchiveData);
 
 	if (haveValidCacheData && !archiveDataChanged) {
 		// archive found in cache, update checksum if wanted
@@ -1148,7 +1152,7 @@ bool CArchiveScanner::ReadCacheData(const std::string& filename, bool loadOldVer
 	static const auto ReadFileInfoMap = [](const LuaTable& filesInfoTbl, spring::unordered_map<std::string, FileInfo>& filesInfoMap) {
 		for (int j = 1; filesInfoTbl.KeyExists(j); ++j) {
 			const LuaTable fileInfoTbl = filesInfoTbl.SubTable(j);
-			const auto fn = fileInfoTbl.GetString("fileName", "");
+			const auto fn = FileSystem::ForwardSlashes(fileInfoTbl.GetString("fileName", ""));
 			if (fn.empty())
 				continue;
 
@@ -1173,8 +1177,8 @@ bool CArchiveScanner::ReadCacheData(const std::string& filename, bool loadOldVer
 		ArchiveInfo& ai = GetAddArchiveInfo(curArchiveNameLC);
 
 		ai.origName 	   = curArchiveName;
-		ai.path     	   = curArchiveTbl.GetString("path", "");
-		ai.archiveDataPath = curArchiveTbl.GetString("archiveDataPath", "");
+		ai.path     	   = FileSystem::ForwardSlashes(curArchiveTbl.GetString("path", ""));
+		ai.archiveDataPath = FileSystem::ForwardSlashes(curArchiveTbl.GetString("archiveDataPath", ""));
 
 		// do not use LuaTable.GetInt() for integers: the engine's lua
 		// library uses 32-bit floats to represent numbers, which can only
@@ -1278,48 +1282,73 @@ void CArchiveScanner::WriteCacheData(const std::string& filename)
 			allPoolRootDirs.emplace(CPoolArchive::GetPoolRootDirectory(ai.path + ai.origName));
 		}
 
-		const uint32_t seed = std::chrono::system_clock::now().time_since_epoch().count();
-		std::mt19937 generator(seed);
-		std::uniform_int_distribution<size_t> distribution(0, poolFilesInfo.size() - 1);
-		auto startOffset = distribution(generator);
+		// No pool archives means we have no roots to verify file existence
+		// against. Without this guard, ExistenceTest below returns false for
+		// every entry, the loop erases the entire cache, and the next
+		// iteration dereferences begin()==end() on the now-empty map.
+		if (!allPoolRootDirs.empty()) {
+			const uint32_t seed = std::chrono::system_clock::now().time_since_epoch().count();
+			std::mt19937 generator(seed);
+			std::uniform_int_distribution<size_t> distribution(0, poolFilesInfo.size() - 1);
+			auto startOffset = distribution(generator);
 
-		auto st = poolFilesInfo.begin();
-		std::advance(st, startOffset);
-		auto it = st;
+			auto st = poolFilesInfo.begin();
+			std::advance(st, startOffset);
+			auto it = st;
 
-		// we only want to check if the file still exists, we don't check for size / modDate
-		// this is checked in the checksum code anyway.
-		const auto ExistenceTest = [&allPoolRootDirs = std::as_const(allPoolRootDirs)](const auto& it) {
-			for (const auto& poolRootDir : allPoolRootDirs) {
-				const auto fileName = CPoolArchive::GetPoolFilePath(poolRootDir, it->first);
-				if (FileSystem::FileExists(fileName)) {
-					return true;
+			// we only want to check if the file still exists, we don't check for size / modDate
+			// this is checked in the checksum code anyway.
+			const auto ExistenceTest = [&allPoolRootDirs = std::as_const(allPoolRootDirs)](const auto& it) {
+				for (const auto& poolRootDir : allPoolRootDirs) {
+					const auto fileName = CPoolArchive::GetPoolFilePath(poolRootDir, it->first);
+					if (FileSystem::FileExists(fileName)) {
+						return true;
+					}
 				}
+				return false;
+			};
+
+			// can't spend too much time in this code, thus set the deadline and rely on
+			// random luck and sheer amount of invocations to eventually remove most if not all
+			// stale items from the pool cache
+			static constexpr int64_t MAX_POOL_VERIFICATION_TIME = 1 * 1000;
+			for (auto t0 = spring_now(), t1 = t0; (t1 - t0).toMilliSecsi() < MAX_POOL_VERIFICATION_TIME; t1 = spring_now()) {
+				// Map can drain to empty mid-loop (e.g. all entries genuinely
+				// missing). begin() then equals end(); ExistenceTest(end())
+				// would dereference past the allocated buckets array.
+				if (it == poolFilesInfo.end())
+					break;
+
+				// cleanup files that got deleted in the meantime
+				if (ExistenceTest(it)) {
+					++it;
+				} else {
+					// erase invalidates the erased iterator. If we're erasing
+					// the loop's anchor, re-anchor to the successor so the
+					// `it == st` termination check below still works; otherwise
+					// st dangles and we'd burn the full deadline re-checking
+					// survivors.
+					const bool erasingStart = (it == st);
+					it = poolFilesInfo.erase(it);
+					if (erasingStart)
+						st = it;
+				}
+
+				if (it == poolFilesInfo.end())
+					it = poolFilesInfo.begin(); //rewind to the very start
+
+				// st may have been re-anchored to end() above; wrap it too so
+				// the comparison is meaningful.
+				if (st == poolFilesInfo.end())
+					st = poolFilesInfo.begin();
+
+				if (it == st)
+					break; // everything got checked and we're back to the starting iterator
 			}
-			return false;
-		};
-
-		// can't spend too much time in this code, thus set the deadline and rely on
-		// random luck and sheer amount of invocations to eventually remove most if not all
-		// stale items from the pool cache
-		static constexpr int64_t MAX_POOL_VERIFICATION_TIME = 1 * 1000;
-		for (auto t0 = spring_now(), t1 = t0; (t1 - t0).toMilliSecsi() < MAX_POOL_VERIFICATION_TIME; t1 = spring_now()) {
-			// cleanup files that got deleted in the meantime
-
-			if (ExistenceTest(it))
-				++it;
-			else
-				it = poolFilesInfo.erase(it);
-
-			if (it == poolFilesInfo.end())
-				it = poolFilesInfo.begin(); //rewind to the very start
-
-			if (it == st)
-				break; // everything got checked and we're back to the starting iterator
 		}
 	}
 
-	FILE* out = fopen(filename.c_str(), "wt");
+	FILE* out = nowide::fopen(filename.c_str(), "wt");
 	if (out == nullptr) {
 		LOG_L(L_ERROR, "[AS::%s] failed to write to \"%s\"!", __func__, filename.c_str());
 		return;
@@ -1347,7 +1376,7 @@ void CArchiveScanner::WriteCacheData(const std::string& filename)
 
 		fprintf(out, "\t\t{\n");
 		SafeStr(out, "\t\t\tname = ",              arcInfo.origName);
-		SafeStr(out, "\t\t\tpath = ",              arcInfo.path);
+		SafeStr(out, "\t\t\tpath = ",              arcInfo.path    );
 		fprintf(out, "\t\t\tmodified = \"%u\",\n", arcInfo.modified);
 		fprintf(out, "\t\t\tchecksum = \"%s\",\n", hexDigest.data());
 		SafeStr(out, "\t\t\treplaced = ",          arcInfo.replaced);
@@ -1797,7 +1826,7 @@ CArchiveScanner::ArchiveData CArchiveScanner::GetArchiveDataByArchive(const std:
 int CArchiveScanner::GetMetaFileClass(const std::string& filePath)
 {
 	const std::string& lowerFilePath = StringToLower(filePath);
-	// const std::string& ext = FileSystem::GetExtension(lowerFilePath);
+	// const std::string& ext = FileSystem::GetExtensionLowerCase(lowerFilePath);
 	const auto it = metaFileClasses.find(lowerFilePath);
 
 	if (it != metaFileClasses.end())

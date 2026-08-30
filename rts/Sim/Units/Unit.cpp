@@ -17,8 +17,6 @@
 #include "CommandAI/FactoryCAI.h"
 #include "CommandAI/AirCAI.h"
 #include "CommandAI/BuilderCAI.h"
-#include "CommandAI/CommandAI.h"
-#include "CommandAI/FactoryCAI.h"
 #include "CommandAI/MobileCAI.h"
 #include "CommandAI/BuilderCaches.h"
 
@@ -33,6 +31,8 @@
 #include "Map/ReadMap.h"
 
 #include "Rendering/GroundFlash.h"
+#include "Rendering/Units/UnitDrawer.h"
+#include "Rendering/Models/3DModel.hpp"
 
 #include "Game/UI/Groups/Group.h"
 #include "Game/UI/Groups/GroupHandler.h"
@@ -111,7 +111,7 @@ CUnit::~CUnit()
 	//   and the CreateWreckage() call to be as low as possible to prevent
 	//   position discontinuities
 	if (delayedWreckLevel >= 0)
-		featureHandler.CreateWreckage({this, unitDef, featureDefHandler->GetFeatureDefByID(featureDefID),  {}, {},  -1, team, -1,  heading, buildFacing,  delayedWreckLevel - 1, 1});
+		CreateWreck(delayedWreckLevel - 1, 1);
 
 	if (deathExpDamages != nullptr)
 		DynDamageArray::DecRef(deathExpDamages);
@@ -148,6 +148,12 @@ CUnit::~CUnit()
 }
 
 
+CFeature* CUnit::CreateWreck(int wreckLevel, int smokeTime)
+{
+	return featureHandler.CreateWreckage({this, unitDef, featureDefHandler->GetFeatureDefByID(featureDefID),  {}, {},  -1, team, -1,  heading, buildFacing,  wreckLevel, smokeTime});
+}
+
+
 void CUnit::InitStatic()
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -169,7 +175,7 @@ void CUnit::SanityCheck() const
 	pos.AssertNaNs();
 	midPos.AssertNaNs();
 	relMidPos.AssertNaNs();
-	preFramePos.AssertNaNs();
+	preFrameTra.AssertNaNs();
 
 	speed.AssertNaNs();
 
@@ -185,10 +191,10 @@ void CUnit::SanityCheck() const
 	}
 }
 
-
 void CUnit::PreInit(const UnitLoadParams& params)
 {
 	ZoneScoped;
+
 	// if this is < 0, UnitHandler will give us a random ID
 	id = params.unitID;
 	featureDefID = -1;
@@ -215,6 +221,7 @@ void CUnit::PreInit(const UnitLoadParams& params)
 	}
 
 	team = params.teamID;
+	paletteIndex = static_cast<uint16_t>(team);
 	allyteam = teamHandler.AllyTeam(team);
 
 	buildFacing = std::abs(params.facing) % NUM_FACINGS;
@@ -238,7 +245,7 @@ void CUnit::PreInit(const UnitLoadParams& params)
 	upright  = unitDef->upright;
 
 	SetVelocity(params.speed);
-	Move(preFramePos = params.pos.cClampInMap(), false);
+	Move(params.pos.cClampInMap(), false);
 
 	UpdateDirVectors(!upright && IsOnGround(), false, 0.0f);
 	SetMidAndAimPos(model->relMidPos, model->relMidPos, true);
@@ -289,6 +296,8 @@ void CUnit::PreInit(const UnitLoadParams& params)
 	wantCloak |= unitDef->startCloaked;
 	decloakDistance = unitDef->decloakDistance;
 
+	leavesGhost = gameSetup->ghostedBuildings && unitDef->leavesGhost;
+
 	flankingBonusMode        = unitDef->flankingBonusMode;
 	flankingBonusDir         = unitDef->flankingBonusDir;
 	flankingBonusMobility    = unitDef->flankingBonusMobilityAdd * 1000;
@@ -321,19 +330,14 @@ void CUnit::PostInit(const CUnit* builder)
 	// does nothing for LUS, calls Create+SetMaxReloadTime for COB
 	script->Create();
 
-	// all units are blocking (ie. register on the blocking-map
-	// when not flying) except mines, since their position would
-	// be given away otherwise by the PF, etc.
-	// NOTE: this does mean that mines can be stacked indefinitely
-	// (an extra yardmap character would be needed to prevent this)
 	immobile = unitDef->IsImmobileUnit();
 
-	UpdateCollidableStateBit(CSolidObject::CSTATE_BIT_SOLIDOBJECTS, unitDef->collidable && (!immobile || !unitDef->canKamikaze));
+	UpdateCollidableStateBit(CSolidObject::CSTATE_BIT_SOLIDOBJECTS, unitDef->collidable);
 	Block();
 
 	// done once again in UnitFinished() too
 	// but keep the old behavior for compatibility purposes
-	if (unitDef->windGenerator > 0.0f)
+	if (!unitDef->windGenerator.empty())
 		envResHandler.AddGenerator(this);
 
 	UpdateTerrainType();
@@ -373,6 +377,7 @@ void CUnit::PostInit(const CUnit* builder)
 		commandAI->GiveCommand(Command(CMD_FIRE_STATE, 0, fireState));
 	}
 
+	UpdateRenderParams();
 	eventHandler.RenderUnitPreCreated(this);
 
 	// Lua might call SetUnitHealth within UnitCreated
@@ -394,6 +399,7 @@ void CUnit::PostInit(const CUnit* builder)
 void CUnit::PostLoad()
 {
 	RECOIL_DETAILED_TRACY_ZONE;
+	UpdateRenderParams();
 	eventHandler.RenderUnitPreCreated(this);
 	eventHandler.RenderUnitCreated(this, isCloaked);
 }
@@ -429,7 +435,7 @@ void CUnit::FinishedBuilding(bool postInit)
 	// Sets the frontdir in sync with heading.
 	UpdateDirVectors(!upright && IsOnGround(), false, 0.0f);
 
-	if (unitDef->windGenerator > 0.0f) {
+	if (!unitDef->windGenerator.empty()) {
 		// trigger sending the wind update by removing
 		envResHandler.DelGenerator(this);
 		//  and adding back this windgen
@@ -480,7 +486,7 @@ void CUnit::ForcedKillUnit(CUnit* attacker, bool selfDestruct, bool reclaimed, i
 	eventHandler.UnitDestroyed(this, attacker, weaponDefID);
 	eoh->UnitDestroyed(*this, attacker, weaponDefID);
 
-	if (unitDef->windGenerator > 0.0f)
+	if (!unitDef->windGenerator.empty())
 		envResHandler.DelGenerator(this);
 
 	blockHeightChanges = false;
@@ -500,8 +506,7 @@ void CUnit::ForcedKillUnit(CUnit* attacker, bool selfDestruct, bool reclaimed, i
 			.damages              = *da,
 			.weaponDef            = wd,
 			.owner                = this,
-			.hitUnit              = nullptr,
-			.hitFeature           = nullptr,
+			.hitObject            = ExplosionHitObject(),
 			.craterAreaOfEffect   = da->craterAreaOfEffect,
 			.damageAreaOfEffect   = da->damageAreaOfEffect,
 			.edgeEffectiveness    = da->edgeEffectiveness,
@@ -528,13 +533,22 @@ void CUnit::ForcedMove(const float3& newPos)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
 	UnBlock();
-	Move((preFramePos = newPos) - pos, true);
+	Move(newPos - pos, true);
 	Block();
 
 	eventHandler.UnitMoved(this);
 	quadField.MovedUnit(this);
 }
 
+
+void CUnit::SetLeavesGhost(bool newLeavesGhost, bool leaveDeadGhost)
+{
+	bool prevValue = leavesGhost;
+	leavesGhost = newLeavesGhost;
+
+	if (prevValue != newLeavesGhost)
+		unitDrawer->UnitLeavesGhostChanged(this, leaveDeadGhost);
+}
 
 
 float3 CUnit::GetErrorVector(int argAllyTeam) const
@@ -548,7 +562,7 @@ float3 CUnit::GetErrorVector(int argAllyTeam) const
 	const int atSightMask = losStatus[argAllyTeam];
 
 	const int isVisible = 2 * ((atSightMask & LOS_INLOS  ) != 0 ||                  teamHandler.Ally(argAllyTeam, allyteam)); // in LOS or allied, no error
-	const int seenGhost = 4 * ((atSightMask & LOS_PREVLOS) != 0 && gameSetup->ghostedBuildings && unitDef->IsBuildingUnit()); // seen ghosted building, no error
+	const int seenGhost = 4 * ((atSightMask & LOS_PREVLOS) != 0 && leavesGhost); // seen ghosted immobiles, no error
 	const int isOnRadar = 8 * ((atSightMask & LOS_INRADAR) != 0                                                            ); // current radar contact
 
 	float errorMult = 0.0f;
@@ -655,7 +669,6 @@ void CUnit::Update()
 
 	UpdatePhysicalState(0.1f);
 	UpdatePosErrorParams(true, false);
-	UpdateTransportees(); // none if already dead
 
 	if (beingBuilt)
 		return;
@@ -722,7 +735,7 @@ void CUnit::UpdateTransportees()
 			// slave transportee orientation to piece
 			if (tu.piece >= 0) {
 				const CMatrix44f& transMat = GetTransformMatrix(true);
-				const CMatrix44f& pieceMat = script->GetPieceMatrix(tu.piece);
+				const auto pieceMat = script->GetPieceMatrix(tu.piece);
 
 				transportee->SetDirVectors(transMat * pieceMat);
 			}
@@ -946,6 +959,21 @@ void CUnit::SetStunned(bool stun) {
 	eventHandler.UnitStunned(this, stun);
 }
 
+// e.g. [+1, -9, -8, +4] -> { [1, 0, 0, 4], [0, 9, 8, 0] }
+// hopefully a temporary hack, see call site for rationale
+static auto SplitResourcePackIntoPositiveNegative (const SResourcePack &pack)
+{
+	SResourcePack positive {0.0f}, negative {0.0f};
+
+	for (auto [resourceID, value] : std::views::enumerate (pack)) {
+		if (value < 0.0f)
+			negative[resourceID] = -value;
+		else
+			positive[resourceID] = value;
+	}
+
+	return std::make_pair (positive, negative);
+}
 
 void CUnit::SlowUpdate()
 {
@@ -1011,7 +1039,7 @@ void CUnit::SlowUpdate()
 			health         = std::max(0.0f, health - maxHealth * buildDecay);
 			buildProgress -= buildDecay;
 
-			AddMetal(cost.metal * buildDecay, false);
+			AddResources({cost.metal * buildDecay, 0.0f}, false);
 
 			eventHandler.UnitConstructionDecayed(this
 				, INV_GAME_SPEED * framesSinceLastNanoAdd
@@ -1044,26 +1072,26 @@ void CUnit::SlowUpdate()
 	AddResources(unitDef->resourceMake * 0.5f);
 
 	if (activated) {
-		if (UseEnergy(unitDef->upkeep.energy * 0.5f)) {
-			AddMetal(unitDef->makesMetal * 0.5f);
+
+		/* Due to legacy API limitations, games often define conditional resourcing via negative upkeep.
+		 * Handle this separately via Add; this doesn't change the resulting resource totals, but makes it
+		 * show up the expected way in GUI tooltips and endgame stats. Encourage games to eventually use
+		 * `makesResources` instead, once that becomes available. */
+		const auto [positiveUpkeep, negativeUpkeep] = SplitResourcePackIntoPositiveNegative(unitDef->upkeep);
+		AddResources(negativeUpkeep * 0.5f);
+
+		if (UseResources(positiveUpkeep * 0.5f)) {
+			AddResources(unitDef->makesResources * 0.5f);
 
 			if (unitDef->extractsMetal > 0.0f)
-				AddMetal(metalExtract * 0.5f);
+				AddResources({metalExtract * 0.5f, 0.0f});
 		}
 
-		UseMetal(unitDef->upkeep.metal * 0.5f);
-
-		if (unitDef->windGenerator > 0.0f) {
-			if (envResHandler.GetCurrentWindStrength() > unitDef->windGenerator) {
- 				AddEnergy(unitDef->windGenerator * 0.5f);
-			} else {
-				AddEnergy(envResHandler.GetCurrentWindStrength() * 0.5f);
-			}
-		}
+		AddResources(SResourcePack(envResHandler.GetCurrentWindStrength()).cap_at(unitDef->windGenerator) * 0.5f);
 	}
 
 	// FIXME: tidal part should be under "if (activated)"?
-	AddEnergy((unitDef->tidalGenerator * envResHandler.GetCurrentTidalStrength()) * 0.5f);
+	AddResources(unitDef->tidalGenerator * (envResHandler.GetCurrentTidalStrength() * 0.5f));
 
 
 	if (health < maxHealth) {
@@ -1534,6 +1562,8 @@ bool CUnit::ChangeTeam(int newteam, ChangeType type)
 
 
 	team = newteam;
+	if (paletteIndex == static_cast<uint16_t>(oldteam))
+		paletteIndex = static_cast<uint16_t>(newteam);
 	allyteam = teamHandler.AllyTeam(newteam);
 	neutral = false;
 
@@ -1929,6 +1959,11 @@ bool CUnit::SetGroup(CGroup* newGroup, bool fromFactory, bool autoSelect)
 const CGroup* CUnit::GetGroup() const { return uiGroupHandlers[team].GetUnitGroup(id); }
       CGroup* CUnit::GetGroup()       { return uiGroupHandlers[team].GetUnitGroup(id); }
 
+void CUnit::UpdateRenderParams()
+{
+	definedIconName = unitDef->iconName;
+}
+
 
 /******************************************************************************/
 /******************************************************************************/
@@ -1994,19 +2029,17 @@ bool CUnit::AddBuildPower(CUnit* builder, float amount)
 		else if (health < maxHealth) {
 			// repair
 			const float step = std::min(amount / buildTime, 1.0f - (health / maxHealth));
-			const float energyUse = (cost.energy * step);
-			const float energyUseScaled = energyUse * modInfo.repairEnergyCostFactor;
+			const auto resourceUse = cost * step * modInfo.repairCostFactor;
 
-			if ((builderTeam->res.energy < energyUseScaled)) {
-				// update the energy and metal required counts
-				builderTeam->resPull.energy += energyUseScaled;
+			if (!builderTeam->HaveResources(resourceUse)) {
+				builderTeam->resPull += resourceUse;
 				return false;
 			}
 
 			if (!eventHandler.AllowUnitBuildStep(builder, this, step))
 				return false;
 
-	  		if (!builder->UseEnergy(energyUseScaled)) {
+			if (!builder->UseResources(resourceUse)) {
 				return false;
 			}
 
@@ -2024,10 +2057,9 @@ bool CUnit::AddBuildPower(CUnit* builder, float amount)
 		}
 
 		const float step = std::max(amount / buildTime, -buildProgress);
-		const float energyRefundStep = cost.energy * step;
-		const float metalRefundStep  =  cost.metal * step;
-		const float metalRefundStepScaled  =  metalRefundStep * modInfo.reclaimUnitEfficiency;
-		const float energyRefundStepScaled = energyRefundStep * modInfo.reclaimUnitEnergyCostFactor;
+		const auto costFraction = cost * -step;
+		const auto refund  = costFraction * modInfo.reclaimUnitEfficiency;
+		const auto useCost = costFraction * modInfo.reclaimUnitCostFactor;
 		const float healthStep        = modInfo.reclaimUnitDrainHealth ? maxHealth * step : 0;
 		const float buildProgressStep = int(modInfo.reclaimUnitMethod == 0) * step;
 		const float postHealth        = health + healthStep;
@@ -2039,17 +2071,20 @@ bool CUnit::AddBuildPower(CUnit* builder, float amount)
 		restTime = 0;
 
 		bool killMe = false;
+
 		SResourceOrder order;
 		order.quantum    = false;
 		order.overflow   = true;
-		order.use.energy = -energyRefundStepScaled;
+		order.use = useCost;
+		order.useIncomeMultiplier = false; // Dont apply income bonus to reclaimed units
+		
 		if (modInfo.reclaimUnitMethod == 0) {
-			// gradual reclamation of invested metal
-			order.add.metal = -metalRefundStepScaled;
+			// gradual reclamation of invested resources
+			order.add = refund;
 		} else {
-			// lump reclamation of invested metal
+			// lump reclamation of invested resources
 			if (postHealth <= 0.0f || postBuildProgress <= 0.0f) {
-				order.add.metal = (cost.metal * buildProgress) * modInfo.reclaimUnitEfficiency;
+				order.add = cost * buildProgress * modInfo.reclaimUnitEfficiency;
 				killMe = true; // to make 100% sure the unit gets killed, and so no resources are reclaimed twice!
 			}
 		}
@@ -2275,7 +2310,7 @@ static bool LimitToFullStorage(const CUnit* u, const CTeam* team, SResourceOrder
 		GetScale(order->use[i], team->res[i], &scale);
 
 		if (u->harvestStorage.empty()) {
-			GetScale(order->add[i], team->resStorage.res[i] - team->res[i], &scale);
+			GetScale(order->add[i], team->resStorage[i] - team->res[i], &scale);
 		} else {
 			GetScale(order->add[i], u->harvestStorage[i] - u->harvested[i], &scale);
 		}
@@ -2323,7 +2358,7 @@ bool CUnit::IssueResourceOrder(SResourceOrder* order)
 	// add
 	if (!order->add.empty()) {
 		if (harvestStorage.empty()) {
-			AddResources(order->add);
+			AddResources(order->add, order->useIncomeMultiplier);
 		} else {
 			bool isFull = false;
 			for (int i = 0; i < SResourcePack::MAX_RESOURCES; ++i) {
@@ -2385,8 +2420,8 @@ void CUnit::Deactivate()
 void CUnit::UpdateWind(float x, float z, float strength)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
-	const float windHeading = ClampRad(GetHeadingFromVectorF(-x, -z) - heading * TAANG2RAD);
-	const float windStrength = std::min(strength, unitDef->windGenerator);
+	const float windHeading = ClampRadPi(GetHeadingFromVectorF(-x, -z) - heading * TAANG2RAD);
+	const float windStrength = std::min(strength, unitDef->windGenerator.energy);
 
 	script->WindChanged(windHeading, windStrength);
 }
@@ -2936,7 +2971,6 @@ CR_REG_METADATA(CUnit, (
 	CR_MEMBER(maxRange),
 	CR_MEMBER(lastMuzzleFlameSize),
 
-	CR_MEMBER(preFramePos),
 	CR_MEMBER(lastMuzzleFlameDir),
 	CR_MEMBER(flankingBonusDir),
 
@@ -3011,12 +3045,16 @@ CR_REG_METADATA(CUnit, (
 	CR_MEMBER(isCloaked),
 	CR_MEMBER(decloakDistance),
 
+	CR_MEMBER(leavesGhost),
+
 	CR_MEMBER(lastTerrainType),
 	CR_MEMBER(curTerrainType),
 
 	CR_MEMBER(selfDCountdown),
 
-	CR_MEMBER_UN(myIcon),
+	CR_MEMBER(definedIconName),
+	CR_MEMBER_UN(currentIconIndex),
+	CR_MEMBER(customIconIndex),
 	CR_MEMBER_UN(drawIcon),
 
 	CR_MEMBER(transportedUnits),

@@ -23,12 +23,14 @@ local Move = UnitScript.Move
 local Turn = UnitScript.Turn
 local Spin = UnitScript.Spin
 local StopSpin = UnitScript.StopSpin
+local Scale = UnitScript.Scale
 
 local MultiSetPieceVisibility = UnitScript.MultiSetPieceVisibility
 local MultiMove = UnitScript.MultiMove
 local MultiTurn = UnitScript.MultiTurn
 local MultiSpin = UnitScript.MultiSpin
 local MultiStopSpin = UnitScript.MultiStopSpin
+local MultiScale = UnitScript.MultiScale
 local MultiExplode = UnitScript.MultiExplode
 
 local StartThread = UnitScript.StartThread
@@ -37,6 +39,7 @@ local SetSignalMask = UnitScript.SetSignalMask
 local Sleep = UnitScript.Sleep
 local WaitForMove = UnitScript.WaitForMove
 local WaitForTurn = UnitScript.WaitForTurn
+local WaitForScale = UnitScript.WaitForScale
 
 local x_axis = 1
 local y_axis = 2

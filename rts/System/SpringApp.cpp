@@ -13,7 +13,9 @@
 #undef KeyRelease
 #else
 #include <unistd.h> // isatty
+#ifndef __APPLE__
 #include <X11/Xlib.h> // XInitThreads
+#endif
 
 #undef KeyPress
 #undef KeyRelease
@@ -40,12 +42,13 @@
 #include "Game/UI/ScanCodes.h"
 #include "Game/UI/InfoConsole.h"
 #include "Game/UI/MouseHandler.h"
-#include "Lua/LuaOpenGL.h" // FIXME LUA Generic Renderer Backend pass
+#include "Lua/LuaOpenGL.h"
 #include "Lua/LuaVFSDownload.h"
 #include "Menu/LuaMenuController.h"
 #include "Menu/SelectMenu.h"
 #include "Net/GameServer.h"
 #include "Net/Protocol/NetProtocol.h" // clientNet
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/Fonts/glFont.h"
 #include "newRendering/GlobalRendering.h"
 #include "newRendering/GL/GLRendererCore.h"
@@ -91,12 +94,14 @@
 #include "System/Log/DefaultFilter.h"
 #include "System/LogOutput.h"
 #include "System/Platform/errorhandler.h"
+#include "System/Platform/ConsoleInit.hpp"
 #include "System/Platform/CrashHandler.h"
 #include "System/Platform/Threading.h"
 #include "System/Platform/Watchdog.h"
 #include "System/Sound/ISound.h"
 #include "System/Sync/FPUCheck.h"
 #include "System/Threading/ThreadPool.h"
+#include "System/LoadSave/DemoFileExtension.h"
 
 #include "Game/UnsyncedGameCommands.h"
 #include "Game/SyncedGameCommands.h"
@@ -165,7 +170,7 @@ int spring::exitCode = spring::EXIT_CODE_SUCCESS;
 static unsigned int reloadCount = 0;
 static unsigned int killedCount = 0;
 
-
+static constexpr auto RECOIL_SDL_WINDOWEVENT_DISPLAY_CHANGED = 18;
 
 // initialize basic systems for command line help / output
 static void ConsolePrintInitialize(const std::string& configSource, bool safemode)
@@ -181,6 +186,7 @@ static void ConsolePrintInitialize(const std::string& configSource, bool safemod
 
 static void FlushExit()
 {
+	LOG_CLEANUP();
 	std::fflush(stdout);
 }
 
@@ -199,6 +205,7 @@ SpringApp::SpringApp(int argc, char** argv)
 	gflags::SetUsageMessage("Usage: " + std::string(argv[0]) + " [options] [path_to_script.txt or demo.sdfz]");
 	gflags::SetVersionString(SpringVersion::GetFull());
 	gflags::ParseCommandLineFlags(&argc, &argv, true);
+	Recoil::InitConsole();
 
 	// also initializes configHandler and logOutput
 	ParseCmdLine(argc, argv);
@@ -335,7 +342,7 @@ bool SpringApp::InitPlatformLibs()
 		// suppress dialog box if gdb helpers aren't found
 		const UINT oldErrorMode = SetErrorMode(SEM_FAILCRITICALERRORS);
 
-		if (LoadLibrary("gdbmacros.dll"))
+		if (LoadLibrary(L"gdbmacros.dll"))
 			LOG_L(L_DEBUG, "[SpringApp::%s] QTCreator's gdbmacros.dll loaded", __func__);
 
 		SetErrorMode(oldErrorMode);
@@ -347,6 +354,7 @@ bool SpringApp::InitPlatformLibs()
 
 bool SpringApp::InitFonts()
 {
+	fontHandler.Init();
 	FtLibraryHandlerProxy::InitFtLibrary();
 	FtLibraryHandlerProxy::InitFontconfig(false);
 	CFontTexture::InitFonts();
@@ -685,13 +693,21 @@ void SpringApp::LoadSpringMenu()
 	}
 }
 
+static bool IsReplay(const std::string& path)
+{
+	if (IsDemoExtension(FileSystem::GetExtensionLowerCase(path)))
+		return true;
+
+	return ContentsLookLikeAReplay(path);
+}
+
 /**
  * Initializes instance of GameSetup
  */
 void SpringApp::Startup()
 {
 	// bash input
-	const std::string& extension = FileSystem::GetExtension(inputFile);
+	const std::string& extension = FileSystem::GetExtensionLowerCase(inputFile);
 
 	// note: avoid any .get() leaks between here and GameServer!
 	clientSetup.reset(new ClientSetup());
@@ -731,7 +747,7 @@ void SpringApp::Startup()
 		pregame = new CPreGame(clientSetup);
 		return;
 	}
-	if (extension == "sdfz") {
+	if (IsReplay(inputFile)) {
 		LoadDemoFile(inputFile);
 		return;
 	}
@@ -831,7 +847,7 @@ void SpringApp::Reload(const std::string script)
 
 	LOG("[SpringApp::%s][10]", __func__);
 
-	matricesMemStorage.Reset();
+	transformsMemStorage.Reset();
 	gu->ResetState();
 
 	ENTER_SYNCED_CODE();
@@ -1181,6 +1197,10 @@ bool SpringApp::MainEventHandler(const SDL_Event& event)
 					//FIXME check if still happens with SDL2 (2013)
 					SDL_SetModState((SDL_Keymod)(SDL_GetModState() & (KMOD_NUM | KMOD_CAPS | KMOD_MODE)));
 
+					// drop emulated input first: it fires its own releases directly,
+					// since the pushed SDL releases below get eaten by the emulation gate
+					LuaDebugExtra::ClearEmulatedInput();
+
 					// release all keyboard keys
 					KeyInput::ReleaseAllKeys();
 
@@ -1208,6 +1228,12 @@ bool SpringApp::MainEventHandler(const SDL_Event& event)
 					// and make sure to un-capture mouse
 					globalRendering->SetWindowInputGrabbing(false);
 				} break;
+				// replace with normal SDL_WINDOWEVENT_DISPLAY_CHANGED when our Linux SDL2 is updated
+				case RECOIL_SDL_WINDOWEVENT_DISPLAY_CHANGED: {
+					LOG("[SpringApp::%s][SDL_WINDOWEVENT_DISPLAY_CHANGED] to display %d\n", __func__, event.window.data1);
+					// try to reinit GL context
+					globalRendering->MakeCurrentContext(false);
+				} break;
 
 				case SDL_WINDOWEVENT_CLOSE: {
 					gu->globalQuit = true;
@@ -1216,6 +1242,10 @@ bool SpringApp::MainEventHandler(const SDL_Event& event)
 		} break;
 		case SDL_AUDIODEVICEREMOVED: {
 			LOG("[SpringApp::%s][SDL_AUDIODEVICEREMOVED][1] type=%u, which=%u, iscapture=%u", __func__, event.adevice.type, event.adevice.which, static_cast<uint32_t>(event.adevice.iscapture));
+			sound->DeviceChanged(event.adevice.which);
+		} break;
+		case SDL_AUDIODEVICEADDED: {
+			LOG("[SpringApp::%s][SDL_AUDIODEVICEADDED][1] type=%u, which=%u, iscapture=%u", __func__, event.adevice.type, event.adevice.which, static_cast<uint32_t>(event.adevice.iscapture));
 			sound->DeviceChanged(event.adevice.which);
 		} break;
 		case SDL_QUIT: {
@@ -1237,7 +1267,12 @@ bool SpringApp::MainEventHandler(const SDL_Event& event)
 			if (activeController != nullptr) {
 				int keyCode = CKeyCodes::GetNormalizedSymbol(event.key.keysym.sym);
 				int scanCode = CScanCodes::GetNormalizedSymbol(event.key.keysym.scancode);
-				activeController->KeyPressed(keyCode, scanCode, event.key.repeat);
+
+				// if the key is already held via input emulation the effective
+				// state is already down, so the real press is not a new edge
+				// (the emulated store is keyed by raw SDL2 keycode, like keyVec)
+				if (!KeyInput::IsKeyEmulated(event.key.keysym.sym))
+					activeController->KeyPressed(keyCode, scanCode, event.key.repeat);
 			}
 
 		} break;
@@ -1248,7 +1283,10 @@ bool SpringApp::MainEventHandler(const SDL_Event& event)
 				gameTextInput.ignoreNextChar = false;
 				int keyCode = CKeyCodes::GetNormalizedSymbol(event.key.keysym.sym);
 				int scanCode = CScanCodes::GetNormalizedSymbol(event.key.keysym.scancode);
-				activeController->KeyReleased(keyCode, scanCode);
+
+				// emulation still holds it down, so the real release is not an edge
+				if (!KeyInput::IsKeyEmulated(event.key.keysym.sym))
+					activeController->KeyReleased(keyCode, scanCode);
 			}
 		} break;
 		case SDL_KEYMAPCHANGED: {

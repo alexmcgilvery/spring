@@ -1,6 +1,8 @@
 /* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
 #pragma once
 
+#include <ranges>
+
 #include "System/float3.h"
 #include "Rendering/Common/ModelDrawerData.h"
 #include "Rendering/UnitDefImage.h"
@@ -10,9 +12,6 @@ struct S3DModel;
 class CUnitDrawer;
 struct UnitDef;
 
-namespace icon {
-	class CIconData;
-}
 namespace GL {
 	struct GeometryBuffer;
 }
@@ -24,6 +23,8 @@ public:
 	bool DecRef() { return ((refCount--) > 1); }
 	const S3DModel* GetModel() const;
 	void PostLoad();
+	// (re)allocate and fill the batched-draw world transform slot from pos/facing
+	void InitWorldTransform();
 public:
 	std::string modelName;
 
@@ -33,10 +34,18 @@ public:
 	float radius;
 	float iconRadius;
 
-	int facing; //FIXME replaced with dir-vector just legacy decal drawer uses this
-	uint8_t team;
 	int refCount;
-	icon::CIconData* myIcon;
+	int facing; //FIXME replaced with dir-vector just legacy decal drawer uses this
+
+	// color identity captured when the ghost was created; a ghost keeps the color it was last
+	// seen under. team drives the legacy (GLSL) team-color path, paletteIndex drives the GL4
+	// per-instance palette (equal to team unless a custom Lua color palette was assigned).
+	uint8_t team;
+	uint16_t paletteIndex;
+
+	size_t currentIconIndex;
+
+	ScopedTransformMemAlloc worldTransformAlloc;
 private:
 	mutable const S3DModel* model;
 };
@@ -63,7 +72,11 @@ public:
 	void UnitEnteredLos(const CUnit* unit, int allyTeam) override;
 	void UnitLeftLos(const CUnit* unit, int allyTeam) override;
 
-	void PlayerChanged(int playerNum) override;
+	void PlayerChanged(int playerID) override;
+
+	bool UpdateUnitGhosts(const CUnit* unit, const bool addNewGhost);
+	void UnitLeavesGhostChanged(const CUnit* unit, const bool leaveDeadGhost);
+	void ReviewPrevLos(const CUnit* unit);
 public:
 	class TempDrawUnit {
 		CR_DECLARE_STRUCT(TempDrawUnit)
@@ -83,6 +96,16 @@ public:
 	private:
 		mutable const UnitDef* unitDef;
 	};
+	// a still-alive building that left an observer's LOS. The unit is drawn as a ghost using the
+	// color it was last seen under (snapshotted here), so it does not silently recolor if the live
+	// unit changes team while out of LOS. team feeds the legacy (GLSL) team-color path, paletteIndex
+	// feeds the GL4 per-instance palette (equal to team unless a custom Lua palette was assigned).
+	struct LiveGhostBuilding {
+		CR_DECLARE_STRUCT(LiveGhostBuilding)
+		CUnit* unit = nullptr;
+		uint16_t paletteIndex = 0;
+		uint8_t team = 0;
+	};
 	struct SavedData {
 		CR_DECLARE_STRUCT(SavedData)
 
@@ -94,7 +117,7 @@ public:
 		std::vector<std::array<std::vector<GhostSolidObject*>, MODELTYPE_CNT>> deadGhostBuildings;
 
 		/// buildings that left LOS but are still alive
-		std::vector<std::array<std::vector<CUnit*>, MODELTYPE_CNT>> liveGhostBuildings;
+		std::vector<std::array<std::vector<LiveGhostBuilding>, MODELTYPE_CNT>> liveGhostBuildings;
 	};
 public:
 	CUnitDrawerData(bool& mtModelDrawer_);
@@ -124,35 +147,43 @@ public:
 	void AddTempDrawUnit(const TempDrawUnit& tempDrawUnit);
 
 	void UpdateGhostedBuildings();
-	void UpdateUnitDefMiniMapIcons(const UnitDef* ud);
+	void UpdateUnitIconsByUnitDef(const UnitDef* ud);
 public:
-	const std::vector<UnitDefImage>& GetUnitDefImages() const { return unitDefImages; }
-	      std::vector<UnitDefImage>& GetUnitDefImages() { return unitDefImages; }
+	void UpdateCurrentUnitIcon(const CUnit* unit);
 
-	const std::vector<TempDrawUnit>& GetTempOpaqueDrawUnits(int modelType) const { return savedData.tempOpaqueUnits[modelType]; }
-	const std::vector<TempDrawUnit>& GetTempAlphaDrawUnits(int modelType) const { return  savedData.tempAlphaUnits[modelType]; }
+	const auto& GetUnitDefImages() const { return unitDefImages; }
+	      auto& GetUnitDefImages() { return unitDefImages; }
 
-	const std::vector<GhostSolidObject*>& GetDeadGhostBuildings(int allyTeam, int modelType) const {
+	const auto& GetTempOpaqueDrawUnits(int modelType) const { return savedData.tempOpaqueUnits[modelType]; }
+	const auto& GetTempAlphaDrawUnits(int modelType) const { return  savedData.tempAlphaUnits[modelType]; }
+
+	auto GetDeadGhostBuildings(int allyTeam) const {
+		assert((unsigned)gu->myAllyTeam < savedData.deadGhostBuildings.size());
+		return std::views::join(savedData.deadGhostBuildings[allyTeam]);
+	}
+
+	const auto& GetDeadGhostBuildings(int allyTeam, int modelType) const {
 		assert((unsigned)gu->myAllyTeam < savedData.deadGhostBuildings.size());
 		return savedData.deadGhostBuildings[allyTeam][modelType];
 	}
-	const std::vector<CUnit*           >& GetLiveGhostBuildings(int allyTeam, int modelType) const {
+	const auto& GetLiveGhostBuildings(int allyTeam, int modelType) const {
 		assert((unsigned)gu->myAllyTeam < savedData.liveGhostBuildings.size());
 		return savedData.liveGhostBuildings[allyTeam][modelType];
 	}
 
+	// world transform slot (in transformsMemStorage) for a live ghost building; INVALID_INDEX if none
+	size_t GetLiveGhostTransform(const CUnit* unit) const {
+		const auto it = liveGhostTransforms.find(unit);
+		return (it != liveGhostTransforms.end()) ? it->second.first.GetOffset(false) : TransformsMemStorage::INVALID_INDEX;
+	}
+
 	auto*       GetSavedData()       { return &savedData; }
 	const auto* GetSavedData() const { return &savedData; }
-
-	const spring::unsynced_map<icon::CIconData*, std::pair<std::vector<const CUnit*>, std::vector<const GhostSolidObject*> > >& GetUnitsByIcon() const { return unitsByIcon; }
 protected:
 	void UpdateObjectDrawFlags(CSolidObject* o) const override;
 private:
-	const icon::CIconData* GetUnitIcon(const CUnit* unit);
-
 	void UpdateTempDrawUnits(std::vector<TempDrawUnit>& tempDrawUnits);
 
-	void UpdateUnitIcon(const CUnit* unit, bool forced, bool killed);
 	void UpdateUnitIconState(CUnit* unit);
 	void UpdateUnitIconStateScreen(CUnit* unit);
 	static void UpdateDrawPos(CUnit* unit);
@@ -181,17 +212,21 @@ public:
 private:
 	SavedData savedData;
 
-	spring::unsynced_map<icon::CIconData*, std::pair<std::vector<const CUnit*>, std::vector<const GhostSolidObject*> > > unitsByIcon;
-
 	std::vector<UnitDefImage> unitDefImages;
 
+	S3DModel* GetUnitModel(const CUnit* unit) const;
+	void RemoveDeadGhost(GhostSolidObject* gso, std::vector<GhostSolidObject*>& dgb, int index);
 
+	// rebuilds the per-unit world transform slots for live ghost buildings of the local allyTeam.
+	// scan-based so it self-heals across savegame load, allyTeam/spectator changes and leavesGhost toggles.
+	void UpdateLiveGhostTransforms();
+	// maps unit -> { RAII-owned world transform slot, last sweep stamp seen }
+	spring::unordered_map<const CUnit*, std::pair<ScopedTransformMemAlloc, int>> liveGhostTransforms;
+	int liveGhostSweepStamp = 0;
 
 	// icons
 	bool useDistToGroundForIcons;
 	float sqCamDistToGroundForIcons;
-
-
 
 	// IconsAsUI
 	static constexpr float iconSizeMult = 0.005f; // 1/200

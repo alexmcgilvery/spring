@@ -28,7 +28,6 @@
 #include "System/TimeProfiler.h"
 #include "System/creg/STL_Deque.h"
 #include "System/creg/STL_Set.h"
-#include "System/Threading/ThreadPool.h"
 #include "Sim/Path/HAPFS/PathGlobal.h"
 
 #include "System/Misc/TracyDefs.h"
@@ -221,7 +220,6 @@ bool CUnitHandler::AddUnit(CUnit* unit)
 	assert(CanAddUnit(unit->id));
 
 	InsertActiveUnit(unit);
-
 	teamHandler.Team(unit->team)->AddUnit(unit, CTeam::AddBuilt);
 
 	// 0 is not a valid UnitDef id, so just use unitsByDefs[team][0]
@@ -289,6 +287,7 @@ void CUnitHandler::DeleteUnit(CUnit* delUnit)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
 	assert(delUnit->isDead);
+
 	// we want to call RenderUnitDestroyed while the unit is still valid
 	eventHandler.RenderUnitDestroyed(delUnit);
 
@@ -428,6 +427,17 @@ void CUnitHandler::UpdateUnitWeapons()
 	}
 }
 
+void CUnitHandler::UpdatePreFrame()
+{
+	SCOPED_TIMER("Sim::Unit::UpdatePreFrame");
+	inUpdateCall = true;
+
+	for (CUnit* unit : activeUnits) {
+		unit->UpdatePrevFrameTransform();
+	}
+
+	inUpdateCall = false;
+}
 
 void CUnitHandler::Update()
 {
@@ -444,7 +454,17 @@ void CUnitHandler::Update()
 	inUpdateCall = false;
 }
 
+void CUnitHandler::UpdatePostAnimation()
+{
+	SCOPED_TIMER("Sim::Unit::UpdatePostAnimation");
+	inUpdateCall = true;
 
+	for (auto* unit : activeUnits) {
+		unit->UpdateTransportees();
+	}
+
+	inUpdateCall = false;
+}
 
 void CUnitHandler::AddBuilderCAI(CBuilderCAI* b)
 {

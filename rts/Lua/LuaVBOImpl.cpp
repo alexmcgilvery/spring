@@ -5,15 +5,17 @@
 #include <sstream>
 
 #include "lib/sol2/sol.hpp"
-#include "lib/fmt/format.h"
-#include "lib/fmt/printf.h"
+#include <fmt/format.h>
+#include <fmt/printf.h>
 
 #include "System/Log/ILog.h"
-#include "System/SpringMem.h"
+#include "System/MemoryOverride.hpp"
 #include "System/SafeUtil.h"
 #include "Rendering/ModelsDataUploader.h"
 #include "newRendering/GlobalRendering.h"
 #include "Rendering/GL/VBO.h"
+#include "Rendering/Models/3DModel.hpp"
+#include "Rendering/Models/ModelsMemStorage.h"
 #include "Rendering/Env/Particles/ProjectileDrawer.h"
 #include "Sim/Objects/SolidObjectDef.h"
 #include "Sim/Features/Feature.h"
@@ -118,7 +120,7 @@ void LuaVBOImpl::Delete()
 		spring::SafeDelete(vbo);
 
 	if (bufferData) {
-		spring::FreeAlignedMemory(bufferData);
+		recoil::aligned_free(bufferData);
 		bufferData = nullptr;
 	}
 
@@ -458,6 +460,7 @@ bool LuaVBOImpl::DefineElementArray(const sol::optional<sol::object> attribDefAr
 
 /***
  * @class VBOAttributeDef
+ * @x_helper
  * 
  * @field id integer?
  * 
@@ -670,7 +673,7 @@ size_t LuaVBOImpl::Upload(const sol::stack_table& luaTblData, sol::optional<int>
  * @param elementCount number? number of elements to download
  * @param forceGPURead boolean? (Default: `false`) force downloading the data from GPU buffer as opposed
  * to using shadow RAM buffer
- * @return [number, ...][] vboData
+ * @return number[] vboData
  */
 sol::as_table_t<std::vector<lua_Number>> LuaVBOImpl::Download(sol::optional<int> attribIdxOpt, sol::optional<int> elemOffsetOpt, sol::optional<int> elemCountOpt, sol::optional<bool> forceGPUReadOpt)
 {
@@ -1003,45 +1006,43 @@ size_t LuaVBOImpl::MatrixDataFromProjectileIDsImpl(const Iterable& ids, int attr
 }
 
 template<typename TObj>
-SInstanceData LuaVBOImpl::InstanceDataFromGetData(int id, int attrID, uint8_t defTeamID)
+SInstanceData LuaVBOImpl::InstanceDataFromGetData(int id, int attrID, uint16_t defPaletteIndex)
 {
-	uint32_t teamID = defTeamID;
+	uint16_t paletteIndex = defPaletteIndex;
 
 	const TObj* obj = LuaUtils::SolIdToObject<TObj>(id, __func__);
-	const uint32_t matOffset = static_cast<uint32_t>(matrixUploader.GetElemOffset(obj));
-	const uint32_t uniIndex  = static_cast<uint32_t>(modelsUniformsStorage.GetObjOffset(obj)); //doesn't need to exist for defs and model. Don't check for validity
+	const uint32_t traOffset = static_cast<uint32_t>(transformsUploader.GetElemOffset(obj));
+	const uint32_t uniIndex  = static_cast<uint32_t>(modelUniformsStorage.GetObjOffset(obj)); //doesn't need to exist for defs and model. Don't check for validity
 
-	if (matOffset == ~0u) {
+	if (traOffset == ~0u) {
 		LuaUtils::SolLuaError("[LuaVBOImpl::%s] Invalid data supplied. See infolog for details", __func__);
 	}
 
-	uint8_t drawFlags = 0u;
 	if constexpr (std::is_same_v<TObj, CUnit> || std::is_same_v<TObj, CFeature>) {
-		teamID = obj->team;
-		drawFlags = obj->drawFlag;
+		paletteIndex = obj->paletteIndex;
 	}
 
 	uint16_t numPieces = 0;
 	size_t bposeIndex = 0;
 	if constexpr (std::is_same<TObj, S3DModel>::value) {
 		numPieces = static_cast<uint16_t>(obj->numPieces);
-		bposeIndex = matrixUploader.GetElemOffset(obj);
+		bposeIndex = transformsUploader.GetElemOffset(obj);
 	}
 	else {
 		numPieces = static_cast<uint16_t>(obj->model->numPieces);
-		bposeIndex = matrixUploader.GetElemOffset(obj->model);
+		bposeIndex = transformsUploader.GetElemOffset(obj->model);
 	}
 
-	return SInstanceData(matOffset, teamID, drawFlags, numPieces, uniIndex, bposeIndex);
+	return SInstanceData(traOffset, paletteIndex, numPieces, uniIndex, bposeIndex);
 }
 
 template<typename TObj>
-size_t LuaVBOImpl::InstanceDataFromImpl(int id, int attrID, uint8_t defTeamID, const sol::optional<int>& elemOffsetOpt)
+size_t LuaVBOImpl::InstanceDataFromImpl(int id, int attrID, uint16_t defPaletteIndex, const sol::optional<int>& elemOffsetOpt)
 {
 	InstanceBufferCheckAndFormatCheck(attrID, __func__);
 
 	const uint32_t elemOffset = elemOffsetOpt.value_or(0u);
-	const SInstanceData instanceData = InstanceDataFromGetData<TObj>(id, attrID, defTeamID);
+	const SInstanceData instanceData = InstanceDataFromGetData<TObj>(id, attrID, defPaletteIndex);
 
 	if (elemOffset + 1 > elementsCount || elemOffset < 0)
 		LuaUtils::SolLuaError("[LuaVBOImpl::%s] Element offset (%u) is too big or negative", __func__, elemOffset);
@@ -1054,7 +1055,7 @@ size_t LuaVBOImpl::InstanceDataFromImpl(int id, int attrID, uint8_t defTeamID, c
 }
 
 template<typename TObj>
-size_t LuaVBOImpl::InstanceDataFromImpl(const sol::stack_table& ids, int attrID, uint8_t defTeamID, const sol::optional<int>& elemOffsetOpt)
+size_t LuaVBOImpl::InstanceDataFromImpl(const sol::stack_table& ids, int attrID, uint16_t defPaletteIndex, const sol::optional<int>& elemOffsetOpt)
 {
 	InstanceBufferCheckAndFormatCheck(attrID, __func__);
 
@@ -1075,7 +1076,7 @@ size_t LuaVBOImpl::InstanceDataFromImpl(const sol::stack_table& ids, int attrID,
 	for (std::size_t i = 0u; i < idsSize; ++i) {
 		lua_Number idLua = ids.raw_get_or<lua_Number>(i + 1, defaultValue);
 		int id = spring::SafeCast<int, lua_Number>(idLua);
-		const SInstanceData instanceData = InstanceDataFromGetData<TObj>(id, attrID, defTeamID);
+		const SInstanceData instanceData = InstanceDataFromGetData<TObj>(id, attrID, defPaletteIndex);
 		memcpy(&instanceDataVec[4 * i], &instanceData, sizeof(SInstanceData));
 	}
 
@@ -1195,14 +1196,14 @@ size_t LuaVBOImpl::ModelsVBO()
  * The instance data in that attribute will contain the offset to bind position
  * matrix in global matrices SSBO and offset to uniform buffer structure in
  * global per unit/feature uniform SSBO (unused for Unit/FeatureDefs), as
- * well as some auxiliary data ushc as draw flags and team index.
+ * well as some auxiliary data such as palette index and number of pieces.
  * 
  * Data Layout:
  * ```
  * SInstanceData:
- *    , matOffset{ matOffset_ }            // updated during the following draw frames
- *    , uniOffset{ uniOffset_ }            // updated during the following draw frames
- *    , info{ teamIndex, drawFlags, 0, 0 } // not updated during the following draw frames
+ *    , traOffset{ matOffset_ }         // updated during the following draw frames
+ *    , uniOffset{ uniOffset_ }         // updated during the following draw frames
+ *    , info{ paletteIndex, numPieces } // not updated during the following draw frames
  *    , aux1 { 0u }
  * ```
  *
@@ -1216,14 +1217,14 @@ size_t LuaVBOImpl::ModelsVBO()
  */
 size_t LuaVBOImpl::InstanceDataFromUnitDefIDs(int id, int attrID, sol::optional<int> teamIdOpt, sol::optional<int> elemOffsetOpt)
 {
-	uint8_t defTeamID = teamIdOpt.value_or(gu->myTeam);
-	return InstanceDataFromImpl<UnitDef>(id, attrID, defTeamID, elemOffsetOpt);
+	uint16_t defPaletteIndex = static_cast<uint16_t>(teamIdOpt.value_or(gu->myTeam));
+	return InstanceDataFromImpl<UnitDef>(id, attrID, defPaletteIndex, elemOffsetOpt);
 }
 
 size_t LuaVBOImpl::InstanceDataFromUnitDefIDs(const sol::stack_table& ids, int attrID, sol::optional<int> teamIdOpt, sol::optional<int> elemOffsetOpt)
 {
-	uint8_t defTeamID = teamIdOpt.value_or(gu->myTeam);
-	return InstanceDataFromImpl<UnitDef>(ids, attrID, defTeamID, elemOffsetOpt);
+	uint16_t defPaletteIndex = static_cast<uint16_t>(teamIdOpt.value_or(gu->myTeam));
+	return InstanceDataFromImpl<UnitDef>(ids, attrID, defPaletteIndex, elemOffsetOpt);
 }
 
 
@@ -1234,14 +1235,14 @@ size_t LuaVBOImpl::InstanceDataFromUnitDefIDs(const sol::stack_table& ids, int a
  * The instance data in that attribute will contain the offset to bind position
  * matrix in global matrices SSBO and offset to uniform buffer structure in
  * global per unit/feature uniform SSBO (unused for Unit/FeatureDefs), as
- * well as some auxiliary data ushc as draw flags and team index.
+ * well as some auxiliary data such as palette index and number of pieces.
  * 
  * Data Layout
  * ```
  * SInstanceData:
- *    , matOffset{ matOffset_ }            // updated during the following draw frames
- *    , uniOffset{ uniOffset_ }            // updated during the following draw frames
- *    , info{ teamIndex, drawFlags, 0, 0 } // not updated during the following draw frames
+ *    , traOffset{ matOffset_ }         // updated during the following draw frames
+ *    , uniOffset{ uniOffset_ }         // updated during the following draw frames
+ *    , info{ paletteIndex, numPieces } // not updated during the following draw frames
  *    , aux1 { 0u }
  * ```
  *
@@ -1255,14 +1256,14 @@ size_t LuaVBOImpl::InstanceDataFromUnitDefIDs(const sol::stack_table& ids, int a
  */
 size_t LuaVBOImpl::InstanceDataFromFeatureDefIDs(int id, int attrID, sol::optional<int> teamIdOpt, sol::optional<int> elemOffsetOpt)
 {
-	uint8_t defTeamID = teamIdOpt.value_or(gu->myTeam);
-	return InstanceDataFromImpl<FeatureDef>(id, attrID, defTeamID, elemOffsetOpt);
+	uint16_t defPaletteIndex = static_cast<uint16_t>(teamIdOpt.value_or(gu->myTeam));
+	return InstanceDataFromImpl<FeatureDef>(id, attrID, defPaletteIndex, elemOffsetOpt);
 }
 
 size_t LuaVBOImpl::InstanceDataFromFeatureDefIDs(const sol::stack_table& ids, int attrID, sol::optional<int> teamIdOpt, sol::optional<int> elemOffsetOpt)
 {
-	uint8_t defTeamID = teamIdOpt.value_or(gu->myTeam);
-	return InstanceDataFromImpl<FeatureDef>(ids, attrID, defTeamID, elemOffsetOpt);
+	uint16_t defPaletteIndex = static_cast<uint16_t>(teamIdOpt.value_or(gu->myTeam));
+	return InstanceDataFromImpl<FeatureDef>(ids, attrID, defPaletteIndex, elemOffsetOpt);
 }
 
 
@@ -1273,15 +1274,15 @@ size_t LuaVBOImpl::InstanceDataFromFeatureDefIDs(const sol::stack_table& ids, in
  * The instance data in that attribute will contain the offset to bind position
  * matrix in global matrices SSBO and offset to uniform buffer structure in
  * global per unit/feature uniform SSBO (unused for Unit/FeatureDefs), as
- * well as some auxiliary data ushc as draw flags and team index.
+ * well as some auxiliary data such as palette index and number of pieces.
  * 
  * Data Layout
  *
  * ```
  * SInstanceData:
- *    , matOffset{ matOffset_ }            // updated during the following draw frames
- *    , uniOffset{ uniOffset_ }            // updated during the following draw frames
- *    , info{ teamIndex, drawFlags, 0, 0 } // not updated during the following draw frames
+ *    , traOffset{ matOffset_ }         // updated during the following draw frames
+ *    , uniOffset{ uniOffset_ }         // updated during the following draw frames
+ *    , info{ paletteIndex, numPieces } // not updated during the following draw frames
  *    , aux1 { 0u }
  * ```
  *
@@ -1311,7 +1312,7 @@ size_t LuaVBOImpl::InstanceDataFromUnitIDs(const sol::stack_table& ids, int attr
  * The instance data in that attribute will contain the offset to bind position
  * matrix in global matrices SSBO and offset to uniform buffer structure in
  * global per unit/feature uniform SSBO (unused for Unit/FeatureDefs), as
- * well as some auxiliary data ushc as draw flags and team index.
+ * well as some auxiliary data such as palette index and number of pieces.
  *
  * @param featureIDs number|number[]
  * @param attrID integer
@@ -1471,6 +1472,45 @@ void LuaVBOImpl::DumpDefinition()
 	LOG("%s", ss.str().c_str());
 }
 
+/*** Copy the contents of the VBO to another VBO.
+ *
+ * @function VBO:CopyTo
+ *
+ * Destination VBO is expected to have sufficient allocation size, otherwise the copying will gracefully fail.
+ *
+ * @param destVBO VBO
+ * @param copySizeInBytes integer
+ * @return boolean success
+ */
+bool LuaVBOImpl::CopyTo(const std::shared_ptr<LuaVBOImpl>& destVBO, int copySizeInBytes)
+{
+	VBOExistenceCheck(vbo         , __func__);
+	VBOExistenceCheck(destVBO->vbo, __func__);
+
+	const auto wasBound = vbo->bound;
+	if (!wasBound)
+		vbo->Bind();
+
+	auto result = vbo->CopyTo(*destVBO->vbo, static_cast<GLsizeiptr>(copySizeInBytes));
+
+	// VBO::CopyTo only moves GPU->GPU. We need to also copy over the CPU-side bufferData.
+	if (result && bufferData != nullptr && destVBO->bufferData != nullptr && copySizeInBytes > 0) {
+		const auto n = std::min({
+			static_cast<uint32_t>(copySizeInBytes),
+			bufferSizeInBytes,
+			destVBO->bufferSizeInBytes
+		});
+		if (n > 0)
+			memcpy(destVBO->bufferData, bufferData, n);
+	}
+
+	if (!wasBound)
+		vbo->Unbind();
+
+	return result;
+}
+
+
 /*** Gets the OpenGL Buffer ID
  *
  * @function VBO:GetID
@@ -1501,7 +1541,7 @@ void LuaVBOImpl::AllocGLBuffer(size_t byteSize)
 	vbo->Unbind();
 
 	//allocate shadow buffer
-	bufferData = spring::AllocateAlignedMemory(bufferSizeInBytes, 32);
+	bufferData = recoil::aligned_alloc(32, bufferSizeInBytes);
 
 	vboOwner = true;
 }
