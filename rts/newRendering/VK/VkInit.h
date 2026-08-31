@@ -14,8 +14,8 @@ public:
 	VkCoreObjects();
 	~VkCoreObjects();
 
-	const auto& GetInstanceExtensions() const { return instExtensionProperties; }
-	const auto& GetPhysDeviceExtensions() const { return pdevExtensionProperties; }
+	const auto& GetInstanceExtensions() const { return instanceExtensionProperties; }
+	const auto& GetPhysDeviceExtensions() const { return physicalDeviceExtensionProperties; }
 	const auto& GetPhysDevices() const { return physicalDevices; }
 	const auto& GetBestPhysDevice() const { return physicalDevice; }
 
@@ -24,8 +24,8 @@ public:
 	std::string GetVulkanAPI() const;
 	static std::string GetVulkanAPI(uint32_t apiVersion);
 
-	static VkDeviceSize GetVRAMSize(const vk::PhysicalDevice& phd);
-	static bool HasExtension(const std::vector<vk::ExtensionProperties>& es, const char* e);
+	static VkDeviceSize GetVRAMSize(const vk::PhysicalDevice& physicalDevice);
+	static bool HasExtension(const std::vector<vk::ExtensionProperties>& extensions, const char* extensionName);
 
 	static VkCoreObjects& GetInstance() {
 		if (!vkCoreObjects) {
@@ -42,8 +42,8 @@ private:
 	bool vkInitialized = false;
 
 	vk::Instance instance;
-	std::vector<vk::ExtensionProperties> instExtensionProperties;
-	std::vector<vk::ExtensionProperties> pdevExtensionProperties;
+	std::vector<vk::ExtensionProperties> instanceExtensionProperties;
+	std::vector<vk::ExtensionProperties> physicalDeviceExtensionProperties;
 
 	std::vector<vk::PhysicalDevice> physicalDevices;
 	vk::PhysicalDevice physicalDevice;
@@ -52,7 +52,7 @@ private:
 
 	vk::Device logicalDevice;
 
-	//static constexpr 
+	//static constexpr
 };
 
 #endif
@@ -67,10 +67,10 @@ public:
 
 private:
 	// Initializers
-	void InitializeVulkanForSDL(SDL_Window* _sdl_window_ptr);
+	void InitializeVulkanForSDL(SDL_Window* sdlWindow);
 	void InitializeVulkanSwapchainForSDL();
 
-	// Frame Update 
+	// Frame Update
 	void PrepareSwapchainFrame();
 	void PresentSwapchainFrame();
 	void PrepareRenderTarget();
@@ -87,20 +87,20 @@ private:
 	void TerminateVulkanCore();
 
 private:
-	bool vkInitialized_ = false;
+	bool vkInitialized = false;
 
-	VulkanCore				vkCore_;
-	VulkanDevice			vkDevice_;
-	VulkanWindow			vkWindow_;
-	VulkanRenderPass		vkRenderPass_;
-	VulkanGraphicsPipeline	vkGraphicsPipeline_;
-	VulkanGraphicalSettings	vkGraphicsSettings_;
+	VulkanCore				vkCore;
+	VulkanDevice			vkDevice;
+	VulkanWindow			vkWindow;
+	VulkanRenderPass		vkRenderPass;
+	VulkanGraphicsPipeline	vkGraphicsPipeline;
+	VulkanGraphicsSettings	vkGraphicsSettings;
 
-	std::vector<VulkanTaskControl>				vkSwapchainCommandData_;
-	std::vector<VulkanSwapchainImageStatus>		vkSwapchainImageStatuses_;
-	std::vector<VulkanImage>					vkSwapchainImages_;
+	std::vector<VulkanTaskControl>				vkSwapchainCommandData;
+	std::vector<VulkanSwapchainImageStatus>		vkSwapchainImageStatuses;
+	std::vector<VulkanImage>					vkSwapchainImages;
 
-	std::vector<VulkanImage>					vkImages_; // Non swapchain images
+	std::vector<VulkanImage>					vkImages; // Non swapchain images
 };
 
 #endif

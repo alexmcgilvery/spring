@@ -5,163 +5,163 @@
 
 #include <vector>
 
-namespace Vulkan
+namespace vulkan
 {
 	void								InitializeVulkanInstance(
-											VkInstance&						_instance, 
-											VkAllocationCallbacks*			_allocator_ptr, 
-											VkDebugUtilsMessengerEXT&		_message_back,
-											std::vector<const char*>		_instance_extensions = {}, 
-											std::vector<const char*>		_instance_layers = {}
+											VkInstance&						instance,
+											VkAllocationCallbacks*			allocatorCallbacks,
+											VkDebugUtilsMessengerEXT&		debugMessenger,
+											std::vector<const char*>		instanceExtensions = {},
+											std::vector<const char*>		instanceLayers = {}
 										);
 
 	void								InitializeVulkanDevice(
-											const VkPhysicalDevice&			_physical_device, 
-											QueueFamilyIndices&				_indices, 
-											VkDevice&						_logical_device,  
-											const VkSurfaceKHR				_surface = VK_NULL_HANDLE,
-											std::vector<const char*>		_device_extensions = {},
-											std::vector<const char*>		_layers = {}
+											const VkPhysicalDevice&			physicalDevice,
+											QueueFamilyIndices&				queueFamilyIndices,
+											VkDevice&						logicalDevice,
+											const VkSurfaceKHR				surface = VK_NULL_HANDLE,
+											std::vector<const char*>		deviceExtensions = {},
+											std::vector<const char*>		layers = {}
 										);
 
 	void								InitializeVulkanDescriptorPool(
-											const VkDevice&					_logical_device,
-											const VkAllocationCallbacks* 	_allocator_ptr, 
-											VkDescriptorPool& 				_descriptor_pool
+											const VkDevice&					logicalDevice,
+											const VkAllocationCallbacks* 	allocatorCallbacks,
+											VkDescriptorPool& 				descriptorPool
 										);
 
 	// information
 	std::vector<VkPhysicalDevice> 		DeterminePhysicalDevices(
-											const VkInstance& 				_instance,
-											std::vector<const char*>		_required_extensions = {},
-											std::vector<const char*>		_required_layers = {}
+											const VkInstance& 				instance,
+											std::vector<const char*>		requiredExtensions = {},
+											std::vector<const char*>		requiredLayers = {}
 										);
 
 	void								TerminateVulkanInstance(
-											const VkInstance&				_instance,
-											const VkAllocationCallbacks*	_allocator_ptr,
-											VkDebugUtilsMessengerEXT&		_message_back
+											const VkInstance&				instance,
+											const VkAllocationCallbacks*	allocatorCallbacks,
+											VkDebugUtilsMessengerEXT&		debugMessenger
 										);
 
 
-	bool								CheckInstanceLayerSupport(std::vector<const char*> _required_layers);
+	bool								CheckInstanceLayerSupport(std::vector<const char*> requiredLayers);
 
-	namespace Data
+	namespace data
 	{
 		VkResult						CreateOrResizeBuffer(
-											const VmaAllocator&				_vma_allocator,
-											const VkBufferCreateInfo&		_buffer_create_info,
-											const VmaMemoryUsage&			_memory_usage,
-											VkBuffer&						_buffer,
-											VmaAllocation&					_memory_allocation
+											const VmaAllocator&				vmaAllocator,
+											const VkBufferCreateInfo&		bufferCreateInfo,
+											const VmaMemoryUsage&			memoryUsage,
+											VkBuffer&						buffer,
+											VmaAllocation&					allocation
 										);
 
 		VkResult						CreateOrResizeImage(
-											const VmaAllocator&				_vma_allocator,
-											const VkImageCreateInfo&		_image_create_info,
-											const VmaMemoryUsage&			_memory_usage,
-											VkImage&						_image,
-											VmaAllocation&					_memory_allocation
+											const VmaAllocator&				vmaAllocator,
+											const VkImageCreateInfo&		imageCreateInfo,
+											const VmaMemoryUsage&			memoryUsage,
+											VkImage&						image,
+											VmaAllocation&					allocation
 										);
 	}
-			
-	namespace Validation
+
+	namespace validation
 	{
 		static VKAPI_ATTR VkBool32		DebugMessengerCallback(
-											VkDebugUtilsMessageSeverityFlagBitsEXT		_message_severity, 
-											VkDebugUtilsMessageTypeFlagsEXT				_message_type, 
-											const VkDebugUtilsMessengerCallbackDataEXT* _callback_data, 
-											void*										_user_data
+											VkDebugUtilsMessageSeverityFlagBitsEXT		messageSeverity,
+											VkDebugUtilsMessageTypeFlagsEXT				messageType,
+											const VkDebugUtilsMessengerCallbackDataEXT* callbackData,
+											void*										userData
 										);
 
 		void							SetupDebugUtilsMessenger(
-											const VkInstance&							_instance, 
-											const VkAllocationCallbacks*				_allocator_ptr, 
-											VkDebugUtilsMessengerEXT&					_message_back
+											const VkInstance&							instance,
+											const VkAllocationCallbacks*				allocatorCallbacks,
+											VkDebugUtilsMessengerEXT&					debugMessenger
 										);
 
 		VkResult						CreateDebugUtilsMessengerEXT(
-											const VkInstance&							_instance, 
-											const VkAllocationCallbacks* 				_allocator_ptr, 
-											const VkDebugUtilsMessengerCreateInfoEXT* 	_create_info_ptr, 
-											VkDebugUtilsMessengerEXT& 					_message_back
+											const VkInstance&							instance,
+											const VkAllocationCallbacks* 				allocatorCallbacks,
+											const VkDebugUtilsMessengerCreateInfoEXT* 	createInfo,
+											VkDebugUtilsMessengerEXT& 					debugMessenger
 										);
 
 		void							DestroyDebugUtilsMessengerEXT(
-											const VkInstance&							_instance, 
-											const VkAllocationCallbacks*				_allocator_ptr, 
-											VkDebugUtilsMessengerEXT&					_message_back
+											const VkInstance&							instance,
+											const VkAllocationCallbacks*				allocatorCallbacks,
+											VkDebugUtilsMessengerEXT&					debugMessenger
 										);
-	}	
+	}
 
 
-	std::vector<const char*>			GetRequiredSDLExtensions(SDL_Window* _window_ptr);
+	std::vector<const char*>			GetRequiredSDLExtensions(SDL_Window* window);
 
-	std::vector<VkImage>				InitializeVulkanSwapChainForSDL(
-											const VkPhysicalDevice				_physical_device, 
-											const VkDevice						_logical_device, 
-											const VkAllocationCallbacks* 		_allocator_ptr, 
-											const VkSurfaceKHR&					_surface, 
-											SDL_Window* const					_window_ptr, 
-											VkSwapchainKHR&						_swap_chain, 
-											VkFormat&							_image_format, 
-											VkExtent2D&							_image_extent
+	std::vector<VkImage>				InitializeVulkanSwapchainForSDL(
+											const VkPhysicalDevice				physicalDevice,
+											const VkDevice						logicalDevice,
+											const VkAllocationCallbacks* 		allocatorCallbacks,
+											const VkSurfaceKHR&					surface,
+											SDL_Window* const					window,
+											VkSwapchainKHR&						swapchain,
+											VkFormat&							imageFormat,
+											VkExtent2D&							imageExtent
 										);
 
 	void								InitializeVulkanRenderPass(
-											const VkDevice&						_device, 
-											const VkFormat&						_format, 
-											VkRenderPass&						_render_pass
+											const VkDevice&						device,
+											const VkFormat&						format,
+											VkRenderPass&						renderPass
 										);
 
 	void								InitializeGraphicsPipeline(
-											const VkDevice&						_device, 
-											const VkPipelineCache&				_pipeline_cache, 
-											const VkAllocationCallbacks*		_allocator_ptr, 
-											const VkRenderPass&					_render_pass, 
-											const VkExtent2D					_extent,  
-											VkPipelineLayout&					_pipeline_layout, 
-											VkDescriptorSetLayout&				_descriptor_set_layout, 
-											VkPipeline&							_pipeline
+											const VkDevice&						device,
+											const VkPipelineCache&				pipelineCache,
+											const VkAllocationCallbacks*		allocatorCallbacks,
+											const VkRenderPass&					renderPass,
+											const VkExtent2D					extent,
+											VkPipelineLayout&					pipelineLayout,
+											VkDescriptorSetLayout&				descriptorSetLayout,
+											VkPipeline&							pipeline
 										);
 
 
 
-	namespace DeviceSupport
+	namespace device_support
 	{
-		struct DeviceSwapChainSupportDetails
+		struct DeviceSwapchainSupportDetails
 		{
 			VkSurfaceCapabilitiesKHR				capabilities;
 			std::vector<VkSurfaceFormatKHR>			formats;
-			std::vector<VkPresentModeKHR>			present_modes;
+			std::vector<VkPresentModeKHR>			presentModes;
 		};
 
 		QueueFamilyIndices				DetermineQueueFamilies(
-										const VkPhysicalDevice&						_physical_device, 
-										const VkSurfaceKHR&							_surface = VK_NULL_HANDLE
+										const VkPhysicalDevice&						physicalDevice,
+										const VkSurfaceKHR&							surface = VK_NULL_HANDLE
 										);
 
 		bool							CheckDeviceExtensionSupport(
-											const VkPhysicalDevice&					_physical_device, 
-											std::vector<const char*>				_required_extensions = {}
+											const VkPhysicalDevice&					physicalDevice,
+											std::vector<const char*>				requiredExtensions = {}
 										);
 
-		DeviceSwapChainSupportDetails	QueryDeviceSwapChainSupport(
-											const VkPhysicalDevice&					_physical_device, 
-											const VkSurfaceKHR&						_surface
+		DeviceSwapchainSupportDetails	QueryDeviceSwapchainSupport(
+											const VkPhysicalDevice&					physicalDevice,
+											const VkSurfaceKHR&						surface
 										);
 
 		VkSurfaceFormatKHR				ChooseSwapSurfaceFormat(
-											const std::vector<VkSurfaceFormatKHR>&	_available_formats
+											const std::vector<VkSurfaceFormatKHR>&	availableFormats
 										);
 
 		VkPresentModeKHR				ChooseSwapPresentMode(
-											const std::vector<VkPresentModeKHR>		_available_modes
+											const std::vector<VkPresentModeKHR>		availableModes
 										);
 
 		VkExtent2D						ChooseSwapExtent(
-											const VkSurfaceCapabilitiesKHR&			_capabilities, 
-											SDL_Window* const						_window_ptr
+											const VkSurfaceCapabilitiesKHR&			capabilities,
+											SDL_Window* const						window
 										);
 	}
 }

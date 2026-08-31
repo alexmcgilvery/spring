@@ -34,10 +34,10 @@ public:
 
 private:
 	// Initializers
-	bool InitializeVulkanForSDL(SDL_Window* _window_ptr);
+	bool InitializeVulkanForSDL(SDL_Window* window);
 	void InitializeVulkanSwapchainForSDL();
 
-	// Frame Update 
+	// Frame Update
 	void PrepareSwapchainFrame();
 	void PresentSwapchainFrame();
 	void PrepareRenderTarget();
@@ -54,18 +54,18 @@ private:
 	void TerminateVulkanCore();
 
 private:
-	bool vkInitialized_ = false;
+	bool vkInitialized = false;
 
-	VulkanCore				vkCore_;
-	VulkanDevice			vkDevice_;
-	VulkanWindow			vkWindow_;
-	VulkanRenderPass		vkRenderPass_;
-	VulkanGraphicsPipeline	vkGraphicsPipeline_;
-	VulkanGraphicalSettings	vkGraphicsSettings_;
+	VulkanCore				vkCore;
+	VulkanDevice			vkDevice;
+	VulkanWindow			vkWindow;
+	VulkanRenderPass		vkRenderPass;
+	VulkanGraphicsPipeline	vkGraphicsPipeline;
+	VulkanGraphicsSettings	vkGraphicsSettings;
 
-	std::vector<VulkanTaskControl>				vkSwapchainCommandData_;
-	std::vector<VulkanSwapchainImageStatus>		vkSwapchainImageStatuses_;
-	std::vector<VulkanImage>					vkSwapchainImages_;
+	std::vector<VulkanTaskControl>				vkSwapchainCommandData;
+	std::vector<VulkanSwapchainImageStatus>		vkSwapchainImageStatuses;
+	std::vector<VulkanImage>					vkSwapchainImages;
 
-	std::vector<VulkanImage>					vkImages_; // Non swapchain images
+	std::vector<VulkanImage>					vkImages; // Non swapchain images
 };

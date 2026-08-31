@@ -1,7 +1,7 @@
 #include <vulkan/vulkan.h>
 #include <vector>
 
-namespace Vulkan::RenderConfig
+namespace vulkan::render_config
 {
 	const std::vector<const char*> REQUIRED_DEVICE_EXTENSIONS = {
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME
