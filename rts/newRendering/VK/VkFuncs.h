@@ -143,7 +143,7 @@ namespace vulkan
 
 		bool							CheckDeviceExtensionSupport(
 											const VkPhysicalDevice&					physicalDevice,
-											std::vector<const char*>				requiredExtensions = {}
+											std::vector<const char*>				requiredExtensionNames = {}
 										);
 
 		DeviceSwapchainSupportDetails	QueryDeviceSwapchainSupport(

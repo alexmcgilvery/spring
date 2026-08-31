@@ -546,7 +546,7 @@ void vulkan::InitializeGraphicsPipeline( //FIXME Mod to match BAR requirements
 
 bool vulkan::device_support::CheckDeviceExtensionSupport(
 	const VkPhysicalDevice& 		physicalDevice,
-	std::vector<const char*> 		requiredExtensions
+	std::vector<const char*> 		requiredExtensionNames
 	)
 {
 	uint32_t extensionCount;
@@ -555,13 +555,13 @@ bool vulkan::device_support::CheckDeviceExtensionSupport(
 	std::vector<VkExtensionProperties> availableExtensions(extensionCount); // based off how many extensions are supported in the prior statement create a list of that size
 	vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, availableExtensions.data()); // fill the list with the supported extensions
 
-	std::set<std::string> requiredExtensions(requiredExtensions.begin(), requiredExtensions.end()); // create a list of the required extensions
+	std::set<std::string> remainingExtensions(requiredExtensionNames.begin(), requiredExtensionNames.end()); // create a list of the required extensions
 
 	for (const auto &extension : availableExtensions) { // for every extension in the available extensions from the device
-		requiredExtensions.erase(extension.extensionName); // if the extension is in the required extension list, remove it from the requried list (as we know its available)
+		remainingExtensions.erase(extension.extensionName); // if the extension is in the required extension list, remove it from the requried list (as we know its available)
 	}
 
-	return requiredExtensions.empty(); // the list should be empty if all the required extensions are found, if it is empty we are returning true here
+	return remainingExtensions.empty(); // the list should be empty if all the required extensions are found, if it is empty we are returning true here
 }
 
 bool vulkan::CheckInstanceLayerSupport(
