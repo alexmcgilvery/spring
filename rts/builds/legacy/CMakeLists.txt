@@ -31,11 +31,7 @@ find_package(SDL2 MODULE REQUIRED)
 set(engineLibraries SDL2::SDL2)
 
 find_package(Vulkan REQUIRED)
-if    (Vulkan_FOUND)
-	list(APPEND engineIncludes ${Vulkan_INCLUDE_DIRS})
-	list(APPEND engineLibraries ${Vulkan_LIBRARY})
-	add_definitions(-DHAS_VULKAN)
-endif (Vulkan_FOUND)
+list(APPEND engineLibraries Vulkan::Vulkan)
 
 set(OpenGL_GL_PREFERENCE LEGACY)
 find_package_static(OpenGL 3.0 REQUIRED)
