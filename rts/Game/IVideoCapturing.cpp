@@ -8,7 +8,7 @@
 #include "DummyVideoCapturing.h"
 #endif // defined AVI_CAPTURING
 
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 
 #include "System/Misc/TracyDefs.h"
 

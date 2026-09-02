@@ -1,7 +1,0 @@
-/*
-	Graphics Shader
-*/
-class GShader
-{
-
-};

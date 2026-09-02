@@ -2,7 +2,7 @@
 
 #include "LuaTextures.h"
 #include "Rendering/Textures/TextureFormat.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/GL/FBO.h"
 #include "Rendering/GL/TexBind.h"
 #include "System/SpringMath.h"
@@ -55,7 +55,7 @@ std::string LuaTextures::Create(const Texture& tex)
 	glGenTextures(1, &texID);
 	glBindTexture(tex.target, texID);
 
-	glClearErrors("LuaTex", __func__, globalRendering->rendererDebug);
+	glClearErrors("LuaTex", __func__, globalRendering->glDebugErrors);
 
 	GLenum dataFormat = GL::GetDataFormatFromInternalFormat(tex.format);
 	GLenum dataType   = GL::GetDataTypeFromInternalFormat(tex.format);

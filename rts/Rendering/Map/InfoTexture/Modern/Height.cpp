@@ -3,7 +3,7 @@
 #include "Height.h"
 #include "Map/HeightLinePalette.h"
 #include "Map/ReadMap.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/Shaders/ShaderHandler.h"
 #include "Rendering/Shaders/Shader.h"
 #include "Rendering/GL/SubState.h"
@@ -118,7 +118,6 @@ void CHeightTexture::Update()
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, hmTexID);
-
 
 	RunFullScreenPass();
 }

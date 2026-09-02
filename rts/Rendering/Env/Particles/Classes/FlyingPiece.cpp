@@ -5,7 +5,7 @@
 #include "Game/GlobalUnsynced.h"
 #include "Map/Ground.h"
 #include "Map/MapInfo.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/Common/ModelDrawerHelpers.h"
 #include "Rendering/Units/UnitDrawer.h"
 #include "Rendering/Models/3DModelPiece.hpp"

@@ -43,19 +43,18 @@
 #include "Game/UI/InfoConsole.h"
 #include "Game/UI/MouseHandler.h"
 #include "Lua/LuaOpenGL.h"
+#include "Lua/LuaDebugExtra.h"
 #include "Lua/LuaVFSDownload.h"
 #include "Menu/LuaMenuController.h"
 #include "Menu/SelectMenu.h"
 #include "Net/GameServer.h"
 #include "Net/Protocol/NetProtocol.h" // clientNet
 #include "Rendering/GlobalRendering.h"
+#include "Rendering/Fonts/FontHandler.h"
 #include "Rendering/Fonts/glFont.h"
-#include "newRendering/GlobalRendering.h"
-#include "newRendering/GL/GLRendererCore.h"
-#include "newRendering/VK/VkRendererCore.h"
 #include "Rendering/GL/FBO.h"
-#include "Rendering/GL/RenderBuffers.h"
 #include "Rendering/Models/ModelsMemStorage.h"
+#include "Rendering/GL/RenderBuffers.h"
 #include "Rendering/Shaders/ShaderHandler.h"
 #include "Rendering/Textures/Bitmap.h"
 #include "Rendering/Textures/NamedTextures.h"
@@ -245,12 +244,7 @@ bool SpringApp::Init()
 	SpringMath::Init();
 	LuaMemPool::InitStatic(configHandler->GetBool("UseLuaMemPools"));
 
-	if (true) { //TODO If GL Renderer:
-		CGLRendererCore::InitStatic(); 
-	} else{//TODO Else if Vulkan Renderer:
-		//CVkRendererCore::InitStatic();
-	}
-	
+	CGlobalRendering::InitStatic();
 	globalRendering->SetFullScreen(FLAGS_window, FLAGS_fullscreen);
 
 	if (!InitPlatformLibs())
@@ -436,7 +430,7 @@ bool SpringApp::InitWindow(const char* title)
 	Threading::SetThreadName("gpu-driver");
 
 	// raises an error-prompt in case of failure
-	if (!globalRendering->CreateWindow(title))
+	if (!globalRendering->CreateWindowAndContext(title))
 		return false;
 
 	// Something in SDL_SetVideoMode (OpenGL drivers?) messes with the FPU control word.
@@ -1060,10 +1054,7 @@ void SpringApp::Kill(bool fromRun)
 
 	LOG("[SpringApp::%s][7]", __func__);
 
-	if (true) { //TODO If GL Renderer:
-		CGLRendererCore::KillStatic();
-	} //TODO Else if Vulkan Renderer:
-	
+	CGlobalRendering::KillStatic();
 	CBitmap::KillPool();
 	CLuaSocketRestrictions::KillStatic();
 
@@ -1103,9 +1094,9 @@ bool SpringApp::MainEventHandler(const SDL_Event& event)
 						{
 							SCOPED_ONCE_TIMER("GlobalRendering::UpdateGL");
 
-							globalRendering->UpdateRendererConfigs();
-							globalRendering->UpdateRendererGeometry();
-							globalRendering->SetRendererStartState();
+							globalRendering->UpdateGLConfigs();
+							globalRendering->UpdateGLGeometry();
+							globalRendering->InitGLState();
 							UpdateInterfaceGeometry();
 						}
 					}
@@ -1130,9 +1121,9 @@ bool SpringApp::MainEventHandler(const SDL_Event& event)
 						SCOPED_ONCE_TIMER("GlobalRendering::UpdateGL");
 
 						SaveWindowPosAndSize();
-						globalRendering->UpdateRendererConfigs();
-						globalRendering->UpdateRendererGeometry();
-						globalRendering->SetRendererStartState();
+						globalRendering->UpdateGLConfigs();
+						globalRendering->UpdateGLGeometry();
+						globalRendering->InitGLState();
 						UpdateInterfaceGeometry();
 					}
 					{

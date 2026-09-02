@@ -16,7 +16,7 @@
 #include "System/Log/ILog.h"
 #include "System/StringUtil.h"
 #include "System/TypeToStr.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/Models/ModelsMemStorage.h"
 #include "Rendering/Models/ModelsMemStorageDefs.h"
 #include "Rendering/UniformConstants.h"
@@ -305,7 +305,7 @@ namespace {
 				const auto iter = p.activeUniforms.find(uniformName);
 
 				if (iter == p.activeUniforms.end()) {
-					if (globalRendering->rendererDebug || globalRendering->rendererDebugErrors)
+					if (globalRendering->glDebug || globalRendering->glDebugErrors)
 						LOG_L(L_WARNING, "[%s] uniform \"%s\" from table \"%s\" not active in shader", __func__, uniformName, fieldName);
 					continue;
 				}
@@ -1356,7 +1356,7 @@ int LuaShaders::UniformSubroutine(lua_State* L)
  */
 int LuaShaders::GetEngineUniformBufferDef(lua_State* L)
 {
-	if (!globalRendering->supportUniformData)
+	if (!globalRendering->haveGL4)
 		return 0;
 
 	const int idx = luaL_checkint(L, 1);
@@ -1378,7 +1378,7 @@ int LuaShaders::GetEngineUniformBufferDef(lua_State* L)
  */
 int LuaShaders::GetEngineModelUniformDataDef(lua_State* L)
 {
-	if (!globalRendering->supportModelUniformData)
+	if (!globalRendering->haveGL4)
 		return 0;
 
 	lua_pushstring(L, ModelUniformData::GetGLSLDefinition().c_str());

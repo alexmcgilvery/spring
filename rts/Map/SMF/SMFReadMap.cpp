@@ -12,7 +12,7 @@
 #include "Game/Camera.h"
 #include "Game/CameraHandler.h"
 #include "Game/LoadScreen.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/Env/WaterRendering.h"
 #include "Rendering/Env/SunLighting.h"
 #include "Rendering/Env/ISky.h"

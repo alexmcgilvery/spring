@@ -66,6 +66,7 @@ set(sources_engine_Rendering
 		"${CMAKE_CURRENT_SOURCE_DIR}/GL/glExtra.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/GL/State.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/GL/myGL.cpp"
+		"${CMAKE_CURRENT_SOURCE_DIR}/GlobalRendering.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/GroundFlash.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/CommandDrawer.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/HUDDrawer.cpp"
@@ -143,7 +144,9 @@ set(sources_engine_Rendering
 		"${CMAKE_CURRENT_SOURCE_DIR}/VerticalSync.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/WorldDrawer.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Fonts/FontHandler.cpp"
+		"${CMAKE_CURRENT_SOURCE_DIR}/Fonts/CFontTexture.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Fonts/glFont.cpp"
 		"${CMAKE_CURRENT_SOURCE_DIR}/Fonts/glFontRenderer.cpp"
+		"${CMAKE_CURRENT_SOURCE_DIR}/Fonts/TextWrap.cpp"
 		PARENT_SCOPE
 	)

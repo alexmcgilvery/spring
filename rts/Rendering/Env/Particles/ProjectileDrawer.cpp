@@ -12,7 +12,7 @@
 #include "Game/LoadScreen.h"
 #include "Lua/LuaParser.h"
 #include "Rendering/GroundFlash.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/ShadowHandler.h"
 #include "Rendering/Units/UnitDrawer.h"
 #include "Rendering/Env/ISky.h"
@@ -1191,7 +1191,7 @@ void CProjectileDrawer::UpdatePerlin() {
 	}
 
 	perlinFB.Unbind();
-	globalRendering->UpdateViewport();
+	globalRendering->LoadViewport();
 
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glEnable(GL_DEPTH_TEST);

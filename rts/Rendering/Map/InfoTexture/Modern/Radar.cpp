@@ -3,7 +3,7 @@
 #include "Radar.h"
 #include "InfoTextureHandler.h"
 #include "Game/GlobalUnsynced.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/Shaders/ShaderHandler.h"
 #include "Rendering/Shaders/Shader.h"
 #include "Rendering/GL/SubState.h"
@@ -106,7 +106,7 @@ void CRadarTexture::Update()
 		glViewport(0, 0, texSize.x, texSize.y);
 		glClearColor(1.0f, 0.0f, 0.0f, 0.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
-		globalRendering->UpdateViewport();
+		globalRendering->LoadViewport();
 		FBO::Unbind();
 
 		auto binding = texture.ScopedBind();

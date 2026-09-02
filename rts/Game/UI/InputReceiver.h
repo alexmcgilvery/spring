@@ -6,7 +6,7 @@
 #include <deque>
 #include <string>
 
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "System/Rectangle.h"
 
 class CInputReceiver

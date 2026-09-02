@@ -13,9 +13,8 @@
 #include "Game/GameVersion.h"
 #include "Game/GlobalUnsynced.h"
 #include "Game/PreGame.h"
-//#include "Rendering/Fonts/glFont.h"
-//#include "Rendering/GL/myGL.h"
-#include "newRendering/GlobalDraw.h"
+#include "Rendering/Fonts/glFont.h"
+#include "Rendering/GL/myGL.h"
 #include "System/Config/ConfigHandler.h"
 #include "System/Exceptions.h"
 #include "System/Log/ILog.h"
@@ -27,7 +26,7 @@
 #include "System/FileSystem/FileSystem.h"
 #include "System/MsgStrings.h"
 #include "System/StartScriptGen.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "aGui/Gui.h"
 #include "aGui/VerticalLayout.h"
 #include "aGui/HorizontalLayout.h"
@@ -187,7 +186,7 @@ bool SelectMenu::Draw()
 {
 	spring_msecs(10).sleep(true);
 	globalRendering->drawFrame = std::max(1U, globalRendering->drawFrame + 1);
-	GlobalDraw::Func::ClearScreen();
+	ClearScreen();
 	agui::gui->Draw();
 
 	return true;

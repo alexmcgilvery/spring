@@ -1399,7 +1399,7 @@ void CMiniMap::DrawForReal(bool useNormalizedCoors, bool updateTex, bool luaCall
 	// Finish
 	// Reset of GL state
 	if (useNormalizedCoors && globalRendering->dualScreenMode)
-		globalRendering->UpdateViewport();
+		globalRendering->LoadViewport();
 
 	cursorIcons.Enable(true);
 }
@@ -1812,7 +1812,7 @@ bool CMiniMap::RenderCachedTexture(bool useNormalizedCoors)
 
 	if (useNormalizedCoors) {
 		if (globalRendering->dualScreenMode)
-			globalRendering->UpdateViewport();
+			globalRendering->LoadViewport();
 
 		glPopMatrix();
 	}

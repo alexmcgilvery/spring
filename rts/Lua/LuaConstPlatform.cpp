@@ -5,7 +5,7 @@
 #include "Game/GameVersion.h"
 #include "System/Platform/Hardware.h"
 #include "System/Platform/Misc.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/GlobalRenderingInfo.h"
 
 /******************************************************************************
@@ -108,7 +108,7 @@ bool LuaConstPlatform::PushEntries(lua_State* L)
 	LuaPushNamedBool(L, "glHaveIntel", globalRendering->haveIntel);
 
 	/*** @field Platform.glHaveGLSL boolean */
-	LuaPushNamedBool(L, "glHaveGLSL", globalRendering->haveGLSL);
+	LuaPushNamedBool(L, "glHaveGLSL", true);
 	/*** @field Platform.glHaveGL4 boolean */
 	LuaPushNamedBool(L, "glHaveGL4", globalRendering->haveGL4);
 

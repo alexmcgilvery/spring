@@ -11,7 +11,7 @@
 #include "Map/BaseGroundDrawer.h"
 #include "Map/ReadMap.h"
 #include "Rendering/Fonts/glFont.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/IconHandler.h"
 #include "Rendering/ShadowHandler.h"
 #include "Rendering/UnitDefImage.h"

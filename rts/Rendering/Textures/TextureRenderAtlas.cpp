@@ -8,7 +8,7 @@
 #include "RowAtlasAlloc.h"
 #include "MultiPageAtlasAlloc.hpp"
 
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/GL/myGL.h"
 #include "Rendering/GL/FBO.h"
 #include "Rendering/GL/TexBind.h"
@@ -527,7 +527,7 @@ bool CTextureRenderAtlas::CreateAtlasTexture()
 
 		fbo.DetachAll();
 		FBO::Unbind();
-		globalRendering->UpdateViewport();
+		globalRendering->LoadViewport();
 	}
 
 	LOG_L(L_INFO, "CTextureRenderAtlas::%s()[1] atlas=%s atlasRendered=%d", __func__, atlasName.c_str(), atlasRendered);

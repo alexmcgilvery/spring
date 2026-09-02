@@ -177,7 +177,6 @@ ModelUniformsUploader modelUniformsUploader;
 
 void TransformsUploader::Init()
 {
-
 	const auto sbType = globalRendering->supportPersistentMapping
 		? IStreamBufferConcept::Types::SB_PERSISTENTMAP
 		: IStreamBufferConcept::Types::SB_BUFFERSUBDATA;
@@ -198,7 +197,7 @@ void TransformsUploader::Kill()
 
 void TransformsUploader::Update()
 {
-	if (!globalRendering->supportModelUniformData)
+	if (!globalRendering->haveGL4)
 		return;
 
 	SCOPED_TIMER("TransformsUploader::Update");
@@ -329,7 +328,7 @@ size_t TransformsUploader::GetProjectileElemOffset(int32_t syncedProjectileID) c
 
 void ModelUniformsUploader::Init()
 {
-	if (!globalRendering->supportModelUniformData)
+	if (!globalRendering->haveGL4)
 		return;
 
 	Impl::InitCommon<MyDataType>(

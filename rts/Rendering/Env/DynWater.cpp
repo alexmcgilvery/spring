@@ -12,7 +12,7 @@
 // #include "Game/UI/MouseHandler.h"
 #include "Map/MapInfo.h"
 #include "Map/ReadMap.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/Units/UnitDrawer.h"
 #include "Rendering/ShadowHandler.h"
 #include "Rendering/Env/ISky.h"
@@ -516,7 +516,7 @@ void CDynWater::DrawRefraction(const CGame* game)
 
 	DrawRefractions(&clipPlaneEqs[0], true, true);
 
-	globalRendering->UpdateViewport();
+	globalRendering->LoadViewport();
 	glClearColor(sky->fogColor.x, sky->fogColor.y, sky->fogColor.z, 1);
 
 	sunLighting->modelDiffuseColor = oldsun;

@@ -15,7 +15,7 @@
 #include "Game/GlobalUnsynced.h"
 #include "Map/MapInfo.h"
 #include "Map/ReadMap.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/ShadowHandler.h"
 #include "Rendering/Map/InfoTexture/IInfoTextureHandler.h"
 #include "Rendering/Shaders/ShaderHandler.h"
@@ -569,7 +569,7 @@ void CBumpWater::UpdateWater(const CGame* game)
 	if (reflection > 0) DrawReflection(game);
 	if (reflection || refraction) {
 		FBO::Unbind();
-		globalRendering->UpdateViewport();
+		globalRendering->LoadViewport();
 	}
 	glPopAttrib();
 }
@@ -801,7 +801,7 @@ void CBumpWater::UpdateCoastmap(const bool initialize)
 	glDeleteTextures(1, &coastUpdateTexture);
 	coastmapAtlasRects.clear();
 
-	globalRendering->UpdateViewport();
+	globalRendering->LoadViewport();
 	glActiveTexture(GL_TEXTURE0);
 }
 
@@ -880,7 +880,7 @@ void CBumpWater::UpdateDynWaves(const bool initialize)
 		glPopMatrix();
 	glMatrixMode(GL_MODELVIEW);
 		glPopMatrix();
-	globalRendering->UpdateViewport();
+	globalRendering->LoadViewport();
 
 	glPopAttrib();
 	dynWavesFBO.Unbind();
@@ -983,7 +983,7 @@ void CBumpWater::DrawRefraction(const CGame* game)
 
 	camera->Update();
 
-	globalRendering->UpdateViewport();
+	globalRendering->LoadViewport();
 	const auto& sky = ISky::GetSky();
 	glClearColor(sky->fogColor.x, sky->fogColor.y, sky->fogColor.z, 0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

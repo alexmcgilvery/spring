@@ -8,7 +8,7 @@
 #include "QuadtreeAtlasAlloc.h"
 #include "RowAtlasAlloc.h"
 #include "MultiPageAtlasAlloc.hpp"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/GL/myGL.h"
 #include "System/Config/ConfigHandler.h"
 #include "System/Log/ILog.h"

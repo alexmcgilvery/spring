@@ -11,7 +11,7 @@
 
 #include "VBO.h"
 
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "System/Config/ConfigHandler.h"
 #include "System/Log/ILog.h"
 #include "System/SpringMath.h"
@@ -226,7 +226,7 @@ void VBO::Resize(GLsizeiptr newSize, GLenum newUsage)
 	usage = newUsage;
 
 	if (isSupported) {
-		glClearErrors("VBO", __func__, globalRendering->rendererDebugErrors);
+		glClearErrors("VBO", __func__, globalRendering->glDebugErrors);
 		const GLenum oldBoundTarget = curBoundTarget;
 		GLint rbglsize = 0;
 		GLint wbglsize = 0;
@@ -389,7 +389,7 @@ void VBO::New(GLsizeiptr newSize, GLenum newUsage, const void* newData)
 	}
 
 	if (isSupported) {
-		glClearErrors("VBO", __func__, globalRendering->rendererDebugErrors);
+		glClearErrors("VBO", __func__, globalRendering->glDebugErrors);
 
 		if (immutableStorage) {
 			glBufferStorage(curBoundTarget, newSize, newData, /*newUsage =*/(GL_MAP_READ_BIT * readableStorage) | GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT | GL_DYNAMIC_STORAGE_BIT);

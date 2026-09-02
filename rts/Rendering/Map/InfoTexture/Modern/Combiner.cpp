@@ -2,7 +2,7 @@
 
 #include "Combiner.h"
 #include "Game/GlobalUnsynced.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/Shaders/ShaderHandler.h"
 #include "Rendering/Shaders/Shader.h"
 #include "Rendering/GL/SubState.h"
@@ -142,7 +142,6 @@ void CInfoTextureCombiner::Update()
 	shader->UnbindTextures();
 
 	globalRendering->LoadViewport();
-
 	FBO::Unbind();
 
 	state.pop();

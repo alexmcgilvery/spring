@@ -2,7 +2,7 @@
 #include <algorithm>
 
 #include "LuaTextures.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "System/Log/ILog.h"
 #include "LuaAtlasTextures.h"
 

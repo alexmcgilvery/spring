@@ -8,7 +8,7 @@
 #include "Game/GlobalUnsynced.h"
 #include "Game/TraceRay.h"
 #include "Map/Ground.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/GroundFlash.h"
 #include "Sim/Features/Feature.h"
 #include "Sim/Features/FeatureDef.h"

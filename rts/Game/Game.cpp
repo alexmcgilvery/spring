@@ -36,11 +36,11 @@
 #include "Rendering/Env/IWater.h"
 #include "Rendering/Env/WaterRendering.h"
 #include "Rendering/Env/MapRendering.h"
-#include "newRendering/Fonts/CFontTexture.h"
+#include "Rendering/Fonts/CFontTexture.h"
 #include "Rendering/Fonts/glFont.h"
 #include "Rendering/CommandDrawer.h"
 #include "Rendering/LineDrawer.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/DebugDrawerAI.h"
 #include "Rendering/HUDDrawer.h"
 #include "Rendering/IconHandler.h"
@@ -1447,7 +1447,7 @@ bool CGame::Draw() {
 
 	SCOPED_SPECIAL_TIMER("Draw");
 	SCOPED_GL_DEBUGGROUP("Draw");
-	globalRendering->SetTimeStamp(CGlobalRendering::FRAME_REF_TIME_QUERY_IDX);
+	globalRendering->SetGLTimeStamp(CGlobalRendering::FRAME_REF_TIME_QUERY_IDX);
 
 	SetDrawMode(gameNormalDraw);
 
@@ -1555,7 +1555,7 @@ bool CGame::Draw() {
 	gu->avgDrawFrameTime = mix(gu->avgDrawFrameTime, currentFrameDrawTime.toMilliSecsf(), 0.05f);
 
 	eventHandler.DbgTimingInfo(TIMING_VIDEO, currentTimePreDraw, currentTimePostDraw);
-	globalRendering->SetTimeStamp(CGlobalRendering::FRAME_END_TIME_QUERY_IDX);
+	globalRendering->SetGLTimeStamp(CGlobalRendering::FRAME_END_TIME_QUERY_IDX);
 
 	lastDrawFrameTime = currentTimePostDraw;
 

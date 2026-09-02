@@ -8,7 +8,7 @@
 #include <vector>
 #include <array>
 
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 
 /*
 LuaMaterial

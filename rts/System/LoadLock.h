@@ -5,7 +5,7 @@
 #include "System/Threading/SpringThreading.h"
 #include "System/Threading/WrappedSync.h"
 #include "System/ScopedResource.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 
 class CLoadLockMtx {
 public:
@@ -18,7 +18,7 @@ public:
 		auto& thisThreadLocksCount = locksCount[Threading::IsGameLoadThread()];
 		++thisThreadLocksCount;
 		if (thisThreadLocksCount == 1) {
-			globalRendering->AquireThreadContext(); //set
+			globalRendering->MakeCurrentContext(false); //set
 			globalRendering->ToggleMultisampling();
 		}
 	}
@@ -29,7 +29,7 @@ public:
 		--thisThreadLocksCount;
 
 		if (thisThreadLocksCount == 0)
-			globalRendering->ReleaseThreadContext(); //clear
+			globalRendering->MakeCurrentContext(true ); //clear
 
 		mtx.unlock();
 	}

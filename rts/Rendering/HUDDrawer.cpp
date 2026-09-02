@@ -3,7 +3,7 @@
 #include "HUDDrawer.h"
 
 #include "Rendering/Fonts/glFont.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/GL/myGL.h"
 #include "Rendering/GL/SubState.h"
 #include "Game/Camera.h"

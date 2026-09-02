@@ -10,7 +10,7 @@
 #include "myGL.h"
 #include "VertexArray.h"
 #include "glxHandler.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/GlobalRenderingInfo.h"
 #include "Rendering/Textures/Bitmap.h"
 #include "Rendering/Textures/TextureFormat.h"
@@ -580,7 +580,7 @@ bool ProgramStringIsNative(GLenum target, const char* filename)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
 	// clear any current GL errors so that the following check is valid
-	glClearErrors("GL", __func__, globalRendering->rendererDebugErrors);
+	glClearErrors("GL", __func__, globalRendering->glDebugErrors);
 
 	const GLuint tempProg = LoadProgram(target, filename, (target == GL_VERTEX_PROGRAM_ARB? "vertex": "fragment"));
 

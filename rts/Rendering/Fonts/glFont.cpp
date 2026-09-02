@@ -2,14 +2,14 @@
 
 #include "glFont.h"
 #include "glFontRenderer.h"
-#include "newRendering/Fonts/FontLogSection.h"
+#include "FontLogSection.h"
 #include "FontHandler.h"
 
 #include <cstdarg>
 #include <stdexcept>
 
 #include "Game/Camera.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "System/Color.h"
 #include "System/Exceptions.h"
 #include "System/SpringMath.h"

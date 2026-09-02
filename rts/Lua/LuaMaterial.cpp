@@ -8,7 +8,7 @@
 
 #include "Game/Camera.h"
 #include "Game/GlobalUnsynced.h" // randVector
-#include "newRendering/GlobalRendering.h" // drawFrame
+#include "Rendering/GlobalRendering.h" // drawFrame
 #include "Rendering/ShadowHandler.h"
 #include "Rendering/Models/3DModelDefs.hpp"
 #include "Rendering/Common/ModelDrawerState.hpp"

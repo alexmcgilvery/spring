@@ -4,7 +4,7 @@
 #include "GroundFlash.h"
 #include "Map/Ground.h"
 #include "Game/Camera.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/GroundFlashInfo.h"
 #include "Rendering/GL/RenderBuffers.h"
 #include "Rendering/Textures/ColorMap.h"

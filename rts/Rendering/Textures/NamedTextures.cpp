@@ -7,7 +7,7 @@
 
 #include "Rendering/GL/myGL.h"
 #include "Bitmap.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "System/type2.h"
 #include "System/Log/ILog.h"
 #include "System/Threading/SpringThreading.h"

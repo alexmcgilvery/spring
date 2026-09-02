@@ -12,7 +12,7 @@
 #include "System/MemoryOverride.hpp"
 #include "System/SafeUtil.h"
 #include "Rendering/ModelsDataUploader.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/GL/VBO.h"
 #include "Rendering/Models/3DModel.hpp"
 #include "Rendering/Models/ModelsMemStorage.h"

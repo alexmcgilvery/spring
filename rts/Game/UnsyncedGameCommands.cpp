@@ -1621,12 +1621,12 @@ public:
 	}
 };
 
-class DebugGLActionExecutor : public IUnsyncedActionExecutor { //FIXME Move From GL specific
+class DebugGLActionExecutor : public IUnsyncedActionExecutor {
 public:
 	DebugGLActionExecutor() : IUnsyncedActionExecutor("DebugGL", "Enable/Disable OpenGL debug-context output") {}
 
 	bool Execute(const UnsyncedAction& action) const final {
-		bool debugEnabled = !globalRendering->rendererDebug;
+		bool debugEnabled = !globalRendering->glDebug;
 
 		uint32_t msgSrceIdx = 0;
 		uint32_t msgTypeIdx = 0;
@@ -1653,8 +1653,8 @@ public:
 		if (args.size() > 3)
 			msgSevrIdx = StringToInt(args[3]);
 
-		globalRendering->rendererDebug = debugEnabled;
-		globalRendering->ToggleDebugOutput(msgSrceIdx, msgTypeIdx, msgSevrIdx);
+		globalRendering->glDebug = debugEnabled;
+		globalRendering->ToggleGLDebugOutput(msgSrceIdx, msgTypeIdx, msgSevrIdx);
 
 		return true;
 	}
@@ -1665,7 +1665,7 @@ public:
 	DebugGLErrorsActionExecutor() : IUnsyncedActionExecutor("DebugGLErrors", "Enable/Disable OpenGL debug-errors") {}
 
 	bool Execute(const UnsyncedAction& action) const final {
-		LogSystemStatus("GL debug-errors", globalRendering->rendererDebugErrors = !globalRendering->rendererDebugErrors);
+		LogSystemStatus("GL debug-errors", globalRendering->glDebugErrors = !globalRendering->glDebugErrors);
 		return true;
 	}
 };

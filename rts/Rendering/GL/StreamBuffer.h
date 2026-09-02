@@ -17,7 +17,7 @@
 #include "System/MemoryOverride.hpp"
 #include "System/SpringMath.h"
 #include "System/TypeToStr.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 
 class IStreamBufferConcept {
 public:

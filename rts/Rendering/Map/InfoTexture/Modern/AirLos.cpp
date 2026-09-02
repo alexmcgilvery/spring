@@ -2,7 +2,7 @@
 
 #include "AirLos.h"
 #include "Game/GlobalUnsynced.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/Shaders/ShaderHandler.h"
 #include "Rendering/Shaders/Shader.h"
 #include "Rendering/GL/SubState.h"
@@ -92,7 +92,7 @@ void CAirLosTexture::Update()
 		glViewport(0, 0, texSize.x, texSize.y);
 		glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
-		globalRendering->UpdateViewport();
+		globalRendering->LoadViewport();
 		FBO::Unbind();
 
 		auto binding = texture.ScopedBind();

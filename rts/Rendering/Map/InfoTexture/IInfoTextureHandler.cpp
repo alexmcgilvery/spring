@@ -2,7 +2,7 @@
 
 #include "IInfoTextureHandler.h"
 #include "Modern/InfoTextureHandler.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/GL/FBO.h"
 #include "System/Config/ConfigHandler.h"
 #include "System/Exceptions.h"

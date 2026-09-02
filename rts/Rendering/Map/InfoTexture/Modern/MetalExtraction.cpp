@@ -5,7 +5,7 @@
 #include "Game/GlobalUnsynced.h"
 #include "Map/MetalMap.h"
 #include "Map/ReadMap.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/Shaders/ShaderHandler.h"
 #include "Rendering/Shaders/Shader.h"
 #include "Rendering/GL/SubState.h"

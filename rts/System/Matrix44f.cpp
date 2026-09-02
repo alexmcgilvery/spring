@@ -4,7 +4,7 @@
 #include "System/Quaternion.h"
 #include "System/SpringMath.h"
 #ifndef UNIT_TEST
-	#include "newRendering/GlobalRendering.h"
+	#include "Rendering/GlobalRendering.h"
 #endif
 
 #include <memory.h>

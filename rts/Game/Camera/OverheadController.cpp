@@ -9,7 +9,7 @@
 #include "Game/UI/MouseHandler.h"
 #include "Map/Ground.h"
 #include "Map/ReadMap.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "System/SpringMath.h"
 #include "System/Log/ILog.h"
 #include "System/Config/ConfigHandler.h"

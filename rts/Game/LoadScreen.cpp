@@ -15,7 +15,7 @@
 #include "Lua/LuaMenu.h"
 #include "Map/MapInfo.h"
 #include "Rendering/Fonts/glFont.h"
-#include "newRendering/GlobalRendering.h"
+#include "Rendering/GlobalRendering.h"
 #include "Rendering/Textures/NamedTextures.h"
 #include "Sim/Misc/TeamHandler.h"
 #include "Sim/Path/IPathManager.h"
@@ -165,7 +165,7 @@ void CLoadScreen::Kill()
 	CFontTexture::sync.SetThreadSafety(false);
 	CLoadLock::SetThreadSafety(false);
 	// set last time and forever
-	globalRendering->AquireThreadContext();
+	globalRendering->MakeCurrentContext(false);
 	globalRendering->ToggleMultisampling();
 }
 
