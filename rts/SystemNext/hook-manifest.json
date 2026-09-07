@@ -1,0 +1,370 @@
+{
+  "schema": 1,
+  "baseline": "9fbc1c3511274b367eacfe00020e26bddba5bfee",
+  "hooks": [
+    {
+      "id": "runtime-tests",
+      "file": "test/CMakeLists.txt",
+      "symbol": "CTest runtime registration",
+      "kind": "build_test",
+      "reason": "Include the isolated runtime module in existing validation infrastructure",
+      "ordering": "After existing test definitions; no runtime order change",
+      "fragment": "include(${CMAKE_SOURCE_DIR}/rts/SystemNext/tests.cmake)",
+      "tests": [
+        "testRuntimeCoordinator/testRuntimeTrace/testRuntimeTools"
+      ],
+      "upstreamable": false
+    },
+    {
+      "id": "runtime-headercheck",
+      "file": "test/headercheck/CMakeLists.txt",
+      "symbol": "headers GLOB_RECURSE",
+      "kind": "build_test",
+      "reason": "Include the isolated runtime module in existing validation infrastructure",
+      "ordering": "After existing test definitions; no runtime order change",
+      "fragment": "${Spring_SOURCE_DIR}/rts/SystemNext/*.h",
+      "tests": [
+        "headercheck"
+      ],
+      "upstreamable": false
+    },
+    {
+      "id": "runtime-host-include",
+      "file": "rts/System/SpringApp.cpp",
+      "symbol": "runtime diagnostics include",
+      "kind": "build_test",
+      "reason": "Observe execution without controlling existing engine behavior",
+      "ordering": "Observe at existing serial call site; preserve legacy statement order",
+      "fragment": "#include \"SystemNext/Diagnostics/LegacyRuntimeDiagnostics.h\"",
+      "tests": [
+        "testRuntimeContracts",
+        "testRuntimeJsonLines",
+        "instrumentation-only synctest comparison"
+      ],
+      "upstreamable": false
+    },
+    {
+      "id": "runtime-game-include",
+      "file": "rts/Game/Game.cpp",
+      "symbol": "runtime diagnostics include",
+      "kind": "build_test",
+      "reason": "Observe execution without controlling existing engine behavior",
+      "ordering": "Observe at existing serial call site; preserve legacy statement order",
+      "fragment": "#include \"SystemNext/Diagnostics/LegacyRuntimeDiagnostics.h\"",
+      "tests": [
+        "testRuntimeContracts",
+        "testRuntimeJsonLines",
+        "instrumentation-only synctest comparison"
+      ],
+      "upstreamable": false
+    },
+    {
+      "id": "runtime-net-include",
+      "file": "rts/Net/NetCommands.cpp",
+      "symbol": "runtime diagnostics include",
+      "kind": "build_test",
+      "reason": "Observe execution without controlling existing engine behavior",
+      "ordering": "Observe at existing serial call site; preserve legacy statement order",
+      "fragment": "#include \"SystemNext/Diagnostics/LegacyRuntimeDiagnostics.h\"",
+      "tests": [
+        "testRuntimeContracts",
+        "testRuntimeJsonLines",
+        "instrumentation-only synctest comparison"
+      ],
+      "upstreamable": false
+    },
+    {
+      "id": "runtime-diagnostics-init",
+      "file": "rts/System/SpringApp.cpp",
+      "symbol": "SpringApp::Run",
+      "kind": "runtime_call",
+      "reason": "Observe execution without controlling existing engine behavior",
+      "ordering": "Observe at existing serial call site; preserve legacy statement order",
+      "fragment": "runtime::legacy::InitializeDiagnostics();",
+      "tests": [
+        "testRuntimeContracts",
+        "testRuntimeJsonLines",
+        "instrumentation-only synctest comparison"
+      ],
+      "upstreamable": false
+    },
+    {
+      "id": "runtime-reload-detach",
+      "file": "rts/System/SpringApp.cpp",
+      "symbol": "SpringApp::Reload",
+      "kind": "runtime_call",
+      "reason": "Observe execution without controlling existing engine behavior",
+      "ordering": "Before reload callbacks invalidate dependencies",
+      "fragment": "runtime::legacy::EndSession();",
+      "tests": [
+        "testRuntimeContracts",
+        "testRuntimeJsonLines",
+        "instrumentation-only synctest comparison"
+      ],
+      "upstreamable": false
+    },
+    {
+      "id": "runtime-shutdown-detach",
+      "file": "rts/System/SpringApp.cpp",
+      "symbol": "SpringApp::Kill",
+      "kind": "runtime_call",
+      "reason": "Observe execution without controlling existing engine behavior",
+      "ordering": "Before Lua teardown and logger cleanup",
+      "fragment": "runtime::legacy::EndSession();",
+      "tests": [
+        "testRuntimeContracts",
+        "testRuntimeJsonLines",
+        "instrumentation-only synctest comparison"
+      ],
+      "upstreamable": false
+    },
+    {
+      "id": "runtime-diagnostics-finish",
+      "file": "rts/System/SpringApp.cpp",
+      "symbol": "SpringApp::Run",
+      "kind": "runtime_call",
+      "reason": "Finalize owned log before legacy cleanup",
+      "ordering": "After normal shutdown work succeeds, before static file sink cleanup",
+      "fragment": "runtime::legacy::FinishDiagnostics(true);",
+      "tests": [
+        "testRuntimeContracts",
+        "testRuntimeJsonLines"
+      ],
+      "upstreamable": false
+    },
+    {
+      "id": "runtime-session-bootstrap",
+      "file": "rts/Game/Game.cpp",
+      "symbol": "CGame::Update",
+      "kind": "runtime_call",
+      "reason": "Observe execution without controlling existing engine behavior",
+      "ordering": "First post-load game update before session advancement",
+      "fragment": "runtime::legacy::BeginSession();",
+      "tests": [
+        "testRuntimeContracts",
+        "testRuntimeJsonLines",
+        "instrumentation-only synctest comparison"
+      ],
+      "upstreamable": false
+    },
+    {
+      "id": "runtime-presentation-phase",
+      "file": "rts/Game/Game.cpp",
+      "symbol": "CGame::UpdateUnsynced",
+      "kind": "runtime_call",
+      "reason": "Observe execution without controlling existing engine behavior",
+      "ordering": "Observe at existing serial call site; preserve legacy statement order",
+      "fragment": "runtime::legacy::PhaseScope presentationPhase(runtime::Phase::Presentation);",
+      "tests": [
+        "testRuntimeContracts",
+        "testRuntimeJsonLines",
+        "instrumentation-only synctest comparison"
+      ],
+      "upstreamable": false
+    },
+    {
+      "id": "runtime-draw-phase",
+      "file": "rts/Game/Game.cpp",
+      "symbol": "CGame::Draw",
+      "kind": "runtime_call",
+      "reason": "Observe execution without controlling existing engine behavior",
+      "ordering": "Observe at existing serial call site; preserve legacy statement order",
+      "fragment": "runtime::legacy::PhaseScope drawPhase(runtime::Phase::Draw);",
+      "tests": [
+        "testRuntimeContracts",
+        "testRuntimeJsonLines",
+        "instrumentation-only synctest comparison"
+      ],
+      "upstreamable": false
+    },
+    {
+      "id": "runtime-accepted-message",
+      "file": "rts/Net/NetCommands.cpp",
+      "symbol": "CGame::ClientReadNet",
+      "kind": "runtime_call",
+      "reason": "Observe execution without controlling existing engine behavior",
+      "ordering": "Observe at existing serial call site; preserve legacy statement order",
+      "fragment": "runtime::legacy::AcceptedMessage(gs->frameNum, inbuf, dataLength);",
+      "tests": [
+        "testRuntimeContracts",
+        "testRuntimeJsonLines",
+        "instrumentation-only synctest comparison"
+      ],
+      "upstreamable": false
+    },
+    {
+      "id": "runtime-completed-frame-sync",
+      "file": "rts/Net/NetCommands.cpp",
+      "symbol": "CGame::ClientReadNet",
+      "kind": "runtime_call",
+      "reason": "Observe execution without controlling existing engine behavior",
+      "ordering": "After existing checksum caching/reset and AddTraffic, retains pre-reset checksum",
+      "fragment": "runtime::legacy::CompletedFrame(gs->frameNum, CSyncChecker::GetPrevChecksum(), true);",
+      "tests": [
+        "testRuntimeContracts",
+        "testRuntimeJsonLines",
+        "instrumentation-only synctest comparison"
+      ],
+      "upstreamable": false
+    },
+    {
+      "id": "runtime-completed-frame-nosync",
+      "file": "rts/Net/NetCommands.cpp",
+      "symbol": "CGame::ClientReadNet",
+      "kind": "runtime_call",
+      "reason": "Explicit unavailable checksum in non-SYNCCHECK build",
+      "ordering": "Same completed-frame boundary",
+      "fragment": "runtime::legacy::CompletedFrame(gs->frameNum, 0, false);",
+      "tests": [
+        "testRuntimeContracts"
+      ],
+      "upstreamable": false
+    },
+    {
+      "id": "runtime-source-list",
+      "file": "rts/CMakeLists.txt",
+      "symbol": "engineSources",
+      "kind": "build_test",
+      "reason": "Observe execution without controlling existing engine behavior",
+      "ordering": "Observe at existing serial call site; preserve legacy statement order",
+      "fragment": "include(SystemNext/sources.cmake)",
+      "tests": [
+        "testRuntimeContracts",
+        "testRuntimeJsonLines",
+        "instrumentation-only synctest comparison"
+      ],
+      "upstreamable": false
+    },
+    {
+      "id": "runtime-variant-sources",
+      "file": "rts/CMakeLists.txt",
+      "symbol": "engineSources",
+      "kind": "build_test",
+      "reason": "Compile adapters with each variant definitions",
+      "ordering": "Existing source aggregation",
+      "fragment": "${sources_systemnext}",
+      "tests": [
+        "engine-legacy",
+        "engine-headless",
+        "testRuntimeContracts"
+      ],
+      "upstreamable": false
+    },
+    {
+      "id": "runtime-diagnostics-abort",
+      "file": "rts/System/SpringApp.cpp",
+      "symbol": "SpringApp::Kill",
+      "kind": "runtime_call",
+      "reason": "Abnormal termination cannot claim complete capture",
+      "ordering": "Before error-path shutdown callbacks",
+      "fragment": "if (!fromRun) runtime::legacy::FinishDiagnostics(false);",
+      "tests": [
+        "testRuntimeContracts",
+        "testRuntimeJsonLines"
+      ],
+      "upstreamable": false
+    },
+    {
+      "id": "runtime-file-sink-quiet-interface",
+      "file": "rts/System/Log/FileSink.h",
+      "symbol": "log_file_addLogFile",
+      "kind": "read_interface",
+      "reason": "Optional quiet open failure prevents diagnostics from broadcasting to console/Lua; existing callers retain default behavior",
+      "ordering": "Existing FileSink ownership, no new sink registration or thread",
+      "fragment": "void log_file_addLogFile(const char* filePath, const char* sections = NULL, int minLevel = LOG_LEVEL_ALL, int flushLevel = LOG_LEVEL_ERROR, bool reportErrors = true);",
+      "tests": [
+        "testILog",
+        "testRuntimeJsonLines",
+        "testRuntimeContracts"
+      ],
+      "upstreamable": true
+    },
+    {
+      "id": "runtime-file-sink-quiet-implementation",
+      "file": "rts/System/Log/FileSink.cpp",
+      "symbol": "log_file_addLogFile",
+      "kind": "runtime_call",
+      "reason": "Optional quiet open failure prevents diagnostics from broadcasting to console/Lua; existing callers retain default behavior",
+      "ordering": "Existing FileSink ownership, no new sink registration or thread",
+      "fragment": "void log_file_addLogFile(const char* filePath, const char* sections, int minLevel, int flushLevel, bool reportErrors)",
+      "tests": [
+        "testILog",
+        "testRuntimeJsonLines",
+        "testRuntimeContracts"
+      ],
+      "upstreamable": true
+    },
+    {
+      "id": "runtime-file-sink-quiet-error",
+      "file": "rts/System/Log/FileSink.cpp",
+      "symbol": "log_file_addLogFile",
+      "kind": "runtime_call",
+      "reason": "Optional quiet open failure prevents diagnostics from broadcasting to console/Lua; existing callers retain default behavior",
+      "ordering": "Existing FileSink ownership, no new sink registration or thread",
+      "fragment": "if (reportErrors)",
+      "tests": [
+        "testILog",
+        "testRuntimeJsonLines",
+        "testRuntimeContracts"
+      ],
+      "upstreamable": true
+    },
+    {
+      "id": "runtime-serial-coordinator",
+      "file": "rts/System/SpringApp.cpp",
+      "symbol": "SpringApp::Run",
+      "kind": "runtime_call",
+      "reason": "Delegate repeated execution while retaining startup, teardown and exception handlers",
+      "ordering": "After initialization and diagnostics setup; zero iterations when exit is already requested",
+      "fragment": "loop.Run();",
+      "tests": [
+        "testRuntimeCoordinator",
+        "testRuntimeContracts",
+        "coordinator versus instrumentation-only synctest"
+      ],
+      "upstreamable": false
+    },
+    {
+      "id": "runtime-host-provider-include",
+      "file": "rts/System/SpringApp.cpp",
+      "symbol": "SpringApp::Update",
+      "kind": "build_test",
+      "reason": "Delegate serial orchestration through legacy host provider",
+      "ordering": "Preserve configuration/window/timer/update/guard/draw/swap order; reread controller after update",
+      "fragment": "#include \"SystemNext/ApplicationLoop.h\"",
+      "tests": [
+        "testRuntimeCoordinator",
+        "testRuntimeContracts",
+        "coordinator versus instrumentation-only synctest"
+      ],
+      "upstreamable": false
+    },
+    {
+      "id": "runtime-piece-interpolation-read",
+      "file": "rts/Rendering/Models/LocalModelPiece.hpp",
+      "symbol": "LocalModelPiece::GetInterpolationDiscontinuities",
+      "kind": "read_interface",
+      "reason": "Read current discontinuity flags without lazy cache updates or resetting flags",
+      "ordering": "Read-only during owning pose extraction",
+      "fragment": "const std::array<bool, 3>& GetInterpolationDiscontinuities() const { return noInterpolation; }",
+      "tests": [
+        "testRuntimeContracts",
+        "publication pose extraction parity"
+      ],
+      "upstreamable": true
+    },
+    {
+      "id": "runtime-lifecycle-access",
+      "file": "rts/System/SpringApp.h",
+      "symbol": "SpringApp lifecycle adapter access",
+      "kind": "read_interface",
+      "reason": "Keep reload private while allowing the loop lifecycle adapter to invoke it",
+      "ordering": "No execution change",
+      "fragment": "friend class runtime::legacy::LegacyLoopServices;",
+      "tests": [
+        "testRuntimeCoordinator"
+      ],
+      "upstreamable": false
+    }
+  ]
+}

@@ -191,11 +191,13 @@ namespace log_file {
 extern "C" {
 #endif
 
+// VKFUN-HOOK(runtime-file-sink-quiet-implementation)
 void log_file_addLogFile(
 	const char* filePath,
 	const char* sections,
 	int minLevel,
-	int flushLevel
+	int flushLevel,
+	bool reportErrors
 ) {
 	assert(filePath != nullptr);
 
@@ -214,7 +216,9 @@ void log_file_addLogFile(
 	FILE* tmpStream = nowide::fopen(filePath, "wb");
 
 	if (tmpStream == nullptr) {
-		LOG_L(L_ERROR, "[%s] failed to open log file \"%s\" for writing", __func__, filePath);
+		// VKFUN-HOOK(runtime-file-sink-quiet-error)
+		if (reportErrors)
+			LOG_L(L_ERROR, "[%s] failed to open log file \"%s\" for writing", __func__, filePath);
 		return;
 	}
 
@@ -332,4 +336,3 @@ namespace {
 #ifdef __cplusplus
 } // extern "C"
 #endif
-

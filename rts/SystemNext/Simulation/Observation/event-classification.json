@@ -1,0 +1,1388 @@
+{
+  "schema": 1,
+  "baseline": "9fbc1c3511274b367eacfe00020e26bddba5bfee",
+  "events": [
+    {
+      "name": "Load",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "lifecycle"
+    },
+    {
+      "name": "GamePreload",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "lifecycle"
+    },
+    {
+      "name": "GameStart",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "GameOver",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "GamePaused",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "GameFrame",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "lifecycle"
+    },
+    {
+      "name": "GameFramePost",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "lifecycle"
+    },
+    {
+      "name": "TeamDied",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "TeamChanged",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "ResourceExcess",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "PlayerChanged",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "PlayerAdded",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "PlayerRemoved",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitCreated",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitFinished",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitFromFactory",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitReverseBuilt",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitConstructionDecayed",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitDestroyed",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitTaken",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitGiven",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitIdle",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitCommand",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitCmdDone",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitDamaged",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitStunned",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitExperience",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitHarvestStorageFull",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitSeismicPing",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitEnteredRadar",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitEnteredLos",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitLeftRadar",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitLeftLos",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitEnteredUnderwater",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitEnteredWater",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitEnteredAir",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitLeftUnderwater",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitLeftWater",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitLeftAir",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitLoaded",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitUnloaded",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitCloaked",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitDecloaked",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitUnitCollision",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "UnitFeatureCollision",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "UnitMoved",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitMoveFailed",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "UnitArrivedAtGoal",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "FeatureCreated",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "FeatureDestroyed",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "FeatureDamaged",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "FeatureMoved",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "ProjectileCreated",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "ProjectileDestroyed",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "Explosion",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "StockpileChanged",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "publication_notification"
+    },
+    {
+      "name": "Save",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "lifecycle"
+    },
+    {
+      "name": "UnsyncedHeightMapUpdate",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "Update",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "KeyMapChanged",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "KeyPress",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "KeyRelease",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "TextInput",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "TextEditing",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "MouseMove",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "MousePress",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "MouseRelease",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "platform_input"
+    },
+    {
+      "name": "MouseWheel",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "IsAbove",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "GetTooltip",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "DownloadQueued",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "external_service"
+    },
+    {
+      "name": "DownloadStarted",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "external_service"
+    },
+    {
+      "name": "DownloadFinished",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "external_service"
+    },
+    {
+      "name": "DownloadFailed",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "external_service"
+    },
+    {
+      "name": "DownloadProgress",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "external_service"
+    },
+    {
+      "name": "LastMessagePosition",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "external_service"
+    },
+    {
+      "name": "DefaultCommand",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "ActiveCommandChanged",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "CameraRotationChanged",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "CameraPositionChanged",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "MiniMapRotationChanged",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "MiniMapStateChanged",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "MiniMapGeometryChanged",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "CommandNotify",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "AddConsoleLine",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "external_service"
+    },
+    {
+      "name": "GroupChanged",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "external_service"
+    },
+    {
+      "name": "GameSetup",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "WorldTooltip",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "MapDrawCmd",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "SunChanged",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "ViewResize",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawGenesis",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawWorld",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawWorldPreUnit",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawPreDecals",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawWorldPreParticles",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawWaterPost",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawWorldShadow",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawShadowPassTransparent",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawWorldReflection",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawWorldRefraction",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawGroundPreForward",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawGroundPostForward",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawGroundPreDeferred",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawGroundDeferred",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawGroundPostDeferred",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawUnitsPostDeferred",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawFeaturesPostDeferred",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawScreenEffects",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawScreenPost",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawScreen",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawInMiniMap",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawInMiniMapBackground",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawBuildSquare",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawOpaqueUnitsLua",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawOpaqueFeaturesLua",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawAlphaUnitsLua",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawAlphaFeaturesLua",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawShadowUnitsLua",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DrawShadowFeaturesLua",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "FontsChanged",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "RenderUnitPreCreated",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "RenderUnitCreated",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "RenderUnitDestroyed",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "physical_removal"
+    },
+    {
+      "name": "RenderFeaturePreCreated",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "RenderFeatureCreated",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "RenderFeatureDestroyed",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "RenderProjectileCreated",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "RenderProjectileDestroyed",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "GameProgress",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "GameID",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "lifecycle"
+    },
+    {
+      "name": "SyncedActionFallback",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "CommandFallback",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "AllowCommand",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "AllowUnitCreation",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "AllowUnitTransfer",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "AllowUnitBuildStep",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "AllowUnitCaptureStep",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "AllowUnitTransport",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "AllowUnitTransportLoad",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "AllowUnitTransportUnload",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "AllowUnitCloak",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "AllowUnitDecloak",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "AllowUnitKamikaze",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "AllowFeatureCreation",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "AllowFeatureBuildStep",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "AllowResourceLevel",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "AllowResourceTransfer",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "AllowDirectUnitControl",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "AllowBuilderHoldFire",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "AllowStartPosition",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "TerraformComplete",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "MoveCtrlNotify",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "AllowWeaponTargetCheck",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "AllowWeaponTarget",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "AllowWeaponInterceptTarget",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "UnitPreDamaged",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "FeaturePreDamaged",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "ShieldPreDamaged",
+      "properties": [
+        "MANAGED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "DrawUnit",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "DrawFeature",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "DrawShield",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "DrawProjectile",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "DrawMaterial",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "Shutdown",
+      "properties": [
+        "0"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "RecvLuaMsg",
+      "properties": [
+        "0"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "GotChatMsg",
+      "properties": [
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "RecvSkirmishAIMessage",
+      "properties": [
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "ConfigureLayout",
+      "properties": [
+        "UNSYNCED_BIT",
+        "CONTROL_BIT"
+      ],
+      "category": "synchronous_control"
+    },
+    {
+      "name": "DrawLoadScreen",
+      "properties": [
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "LoadProgress",
+      "properties": [
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "ActivateMenu",
+      "properties": [
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "ActivateGame",
+      "properties": [
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "AllowDraw",
+      "properties": [
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "CollectGarbage",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "DbgTimingInfo",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "Pong",
+      "properties": [
+        "MANAGED_BIT",
+        "UNSYNCED_BIT"
+      ],
+      "category": "legacy_presentation"
+    },
+    {
+      "name": "MetalMapChanged",
+      "properties": [
+        "MANAGED_BIT"
+      ],
+      "category": "legacy_presentation"
+    }
+  ]
+}

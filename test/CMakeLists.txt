@@ -604,4 +604,7 @@ endif()
 ################################################################################
 
 
+# VKFUN-HOOK(runtime-tests)
+include(${CMAKE_SOURCE_DIR}/rts/SystemNext/tests.cmake)
+
 add_subdirectory(headercheck)
