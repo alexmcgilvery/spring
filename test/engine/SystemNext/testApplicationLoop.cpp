@@ -1,75 +1,50 @@
 /* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
-
 #include <catch_amalgamated.hpp>
 #include <algorithm>
 #include <stdexcept>
 #include <string>
 #include <vector>
-
 #include "SystemNext/ApplicationLoop.h"
 #include "SystemNext/Presentation/SerialVisualFrame.h"
-#include "SystemNext/Session/IRuntimeMode.h"
+#include "SystemNext/Modes/Mode.h"
+#include "SystemNext/Modes/ModeBinding.h"
 #include "SystemNext/Session/Session.h"
 
 namespace {
-struct Services;
-struct Visuals final : runtime::SerialVisualFrame {
-	explicit Visuals(Services& services): services(services) {}
-	runtime::ApplicationStatus UpdateClientMode() override;
+struct Host;
+struct Graphics final : runtime::SerialVisualFrame {
+	explicit Graphics(Host& host): host(host) {}
+	Host& host;
 	void LockDraw() override;
 	void UnlockDraw() noexcept override;
-	bool Draw() override;
 	void Present(bool allowSwap) override;
-	Services& services;
 };
-
-struct Services final : runtime::ILoopInput, runtime::ILoopLifecycle, runtime::ILoopPlatform,
-	runtime::ILoopDiagnostics, runtime::IRuntimeMode, runtime::Session {
-	Visuals visuals{*this};
+struct Host final : runtime::ILoopInput, runtime::ILoopLifecycle, runtime::ILoopPlatform, runtime::ILoopDiagnostics {
+	Graphics graphics{*this};
+	runtime::Session session;
 	std::vector<std::string> calls;
 	std::vector<runtime::Phase> scopes;
+	std::vector<std::string> blocks;
 	std::string failure;
 	int controller = 1;
 	int replacement = 1;
 	int replacementOnLock = -1;
-	int sessionUpdates = 0;
-	int clientUpdates = 0;
-	int reloads = 0;
-	int actualSwaps = 0;
-	int exceptionalScopes = 0;
-	int flushes = 0;
-	bool exit = false;
-	bool reload = false;
-	bool inputExit = false;
-	bool updateExit = false;
-	bool inputReload = false;
-	bool reloadExit = false;
-	bool updateResult = true;
-	bool drawResult = true;
-	bool forceSwap = false;
+	std::uint64_t generation = 1;
 	bool held = false;
-
-	runtime::LoopServices Bind() { return {*this, *this, *this, *this, *this, *this, visuals}; }
-	void Call(const std::string& name) {
-		calls.push_back(name);
-		if (failure == name)
-			throw std::runtime_error(name);
+	bool exit = false;
+	bool inputExit = false;
+	bool reload = false;
+	void Select(int id) { controller = id; ++generation; }
+	void Call(const std::string& call) {
+		calls.push_back(call);
+		if (failure == call) throw std::runtime_error(call);
 	}
-	bool UpdateController() {
-		CHECK_FALSE(held);
-		if (controller == 0)
-			return true;
-		Call("update:" + std::to_string(controller));
-		controller = replacement;
-		exit |= updateExit;
-		return updateResult;
-	}
-	void ProcessEvents() override { Call("input"); exit |= inputExit; reload |= inputReload; }
+	void ProcessEvents() override { Call("input"); exit |= inputExit; }
 	bool ExitRequested() const override { return exit; }
 	bool ReloadRequested() const override { return reload; }
 	void ServiceWatchdog() override { Call("watchdog"); }
 	void ProcessQueuedSave() override { Call("save"); }
-	void ReloadSession() override { Call("reload"); ++reloads; reload = false; exit |= reloadExit; }
+	void ReloadSession() override { Call("reload"); reload = false; ++generation; }
 	void RequestExit() override { Call("exit"); exit = true; }
 	void UpdateConfiguration() override { Call("config"); }
 	void UpdateWindow() override { Call("window"); }
@@ -79,183 +54,192 @@ struct Services final : runtime::ILoopInput, runtime::ILoopLifecycle, runtime::I
 		return {phase, 1, 0, std::uncaught_exceptions()};
 	}
 	void EndPhase(runtime::PhaseToken token) noexcept override {
-		CHECK(scopes.back() == token.phase);
-		scopes.pop_back();
-		exceptionalScopes += std::uncaught_exceptions() > token.exceptions;
+		CHECK(scopes.back() == token.phase); scopes.pop_back();
 	}
-	void Flush() noexcept override {
-		CHECK(scopes == std::vector<runtime::Phase>{runtime::Phase::Host});
-		++flushes;
-		calls.push_back("flush");
-	}
-	bool HandlesSession() const override { return controller == 1 || controller == 3 || controller == 4; }
-	runtime::SessionUpdate UpdateSession(runtime::Session& session) override { return session.Advance(); }
-	runtime::SessionUpdate Advance() override {
-		++sessionUpdates;
-		return runtime::SessionUpdate::FromContinuation(UpdateController());
+	void Flush() noexcept override { calls.push_back("flush"); }
+	void ReportBlocked(const runtime::BlockedFlow& block) noexcept override {
+		blocks.push_back(block.id); calls.push_back("blocked:" + block.id);
 	}
 };
-
-runtime::ApplicationStatus Visuals::UpdateClientMode()
-{
-	++services.clientUpdates;
-	return services.UpdateController() ? runtime::ApplicationStatus::Continue : runtime::ApplicationStatus::ExitRequested;
+void Graphics::LockDraw() { host.Call("lock"); host.held = true; if (host.replacementOnLock >= 0) host.Select(host.replacementOnLock); }
+void Graphics::UnlockDraw() noexcept { host.held = false; host.calls.push_back("unlock"); }
+void Graphics::Present(bool allowSwap) { CHECK(host.held); host.Call(allowSwap ? "present:true" : "present:false"); }
+struct FrameData final : runtime::ModeFrameData {
+	explicit FrameData(Host& host): host(host) {}
+	Host& host;
+	~FrameData() override { CHECK(host.held); host.calls.push_back("frame-destroy"); }
+};
+struct TestMode final : runtime::Mode {
+	TestMode(Host& host, int id, bool session, runtime::DisplayPhase phase): host(host), id(id), session(session), phase(phase) {}
+	Host& host;
+	int id;
+	bool session;
+	runtime::DisplayPhase phase;
+	bool replaceSession = false;
+	bool replaceDisplay = false;
+	bool replaceRender = false;
+	bool trackFrame = false;
+	bool skip = false;
+	bool exit = false;
+	std::string block;
+	bool HandlesSession() const override { return session; }
+	runtime::DisplayPhase GetDisplayPhase() const override { return phase; }
+	runtime::SessionUpdate UpdateSession(runtime::Session&) override {
+		CHECK_FALSE(host.held); host.Call("session:" + std::to_string(id));
+		if (replaceSession) host.Select(host.replacement);
+		if (block == "session") return runtime::SessionUpdate::Incomplete("TEST-SESSION", "required session work missing");
+		return runtime::SessionUpdate::FromContinuation(!exit);
+	}
+	runtime::ApplicationStatus UpdateDisplay(runtime::ModeFrame& frame) override {
+		CHECK(host.held == (phase == runtime::DisplayPhase::WithGraphics));
+		host.Call("display:" + std::to_string(id));
+		if (trackFrame) frame.data = std::make_unique<FrameData>(host);
+		if (replaceDisplay) host.Select(host.replacement);
+		if (block == "display") return frame.Block("TEST-DISPLAY", "required display work missing");
+		frame.allowRender &= !skip;
+		return exit ? runtime::ApplicationStatus::ExitRequested : runtime::ApplicationStatus::Continue;
+	}
+	runtime::RenderResult Render(runtime::ModeFrame& frame) override {
+		CHECK(host.held); CHECK(frame.bindingGeneration == host.generation);
+		if (trackFrame) CHECK(frame.data != nullptr);
+		host.Call("render:" + std::to_string(id));
+		if (replaceRender) host.Select(host.replacement);
+		if (block == "render") return runtime::RenderResult::Blocked("TEST-RENDER", "required render work missing");
+		return skip ? runtime::RenderResult::Skipped() : runtime::RenderResult::Ready();
+	}
+};
+struct Bindings final : runtime::ModeBinding {
+	Host& host;
+	TestMode game{host, 1, true, runtime::DisplayPhase::WithGraphics};
+	TestMode menu{host, 2, false, runtime::DisplayPhase::BeforeGraphics};
+	TestMode connection{host, 3, true, runtime::DisplayPhase::None};
+	explicit Bindings(Host& host): host(host) {}
+	runtime::Mode* Resolve() override {
+		switch (host.controller) { case 1: return &game; case 2: return &menu; case 3: return &connection; default: return nullptr; }
+	}
+	std::uint64_t Generation() const override { return host.generation; }
+	runtime::LoopServices Services() { return {host, host, host, host, host.session, host.graphics, *this}; }
+};
+int Count(const Host& host, const std::string& call) { return std::count(host.calls.begin(), host.calls.end(), call); }
 }
 
-void Visuals::LockDraw()
+TEST_CASE("One mode path orders input session display render and present")
 {
-	services.Call("lock");
-	services.held = true;
-	if (services.replacementOnLock >= 0)
-		services.controller = services.replacementOnLock;
+	Host host; Bindings modes(host); runtime::ApplicationLoop loop(modes.Services()); loop.RunIteration();
+	CHECK(host.calls == std::vector<std::string>{"watchdog","input","save","config","window","clock","session:1","lock","display:1","render:1","present:true","unlock","flush"});
+	CHECK(host.blocks.empty()); CHECK_FALSE(host.held); CHECK(host.scopes.empty());
+}
+TEST_CASE("Session capability does not imply display work")
+{
+	Host host; Bindings modes(host);
+	SECTION("menu") { host.controller=2; }
+	SECTION("connection") { host.controller=3; }
+	SECTION("inactive") { host.controller=0; }
+	runtime::ApplicationLoop loop(modes.Services()); loop.RunIteration();
+	CHECK(Count(host,"session:1")==0);
+	CHECK(Count(host,"display:2")==int(host.controller==2));
+	CHECK(Count(host,"display:3")==0);
+	CHECK(Count(host,"session:3")==int(host.controller==3));
+	CHECK(Count(host,"present:false")==int(host.controller==0));
+}
+TEST_CASE("Replacement before graphics receives no duplicate client or session update")
+{
+	Host host; Bindings modes(host);
+	SECTION("session to menu") { host.replacement=2; modes.game.replaceSession=true; }
+	SECTION("guard to menu") { host.replacementOnLock=2; }
+	SECTION("menu to game") { host.controller=2; modes.menu.replaceDisplay=true; }
+	runtime::ApplicationLoop loop(modes.Services()); loop.RunIteration();
+	CHECK(Count(host,"display:2")==int(modes.menu.replaceDisplay));
+	CHECK(Count(host,"session:1")==int(!modes.menu.replaceDisplay));
+	CHECK(Count(host,"render:"+std::to_string(host.controller))==1);
+	CHECK(host.blocks.empty());
+}
+TEST_CASE("Frame scope ends before present and unwinds under the graphics guard")
+{
+	Host host; Bindings modes(host); modes.game.trackFrame=true;
+	SECTION("normal") {}
+	SECTION("blocked render") { modes.game.block="render"; }
+	SECTION("throwing render") { host.failure="render:1"; }
+	SECTION("unguarded display state retained") { host.controller=2; modes.menu.trackFrame=true; }
+	runtime::ApplicationLoop loop(modes.Services());
+	if (host.failure.empty()) loop.RunIteration(); else CHECK_THROWS_AS(loop.RunIteration(),std::runtime_error);
+	CHECK(Count(host,"frame-destroy")==1);
+	const auto destroyed=std::find(host.calls.begin(),host.calls.end(),"frame-destroy");
+	CHECK(destroyed<std::find(host.calls.begin(),host.calls.end(),"unlock"));
+	CHECK(destroyed<std::find(host.calls.begin(),host.calls.end(),"present:true"));
+}
+TEST_CASE("Required blocked work never reaches dependent render or present")
+{
+	Host host; Bindings modes(host);
+	SECTION("session") { modes.game.block="session"; }
+	SECTION("display") { modes.game.block="display"; }
+	SECTION("render") { modes.game.block="render"; }
+	runtime::ApplicationLoop loop(modes.Services()); loop.RunIteration();
+	REQUIRE(host.blocks.size()==1); CHECK(Count(host,"present:true")==0); CHECK(Count(host,"present:false")==0);
+	CHECK_FALSE(host.held); CHECK(host.scopes.empty());
+	const int sessionCalls=Count(host,"session:1"); loop.RunIteration();
+	CHECK(Count(host,"session:1")==sessionCalls); CHECK(Count(host,"input")==2); CHECK(Count(host,"flush")==2);
+	host.Select(2); loop.RunIteration(); CHECK(Count(host,"render:2")==1);
+}
+TEST_CASE("Binding generation prevents rendering reused mode state")
+{
+	Host host; Bindings modes(host); modes.game.trackFrame=true;
+	SECTION("display replacement") { modes.game.replaceDisplay=true; host.replacement=2; }
+	SECTION("same mode address new generation") { modes.game.replaceDisplay=true; }
+	SECTION("render replacement") { modes.game.replaceRender=true; host.replacement=2; }
+	runtime::ApplicationLoop loop(modes.Services()); loop.RunIteration();
+	REQUIRE(host.blocks.size()==1); CHECK(Count(host,"present:true")==0);
+	CHECK(Count(host,"frame-destroy")==1);
+	modes.game.replaceDisplay=false; modes.game.replaceRender=false; loop.RunIteration();
+	CHECK(Count(host,"present:true")==1); // New binding is not latched as the failed old binding.
+}
+TEST_CASE("Exit and skipped output remain distinct from blocked work")
+{
+	Host host; Bindings modes(host);
+	SECTION("session exit") { modes.game.exit=true; }
+	SECTION("menu exit") { host.controller=2; modes.menu.exit=true; }
+	SECTION("display skip") { modes.game.skip=true; }
+	SECTION("input exit") { host.inputExit=true; }
+	runtime::ApplicationLoop loop(modes.Services()); loop.RunIteration();
+	CHECK(host.blocks.empty()); CHECK(Count(host,"unlock")==1);
+	CHECK(host.exit==(modes.game.exit||modes.menu.exit||host.inputExit));
+	CHECK(Count(host,"present:true")==int(host.inputExit));
+}
+TEST_CASE("Ordinary engine failures propagate and incomplete callbacks are reported")
+{
+	Host host; Bindings modes(host);
+	SECTION("session exception") { host.failure="session:1"; }
+	SECTION("input exception") { host.failure="input"; }
+	SECTION("guard exception") { host.failure="lock"; }
+	SECTION("display exception") { host.failure="display:1"; }
+	SECTION("present exception") { host.failure="present:true"; }
+	runtime::ApplicationLoop loop(modes.Services()); CHECK_THROWS_AS(loop.RunIteration(),std::runtime_error);
+	CHECK_FALSE(host.held); CHECK(host.scopes.empty()); CHECK(Count(host,"flush")==0);
+}
+TEST_CASE("Reload replaces normal concerns after input and queued saves")
+{
+	Host host; Bindings modes(host); host.reload=true;
+	runtime::ApplicationLoop loop(modes.Services()); loop.RunIteration();
+	CHECK(host.calls==std::vector<std::string>{"watchdog","input","save","reload","flush"});
+}
+TEST_CASE("Unsupported optional concerns are scheduling failures")
+{
+	runtime::ModeFrame frame;
+	Host host; Bindings modes(host);
+	CHECK(modes.menu.runtime::Mode::UpdateSession(host.session).applicationStatus==runtime::ApplicationStatus::Blocked);
+	CHECK(modes.connection.runtime::Mode::UpdateDisplay(frame)==runtime::ApplicationStatus::Blocked);
 }
 
-void Visuals::UnlockDraw() noexcept
+TEST_CASE("Blocked startup leaves host lifecycle available until mode replacement")
 {
-	services.held = false;
-	services.calls.push_back("unlock");
-}
-
-bool Visuals::Draw()
-{
-	CHECK(services.held);
-	if (services.controller == 0)
-		return false;
-	services.Call("draw:" + std::to_string(services.controller));
-	return services.drawResult;
-}
-
-void Visuals::Present(bool allowSwap)
-{
-	CHECK(services.held);
-	services.Call(allowSwap ? "present:true" : "present:false");
-	services.actualSwaps += allowSwap || services.forceSwap;
-}
-}
-
-TEST_CASE("Application iteration preserves service and visual ordering")
-{
-	Services services;
-	runtime::ApplicationLoop loop(services.Bind());
+	Host host; Bindings modes(host); runtime::ApplicationLoop loop(modes.Services());
+	loop.BlockCurrentMode({"TEST-STARTUP", "mode initialization did not complete"});
 	loop.RunIteration();
-	CHECK(services.calls == std::vector<std::string>{"watchdog", "input", "save", "config", "window", "clock", "update:1", "lock", "draw:1", "present:true", "unlock", "flush"});
-	CHECK(services.sessionUpdates == 1);
-	CHECK(services.clientUpdates == 0);
-	CHECK_FALSE(services.held);
-	CHECK(services.scopes.empty());
-}
-
-TEST_CASE("Mode transitions never update a replacement twice")
-{
-	Services services;
-	SECTION("menu enters game") { services.controller = 2; services.replacement = 1; }
-	SECTION("loading enters game") { services.controller = 3; services.replacement = 1; }
-	SECTION("game returns to menu") { services.replacement = 2; }
-	SECTION("game replaces game") { services.replacement = 4; }
-	SECTION("controller removed") { services.replacement = 0; }
-	SECTION("controller replaced while acquiring loading guard") { services.replacementOnLock = 4; }
-	const bool wasSession = services.HandlesSession();
-	runtime::ApplicationLoop loop(services.Bind());
+	CHECK(host.calls == std::vector<std::string>{"blocked:TEST-STARTUP","watchdog","input","save","config","window","clock","flush"});
+	CHECK(host.blocks == std::vector<std::string>{"TEST-STARTUP"});
+	CHECK_FALSE(host.exit);
+	host.Select(2);
 	loop.RunIteration();
-	CHECK(services.sessionUpdates == int(wasSession));
-	CHECK(services.clientUpdates == int(!wasSession));
-	CHECK(services.calls[7] == "lock");
-	CHECK(services.calls[8] == (services.controller == 0 ? "present:false" : "draw:" + std::to_string(services.controller)));
-}
-
-TEST_CASE("Visual decisions preserve skipped draws and forced presentation")
-{
-	Services services;
-	SECTION("session requests exit") { services.updateResult = false; }
-	SECTION("menu requests exit") { services.controller = 2; services.replacement = 2; services.updateResult = false; }
-	SECTION("draw returns false") { services.drawResult = false; }
-	SECTION("absent controller") { services.controller = 0; }
-	SECTION("update false with forced swap") { services.updateResult = false; services.forceSwap = true; }
-	SECTION("draw false with forced swap") { services.drawResult = false; services.forceSwap = true; }
-	runtime::ApplicationLoop loop(services.Bind());
-	loop.RunIteration();
-	CHECK(services.exit == !services.updateResult);
-	CHECK(services.actualSwaps == int(services.forceSwap));
-	CHECK_FALSE(services.held);
-	CHECK(services.calls.back() == "flush");
-	const auto present = std::find(services.calls.begin(), services.calls.end(), "present:false");
-	REQUIRE(present != services.calls.end());
-	CHECK(*(present + 1) == "unlock");
-	if (!services.updateResult)
-		CHECK(*(present + 2) == "exit");
-}
-
-TEST_CASE("Lifecycle requests keep the current iteration ordering")
-{
-	Services services;
-	runtime::ApplicationLoop loop(services.Bind());
-	SECTION("failed initialization or preexisting exit does no work") {
-		services.exit = true;
-		loop.Run();
-		CHECK(services.calls.empty());
-	}
-	SECTION("input exit does not truncate the iteration") {
-		services.inputExit = true;
-		loop.Run();
-		CHECK(services.sessionUpdates == 1);
-		CHECK(services.actualSwaps == 1);
-		CHECK(services.flushes == 1);
-	}
-	SECTION("exit set during successful update is not cleared") {
-		services.updateExit = true;
-		loop.Run();
-		CHECK(services.exit);
-		CHECK(services.actualSwaps == 1);
-		CHECK(services.flushes == 1);
-	}
-	SECTION("input reload runs save first and excludes update and draw") {
-		services.inputReload = true;
-		services.reloadExit = true;
-		loop.Run();
-		CHECK(services.calls == std::vector<std::string>{"watchdog", "input", "save", "reload", "flush"});
-		CHECK(services.sessionUpdates == 0);
-		CHECK(services.clientUpdates == 0);
-	}
-	SECTION("bindings continue to resolve new modes across reloads") {
-		for (int i = 0; i < 4; ++i) {
-			services.reload = true;
-			loop.RunIteration();
-			services.controller = (i % 2) ? 1 : 2;
-			services.replacement = services.controller;
-			loop.RunIteration();
-		}
-		CHECK(services.reloads == 4);
-		CHECK(services.sessionUpdates == 2);
-		CHECK(services.clientUpdates == 2);
-	}
-}
-
-TEST_CASE("Engine exceptions propagate and unwind scopes without a diagnostic drain")
-{
-	for (const auto* failure: {"watchdog", "input", "save", "config", "window", "clock", "update:1", "lock", "draw:1", "present:true", "reload"}) {
-		Services services;
-		services.failure = failure;
-		services.reload = services.failure == "reload";
-		runtime::ApplicationLoop loop(services.Bind());
-		CHECK_THROWS_AS(loop.RunIteration(), std::runtime_error);
-		CHECK_FALSE(services.held);
-		CHECK(services.scopes.empty());
-		CHECK(services.exceptionalScopes >= 1);
-		CHECK(services.flushes == 0);
-		if (services.failure == "draw:1" || services.failure == "present:true")
-			CHECK(services.calls.back() == "unlock");
-	}
-}
-
-TEST_CASE("Session results expose independent continuation and visual facts")
-{
-	const auto [noSessionStatus, noSessionContext] = runtime::SessionUpdate::NoSession();
-	CHECK(noSessionStatus == runtime::ApplicationStatus::Continue);
-	CHECK(noSessionContext.sessionOutcome == runtime::SessionOutcome::NoSession);
-	const auto [continueStatus, continueContext] = runtime::SessionUpdate::FromContinuation(true);
-	CHECK(continueStatus == runtime::ApplicationStatus::Continue);
-	CHECK(continueContext.sessionOutcome == runtime::SessionOutcome::Continue);
-	const auto [exitStatus, exitContext] = runtime::SessionUpdate::FromContinuation(false);
-	CHECK(exitStatus == runtime::ApplicationStatus::ExitRequested);
-	CHECK(exitContext.sessionOutcome == runtime::SessionOutcome::ExitRequested);
+	CHECK(Count(host, "display:2") == 1);
+	CHECK(Count(host, "present:true") == 1);
 }
