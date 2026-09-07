@@ -1,49 +1,80 @@
-# SystemNext runtime and adapters
+# Runtime architecture and concern skeletons
 
-Legacy source is the reference implementation. Preserve its bodies, interfaces,
-state ownership, input routing and execution path. Only recorded additive hooks
-belong there. Adapter behavior and copied implementations belong in SystemNext.
-Do not add friendship, remove methods or reverse-forward legacy methods to make
-an adapter work. A missing connection is explicit work, not permission to change
-that boundary.
+SystemNext now retains executable **orchestration and interface structure**, while
+mode-specific engine work remains documented outlines. Removing implementation
+must not remove the architecture that connects those outlines.
 
-The independently tested scheduling code describes:
+Start with [ApplicationLoop.cpp](ApplicationLoop.cpp): `Run` surrounds iteration with
+host lifecycle, and `Update` visibly performs:
 
 ```text
 input → session → display → render → present
-           └─ authoritative simulation steps
+           └─ authoritative simulation inside Game session
 ```
 
-`ApplicationLoop`, `Session`, `ModeFrame` and `SerialVisualFrame` implement those
-contracts with typed outcomes and invocation-owned visual state. The fake-host
-tests exercise transitions, ordering and failure behavior. **The legacy application
-is not redirected into this loop.** Its original Run/Update and input routes remain.
+All five modes extend [IMode](Modes/IMode.h). Its immutable capabilities declare
+session presence and display placement independently. There is no whole-controller
+Update/Draw dispatcher. Absent optional concerns use the base scheduling-error
+implementation; modes do not invent dummy work.
 
-## Adapter availability
+## Explicit contexts through a common interface
 
-[Mode implementations](Modes/README.md) retain copied substantial operations.
-They currently assume private controller access and lifetime APIs that legacy does
-not provide. `systemnext_unavailable_adapter_sources` in `sources.cmake` explicitly
-lists these uncompiled copies, along with host and simulation integration. This is
-an incomplete adapter implementation, not a working alternative runtime. No
-whole-file preprocessor blocks hide the copied statements.
+The [shared concern context types](Modes/ModeContexts.h) are variants of concrete
+mode-local bundles. Each call carries one alternative, not all engine globals.
+Concrete mode methods bind their own alternative with `std::get`, then retain the
+expected-work documentation. A wrong alternative throws a programming error.
+Existing [Game contexts](Modes/Game/GameContext.h) still distinguish mutable session
+work, client preparation, live world views and prepared-frame input/output.
 
-Complete backing ownership and connections inside SystemNext before activating
-these adapters. The legacy SimFrame implementation remains in place; the copy in
-`Simulation/Simulation.cpp` does not drive legacy ticks.
+[ModeContextProvider](Modes/ModeContextProvider.h) is the application-side construction
+contract. It creates fresh bundles from invocation metadata and owns temporary
+preparation storage per iteration/activation. It cannot dispatch callbacks or retire
+modes during construction. Its engine implementation does not exist yet.
 
-## Observations and verification
+[Mode binding](Modes/ModeBinding.h) borrows `IMode*`; null means inactive. The host
+must advance generation for every activation, including same-address reuse. The
+loop never repeats input/session for a replacement, and it rejects obsolete visual
+work after display/render changes the binding. A mode needing before-graphics
+display, but first selected during graphics acquisition, waits until the next
+iteration instead of rendering unprepared state.
 
-Registered additive hooks record legacy game/network/lifecycle observations.
-Runtime diagnostics use the engine write directory and a SystemNext-owned
-`RuntimeLogFile`; opening/closing it does not change or broadcast through the legacy
-file-sink API. Detailed records remain bounded and drain at the outer-loop boundary.
+## Shared execution boundaries
 
-`tools/check_legacy_surface.py` verifies that the audited legacy files retain every
-baseline source line. `tools/check_runtime_contracts.py` separately validates hook
-presence and isolated dependency boundaries. The baseline manifest is local to the
-engine; source archives without its Git revision cannot run the preservation check.
+[ApplicationHost](Globals/Lifecycle/ApplicationHost.h) provides lifecycle, platform
+input, invocation sampling, graphics acquisition, presentation and diagnostic
+boundaries. It has no engine implementation. Input collection must not also call
+the mode's Input concern. The graphics scope spans dependent display/render/present;
+iteration contexts retire before graphics unlock, including exception unwinding.
+Diagnostic flushing follows normal iteration scope cleanup.
 
-Publication/event storage and diagnostics have isolated tests. Complete production
-extraction, adapter execution, graphics/capture qualification and independent
-rendering remain unfinished.
+Exceptions propagate to the caller. Emergency shutdown remains the outer owner's
+responsibility; normal shutdown follows the loop. This is explicit orchestration,
+not an implemented legacy lifecycle adapter.
+
+## What remains outlined
+
+Mode bodies perform only typed context binding; simulation, publication and shared
+resource behavior remain outlines. Frame eligibility/outcomes, context construction,
+loading-progress execution and production entry-point redirection still require
+implementation. Ordinary present currently follows a normally returned Render with
+a stable binding; no legacy draw-result adaptation is claimed.
+
+The engine does not register or invoke this architecture yet. SystemNext replacing
+the active loop remains the objective; empty concerns must not be treated as an
+operational engine. Legacy annotations and implementation adaptation remain next work.
+No legacy source changed to support this correction.
+
+## Verification
+
+```sh
+python3 -B test/engine/SystemNext/check_skeletons.py --compile-dir /tmp/systemnext-architecture-check
+```
+
+Headers and source units compile/link independently with legacy/headless definitions.
+Compile-time checks verify interface inheritance and typed access. The standalone
+fake-host executable checks actual loop ordering, capabilities, context construction,
+transitions, graphics scope lifetime and exception behavior. It does not execute
+legacy game code or establish gameplay compatibility.
+
+Historical implementations are preserved in
+`rfc0-artifacts/documented-skeleton/before-reset.tar.gz` at the workspace root.

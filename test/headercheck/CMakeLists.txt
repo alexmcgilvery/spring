@@ -20,8 +20,6 @@ file(GLOB_RECURSE headers
 		${Spring_SOURCE_DIR}/rts/Sim/*.h
 		${Spring_SOURCE_DIR}/rts/Menu/*.h
 		${Spring_SOURCE_DIR}/rts/System/*.h
-		# VKFUN-HOOK(runtime-headercheck)
-		${Spring_SOURCE_DIR}/rts/SystemNext/*.h
 	)
 
 set(headerchecklibs "")

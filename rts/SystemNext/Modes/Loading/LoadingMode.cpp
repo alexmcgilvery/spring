@@ -2,405 +2,219 @@
 
 #include "LoadingMode.h"
 
-#include <algorithm>
-#include <cassert>
-#include <functional>
-#include <memory>
-#include <mutex>
-#include <utility>
-
-#include "Game/LoadScreen.h"
-#include "Game/Game.h"
-#include "Game/GlobalUnsynced.h"
-#include "Game/Players/Player.h"
-#include "Game/Players/PlayerHandler.h"
-#include "Game/UI/MouseHandler.h"
-#include "ExternalAI/SkirmishAIHandler.h"
-#include "Lua/LuaIntro.h"
-#include "Lua/LuaMenu.h"
-#include "Map/MapInfo.h"
-#include "Net/Protocol/NetProtocol.h"
-#include "Rendering/Fonts/glFont.h"
-#include "Rendering/GL/myGL.h"
-#include "Rendering/GlobalRendering.h"
-#include "Sim/Path/IPathManager.h"
-#include "System/Config/ConfigHandler.h"
-#include "System/Exceptions.h"
-#include "System/LoadLock.h"
-#include "System/Log/ILog.h"
-#include "System/Misc/TracyDefs.h"
-#include "System/Misc/UnfreezeSpring.h"
-#include "System/Platform/Threading.h"
-#include "System/Platform/Watchdog.h"
-#include "System/SafeUtil.h"
-#include "System/Sync/FPUCheck.h"
-#include "SystemNext/Presentation/Present.h"
-#if !defined(HEADLESS) && !defined(NO_SOUND)
-#include "System/Sound/OpenAL/EFX.h"
-#include "System/Sound/OpenAL/EFXPresets.h"
-#endif
-
 namespace runtime {
-namespace {
-/** Ephemeral draw state; no ownership of the controller or intro is transferred. */
-struct LoadingFrameData final : ModeFrameData {
-	explicit LoadingFrameData(CLoadScreen* owner)
-		: controller(owner)
-		, controllerId(owner->InstanceId())
-#if defined(TRACY_ENABLE) && defined(RECOIL_DETAILED_TRACY_ZONING)
-		, drawScope(&drawLocation, true)
-#endif
-	{}
-	CLoadScreen* controller;
-	std::uint64_t controllerId;
-	CLuaIntro* intro = nullptr;
-#if defined(TRACY_ENABLE) && defined(RECOIL_DETAILED_TRACY_ZONING)
-	inline static constexpr tracy::SourceLocationData drawLocation = {nullptr, "CLoadScreen::Draw", __FILE__, __LINE__, 0};
-	tracy::ScopedZone drawScope;
-#endif
-};
+LoadingMode::LoadingMode(): IMode(ModeKind::Loading, true, DisplayPhase::WithGraphics) {}
 
-struct ProgressDeliveryScope {
-	explicit ProgressDeliveryScope(bool& value): active(value) { active = true; }
-	~ProgressDeliveryScope() { active = false; }
-	bool& active;
-};
-
-struct ProgressCallbackScope {
-	explicit ProgressCallbackScope(unsigned& value): depth(value) { ++depth; }
-	~ProgressCallbackScope() { --depth; }
-	unsigned& depth;
-};
-}
-
-bool LoadingMode::HandlesSession() const
+void LoadingMode::Input(const ModeInputContext& supplied)
 {
-	return true;
+	/*
+	 * Expected legacy sources (investigation starting points):
+	 * [LoadScreen.cpp](../../../Game/LoadScreen.cpp) — CLoadScreen::Init(), Update(), Draw(),
+	 * SetLoadMessage(), Kill()
+	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::Run(), Update(),
+	 * MainEventHandler(), Init(), Reload(), Kill()
+	 *
+	 * Context contract:
+	 * [LoadingContext.h](LoadingContext.h) — LoadingInputContext explicitly lists the
+	 * expected dependencies. Mutable references are permitted outputs/live work;
+	 * const references are borrowed views, not frozen or deeply immutable state.
+	 * The caller resolves valid dependencies for this activation and invocation;
+	 * a retiring transition ends their use. No global lookup or private access is
+	 * supplied by this parameter. Owning publication leases are separately named.
+	 *
+	 * Expected responsibility:
+	 * Keep loading responsive and describe permitted loading-screen input.
+	 *
+	 * Expected work, in conceptual order:
+	 * Collect or route loading input; handle resize and key callbacks; describe cancellation
+	 * or exit requests during synchronous and asynchronous loading.
+	 *
+	 * Expected dependencies:
+	 * Window events, intro/menu handlers, loading status, thread role and availability of the
+	 * application event pump.
+	 *
+	 * Expected relationships:
+	 * Single-threaded loading can occupy the main stack before an ordinary iteration resumes.
+	 * Input responsiveness therefore cannot be described only as one call at the outer-loop
+	 * boundary.
+	 */
+
+	// Bind only this mode's declared dependency bundle; behavior remains an outline.
+	[[maybe_unused]] const auto& context = std::get<LoadingInputContext>(supplied);
+
+	/*
+	 * Ordinary responsiveness:
+	 * Expect the existing key, resize and intro interaction routes, preserving platform event
+	 * consumption.
+	 */
+
+	/*
+	 * Progress-driven responsiveness:
+	 * Expect progress notifications to offer an opportunity for event handling during
+	 * synchronous loading. Identify existing direct event/update/draw effects before assigning
+	 * their exact execution site.
+	 */
+
 }
 
-DisplayPhase LoadingMode::GetDisplayPhase() const
+void LoadingMode::Session(const ModeSessionContext& supplied)
 {
-	return DisplayPhase::WithGraphics;
+	/*
+	 * Expected legacy sources (investigation starting points):
+	 * [LoadScreen.cpp](../../../Game/LoadScreen.cpp) — CLoadScreen::Init(), Update(), Draw(),
+	 * SetLoadMessage(), Kill()
+	 * [GameLoadThread.cpp](../../../System/GameLoadThread.cpp) — CGameLoadThread::WrapFunc(),
+	 * join()
+	 *
+	 * Context contract:
+	 * [LoadingContext.h](LoadingContext.h) — LoadingSessionContext explicitly lists the
+	 * expected dependencies. Mutable references are permitted outputs/live work;
+	 * const references are borrowed views, not frozen or deeply immutable state.
+	 * The caller resolves valid dependencies for this activation and invocation;
+	 * a retiring transition ends their use. No global lookup or private access is
+	 * supplied by this parameter. Owning publication leases are separately named.
+	 *
+	 * Expected responsibility:
+	 * Manage loading progress and describe when the game is ready to become the active mode.
+	 *
+	 * Expected work, in conceptual order:
+	 * Establish loading resources and thread mode; receive and deliver progress notifications;
+	 * observe completion/failure; describe transition to Game and retirement of loading
+	 * resources.
+	 *
+	 * Expected dependencies:
+	 * Game loading status, progress queue, synchronization, loading/heartbeat threads, save
+	 * handler and FPU state.
+	 *
+	 * Expected relationships:
+	 * Ordinary completion and completion nested inside a progress callback are distinct source
+	 * paths. Session establishes readiness; it must not imply that display/render or resource
+	 * retirement has already completed.
+	 */
+
+	// Bind only this mode's declared dependency bundle; behavior remains an outline.
+	[[maybe_unused]] const auto& context = std::get<LoadingSessionContext>(supplied);
+
+	/*
+	 * Startup and worker model:
+	 * Expect single-threaded and multithreaded loading paths, intro setup, lobby keepalive
+	 * ownership and startup fallback behavior. Trace context and worker initialization in
+	 * their actual source locations.
+	 */
+
+	/*
+	 * Progress and failure:
+	 * Expect notification ordering, replacement messages and delivery under existing
+	 * locking/FPU handling. Nested notification delivery, cancellation and failed loading need
+	 * annotation before an execution policy is chosen.
+	 */
+
+	/*
+	 * Completion and cleanup:
+	 * Expect transition into Game only when loading has completed, with ownership of workers,
+	 * intro resources and save data accounted for. Do not assume deleting the loading object
+	 * is safe at every completion observation point.
+	 */
+
 }
 
-SessionUpdate LoadingMode::UpdateSession(Session&)
+void LoadingMode::Display(const ModeDisplayContext& supplied)
 {
-	ZoneScoped;
-	auto* owner = static_cast<CLoadScreen*>(Controller());
-	if (owner == nullptr || owner != CLoadScreen::GetInstance())
-		return SessionUpdate::Incomplete("LOAD-009", "Loading session has no current backing controller");
-	auto& controller = *owner;
-	{
-		std::lock_guard<spring::recursive_mutex> lock(controller.mutex);
-		if (controller.incompleteId != nullptr)
-			return SessionUpdate::Incomplete(controller.incompleteId, controller.incompleteReason);
-	}
+	/*
+	 * Expected legacy sources (investigation starting points):
+	 * [LoadScreen.cpp](../../../Game/LoadScreen.cpp) — CLoadScreen::Init(), Update(), Draw(),
+	 * SetLoadMessage(), Kill()
+	 *
+	 * Context contract:
+	 * [LoadingContext.h](LoadingContext.h) — LoadingDisplayContext explicitly lists the
+	 * expected dependencies. Mutable references are permitted outputs/live work;
+	 * const references are borrowed views, not frozen or deeply immutable state.
+	 * The caller resolves valid dependencies for this activation and invocation;
+	 * a retiring transition ends their use. No global lookup or private access is
+	 * supplied by this parameter. Owning publication leases are separately named.
+	 *
+	 * Expected responsibility:
+	 * Maintain loading presentation and its pacing before drawing the intro/loading screen.
+	 *
+	 * Expected work, in conceptual order:
+	 * Account for loading-frame timing; maintain lobby/intro/menu state; determine the client
+	 * state needed by the upcoming render block.
+	 *
+	 * Expected dependencies:
+	 * Progress state, real time, window/context availability, intro/menu handlers and the
+	 * ordinary or progress-driven invocation source.
+	 *
+	 * Expected relationships:
+	 * This block may need graphics synchronization. Its timing and callbacks must relate
+	 * consistently to Render and to the caller that will request presentation.
+	 */
 
-	// [ progress notifications ] Keep display notifications before completion,
-	// at their established session invocation point, without moving their context.
-	if (luaIntro != nullptr) {
-		std::lock_guard<spring::recursive_mutex> lck(controller.mutex);
-		if (controller.deliveringProgress)
-			return SessionUpdate::Incomplete("LOAD-001", "Recursive loading progress delivery requires a queue ordering decision");
-		ProgressDeliveryScope delivery(controller.deliveringProgress);
-		for (const auto& pair: controller.loadMessages) {
-			good_fpu_control_registers(pair.first.c_str());
-			auto* notifiedIntro = luaIntro;
-			notifiedIntro->LoadProgress(pair.first, pair.second);
-			if (controller.incompleteId != nullptr)
-				return SessionUpdate::Incomplete(controller.incompleteId, controller.incompleteReason);
-			if (notifiedIntro != luaIntro) {
-				controller.incompleteId = "LOAD-007";
-				controller.incompleteReason = "Loading intro changed during progress notification";
-				return SessionUpdate::Incomplete(controller.incompleteId, controller.incompleteReason);
-			}
-		}
-		controller.loadMessages.clear();
-	}
+	// Bind only this mode's declared dependency bundle; behavior remains an outline.
+	[[maybe_unused]] const auto& context = std::get<LoadingDisplayContext>(supplied);
 
-	// [ session completion ] Progress owns a lock in controller storage. Stop
-	// before deleting that storage; an outer iteration may not claim completion
-	// of an incomplete synchronous callback.
-	if (game->IsDoneLoading()) {
-		if (controller.progressDepth != 0) {
-			//FIXME [LOAD-005] Source deletes here even with SetLoadMessage's lock
-			// held. The exact retirement operations remain below; this affected
-			// path requires a deferred-retirement policy before it can run safely.
-			controller.incompleteId = "LOAD-005";
-			controller.incompleteReason = "Loading completed inside a progress callback holding controller storage";
-			return SessionUpdate::Incomplete(controller.incompleteId, controller.incompleteReason);
-		}
-		RetireLoadingController();
-		AnnounceLoadingCompletion();
-		return SessionUpdate::FromContinuation(true);
-	}
+	/*
+	 * Pacing and maintenance:
+	 * Expect existing sleep/timestamp behavior and keepalive activity to be located precisely
+	 * in the source. Separate their responsibility without moving their execution during this
+	 * outline pass.
+	 */
 
-	// [ input ] Keep responsiveness while synchronous loading owns the stack.
-	if (!controller.mtLoading)
-		spring::UnfreezeSpring(WDT_LOAD);
-	return SessionUpdate::FromContinuation(true);
+	/*
+	 * Client callbacks:
+	 * Expect intro/menu update callbacks to affect what can be drawn. An ordinary iteration
+	 * and a nested progress entry must not silently be treated as interchangeable.
+	 */
+
 }
 
-ApplicationStatus LoadingMode::UpdateDisplay(ModeFrame& frame)
+void LoadingMode::Render(const ModeRenderContext& supplied)
 {
-	auto* owner = static_cast<CLoadScreen*>(Controller());
-	if (owner == nullptr || owner != CLoadScreen::GetInstance())
-		return frame.Block("LOAD-009", "Loading display has no current backing controller");
-	frame.data = std::make_unique<LoadingFrameData>(owner);
-	auto& draw = static_cast<LoadingFrameData&>(*frame.data);
-	auto& controller = *owner;
-	if (!controller.mtLoading && controller.progressDepth == 0) {
-		//FIXME [LOAD-006] The source ordinary ST draw had an internal swap plus
-		// its caller's outer swap. Only progress execution has a proven single
-		// present route. Do not silently choose a new count for an ordinary ST
-		// loading frame; normal ST startup retires before reaching this path.
-#if 0
-		// Retained source-internal swap; ordinary execution also has an outer present.
-		globalRendering->SwapBuffers(true, false);
-#endif
-		return frame.Block("LOAD-006", "Ordinary synchronous loading presentation requires a swap-count decision");
-	}
+	/*
+	 * Expected legacy sources (investigation starting points):
+	 * [LoadScreen.cpp](../../../Game/LoadScreen.cpp) — CLoadScreen::Init(), Update(), Draw(),
+	 * SetLoadMessage(), Kill()
+	 *
+	 * Context contract:
+	 * [LoadingContext.h](LoadingContext.h) — LoadingRenderContext explicitly lists the
+	 * expected dependencies. Mutable references are permitted outputs/live work;
+	 * const references are borrowed views, not frozen or deeply immutable state.
+	 * The caller resolves valid dependencies for this activation and invocation;
+	 * a retiring transition ends their use. No global lookup or private access is
+	 * supplied by this parameter. Owning publication leases are separately named.
+	 *
+	 * Expected responsibility:
+	 * Draw the loading or intro screen for the current loading presentation state.
+	 *
+	 * Expected work, in conceptual order:
+	 * Evaluate rendering eligibility; draw the applicable intro/menu content; describe
+	 * completion of this loading visual frame.
+	 *
+	 * Expected dependencies:
+	 * Prepared loading presentation, handler eligibility, progress messages, context ownership
+	 * and invocation origin.
+	 *
+	 * Expected relationships:
+	 * Ordinary present is shared. Legacy progress-driven drawing can perform an internal swap,
+	 * so annotation must distinguish that route from an outer-loop swap without deciding how
+	 * to reconcile them.
+	 */
 
-	// [ timing ] Preserve the source pre-sleep timestamp assignment.
-	if (controller.mtLoading) {
-		const spring_time now = spring_gettime();
-		const unsigned diffTime = spring_tomsecs(now - controller.lastDrawTime);
-		constexpr unsigned wantedFPS = 50;
-		constexpr unsigned minFrameTime = 1000 / wantedFPS;
-		if (diffTime < minFrameTime)
-			spring_sleep(spring_msecs(minFrameTime - diffTime));
-		controller.lastDrawTime = now;
-	}
-	globalRendering->drawFrame = std::max(1U, globalRendering->drawFrame + 1);
+	// Bind only this mode's declared dependency bundle; behavior remains an outline.
+	[[maybe_unused]] const auto& context = std::get<LoadingRenderContext>(supplied);
 
-	// [ display ] Lobby maintenance precedes one intro eligibility decision.
-	if (luaMenu != nullptr)
-		luaMenu->Update();
-	if (owner != CLoadScreen::GetInstance() || draw.controllerId != CLoadScreen::GetInstance()->InstanceId())
-		return frame.Block("LOAD-007", "Loading controller changed during lobby maintenance");
-	draw.intro = luaIntro;
-	if (draw.intro != nullptr) {
-		draw.intro->Update();
-		if (owner != CLoadScreen::GetInstance() || draw.controllerId != CLoadScreen::GetInstance()->InstanceId() || draw.intro != luaIntro)
-			return frame.Block("LOAD-007", "Loading intro or controller changed during display update");
-	}
-	return ApplicationStatus::Continue;
+	/*
+	 * Frame content:
+	 * Expect the applicable intro or menu rendering callbacks and their eligibility checks.
+	 * Account for incomplete loading and handlers that disappear during completion.
+	 */
+
+	/*
+	 * Presentation boundary:
+	 * Expect progress execution to request output while normal iteration is occupied. Document
+	 * both legacy swap sites and their callers; choose no new swap count, context transfer or
+	 * reentrancy mechanism here.
+	 */
+
 }
 
-RenderResult LoadingMode::Render(ModeFrame& frame)
-{
-	auto* draw = dynamic_cast<LoadingFrameData*>(frame.data.get());
-	if (draw == nullptr)
-		return RenderResult::Blocked("LOAD-007", "Loading rendering requires prepared display state");
-	if (draw->controller != CLoadScreen::GetInstance() || draw->controllerId != CLoadScreen::GetInstance()->InstanceId() || draw->intro != luaIntro)
-		return RenderResult::Blocked("LOAD-007", "Loading rendering backing changed after display preparation");
-
-	// [ rendering ] Reuse the display eligibility fact; no second intro update.
-	if (draw->intro != nullptr) {
-		draw->intro->DrawGenesis();
-		if (draw->controller != CLoadScreen::GetInstance() || draw->controllerId != CLoadScreen::GetInstance()->InstanceId() || draw->intro != luaIntro)
-			return RenderResult::Blocked("LOAD-007", "Loading backing changed during genesis callback");
-		ClearScreen();
-		draw->intro->DrawLoadScreen();
-	}
-	// Present is the caller's responsibility for ordinary and progress frames.
-	return RenderResult::Ready();
-}
-
-SessionUpdate LoadingMode::ReportProgress(CLoadScreen& controller, const std::string& text, bool replaceLast, Session& session)
-{
-	RECOIL_DETAILED_TRACY_ZONE;
-	// [ input ] MT and ST retain window/watchdog service before locking.
-	spring::UnfreezeSpring(WDT_LOAD);
-	std::lock_guard<spring::recursive_mutex> lck(controller.mutex);
-	if (controller.incompleteId != nullptr)
-		return SessionUpdate::Incomplete(controller.incompleteId, controller.incompleteReason);
-	if (controller.deliveringProgress) {
-		//FIXME [LOAD-001] Appending to loadMessages from LoadProgress can
-		// invalidate the active vector iteration. Keep the original append below,
-		// but block this reentrant path until queue semantics are decided.
-		controller.incompleteId = "LOAD-001";
-		controller.incompleteReason = "A loading notification reentered active progress delivery";
-		return SessionUpdate::Incomplete(controller.incompleteId, controller.incompleteReason);
-	}
-
-	// [ progress ] Queue, log/cleanup and FPU order remain unchanged.
-	controller.loadMessages.emplace_back(text, replaceLast);
-	LOG("[LoadScreen::%s] text=\"%s\"", "SetLoadMessage", text.c_str());
-	LOG_CLEANUP();
-	good_fpu_control_registers(text.c_str());
-	if (controller.mtLoading)
-		return SessionUpdate::FromContinuation(true);
-
-	// [ synchronous frame ] ST callbacks execute on the established caller
-	// context. MT never touches the shared mode binding from its producer thread.
-	ProgressCallbackScope callback(controller.progressDepth);
-	BindController(&controller);
-	auto update = UpdateSession(session);
-	if (update.applicationStatus == ApplicationStatus::Blocked)
-		return update;
-	ModeFrame frame;
-	if (UpdateDisplay(frame) == ApplicationStatus::Blocked) {
-		controller.incompleteId = "LOAD-007";
-		controller.incompleteReason = "Synchronous loading display did not complete";
-		return SessionUpdate::Incomplete(frame.blocked.id, frame.blocked.reason);
-	}
-	const auto rendered = Render(frame);
-	if (rendered.state == RenderState::Blocked) {
-		controller.incompleteId = "LOAD-007";
-		controller.incompleteReason = "Synchronous loading rendering did not complete";
-		return SessionUpdate::Incomplete(rendered.blocked.id, rendered.blocked.reason);
-	}
-
-	// [ present ] Exactly one progress present, through the shared presenter.
-	// The frame's draw scope remains alive through this source-internal present.
-	PresentWindow(rendered.AllowPresent());
-	return SessionUpdate::FromContinuation(true);
-}
-
-void LoadingMode::BeginLoading(std::string&& mapFileName, std::string&& modFileName, ILoadSaveHandler* saveFile)
-{
-	RECOIL_DETAILED_TRACY_ZONE;
-	// Startup is explicit: ST loading can finish before the first ordinary update.
-	assert(CLoadScreen::singleton == nullptr);
-	CLoadScreen::singleton = new CLoadScreen(std::move(mapFileName), std::move(modFileName), saveFile);
-	BindController(CLoadScreen::singleton);
-	if (InitializeLoading())
-		return;
-	RetireLoadingController();
-	AnnounceLoadingCompletion();
-}
-
-bool LoadingMode::InitializeLoading()
-{
-	RECOIL_DETAILED_TRACY_ZONE;
-	auto& controller = *static_cast<CLoadScreen*>(Controller());
-	SetActiveController(&controller);
-	skirmishAIHandler.LoadPreGame();
-#ifdef HEADLESS
-	controller.mtLoading = false;
-#else
-	const int mtCfg = configHandler->GetInt("LoadingMT");
-	controller.mtLoading = (mtCfg > 0);
-#endif
-
-	// [ session loading ] Keep transport alive while constructing/loading game.
-	clientNet->KeepUpdating(true);
-	controller.netHeartbeatThread = spring::thread(Threading::CreateNewThread(std::bind(&CNetProtocol::UpdateLoop, clientNet)));
-	game = new CGame(controller.mapFileName, controller.modFileName, controller.saveFile);
-	CglFont::sync.SetThreadSafety(controller.mtLoading);
-	CLoadLock::SetThreadSafety(controller.mtLoading);
-	if (controller.mtLoading) {
-		try {
-			//FIXME [LOAD-003] Comments describe context creation that WrapFunc does
-			// not perform. Validate actual context and startup failure behavior;
-			// preserve these exact start/wait/fallback statements in the meantime.
-			controller.gameLoadThread = CGameLoadThread(std::bind(&CGame::Load, game, controller.mapFileName));
-			while (!Watchdog::HasThread(WDT_LOAD));
-		} catch (const opengl_error& gle) {
-			LOG_L(L_WARNING, "[LoadScreen::%s] offscreen GL context creation failed (error: \"%s\")", "Init", gle.what());
-			controller.mtLoading = false;
-			CglFont::sync.SetThreadSafety(false);
-			CLoadLock::SetThreadSafety(false);
-		}
-	}
-
-	// [ display initialization ] Intro uses its established main-thread context.
-	{
-		auto lock = CLoadLock::GetUniqueLock();
-		CLuaIntro::LoadFreeHandler();
-	}
-	if (controller.mtLoading)
-		return true;
-	LOG("[LoadScreen::%s] single-threaded", "Init");
-	game->Load(controller.mapFileName);
-	if (controller.incompleteId != nullptr)
-		throw IncompleteFlow(controller.incompleteId, controller.incompleteReason);
-	return false;
-}
-
-void LoadingMode::StopLoadingResources()
-{
-	RECOIL_DETAILED_TRACY_ZONE;
-	auto& controller = *static_cast<CLoadScreen*>(Controller());
-	if (controller.mtLoading && !controller.gameLoadThread.joinable())
-		return;
-	if (luaIntro != nullptr)
-		luaIntro->Shutdown();
-	CLuaIntro::FreeHandler();
-	controller.gameLoadThread.join();
-	CFontTexture::sync.SetThreadSafety(false);
-	CLoadLock::SetThreadSafety(false);
-	globalRendering->MakeCurrentContext(false);
-	globalRendering->ToggleMultisampling();
-}
-
-void LoadingMode::FinishControllerDestruction()
-{
-	RECOIL_DETAILED_TRACY_ZONE;
-	auto& controller = *static_cast<CLoadScreen*>(Controller());
-	assert(!controller.gameLoadThread.joinable());
-	if (clientNet != nullptr)
-		clientNet->KeepUpdating(false);
-	if (controller.netHeartbeatThread.joinable())
-		controller.netHeartbeatThread.join();
-	if (!gu->globalQuit) {
-		SetActiveController(game);
-		if (luaMenu != nullptr)
-			luaMenu->ActivateGame();
-	}
-	if (activeController == &controller)
-		SetActiveController(nullptr);
-}
-
-void LoadingMode::RetireLoadingController()
-{
-	RECOIL_DETAILED_TRACY_ZONE;
-	if (CLoadScreen::singleton == nullptr)
-		return;
-	StopLoadingResources();
-	// The destructor reverse-forwards its body to FinishControllerDestruction;
-	// member/base destruction therefore occurs exactly once in its original order.
-	spring::SafeDelete(CLoadScreen::singleton);
-	BindController(nullptr);
-}
-
-void LoadingMode::AnnounceLoadingCompletion()
-{
-	RECOIL_DETAILED_TRACY_ZONE;
-	if (gu->globalQuit)
-		return;
-	const CPlayer* p = playerHandler.Player(gu->myPlayerNum);
-	clientNet->Send(CBaseNetProtocol::Get().SendPlayerName(gu->myPlayerNum, p->name));
-#ifdef SYNCCHECK
-	clientNet->Send(CBaseNetProtocol::Get().SendPathCheckSum(gu->myPlayerNum, pathManager->GetPathCheckSum()));
-#endif
-	mouse->ShowMouse();
-#if !defined(HEADLESS) && !defined(NO_SOUND)
-	efx.CommitEffects(mapInfo->efxprops);
-#endif
-}
-
-void LoadingMode::ResizeEvent()
-{
-	RECOIL_DETAILED_TRACY_ZONE;
-	if (luaIntro != nullptr)
-		luaIntro->ViewResize();
-}
-
-int LoadingMode::KeyPressed(int keyCode, int scanCode, bool isRepeat)
-{
-	RECOIL_DETAILED_TRACY_ZONE;
-	if (luaIntro != nullptr)
-		luaIntro->KeyPress(keyCode, scanCode, isRepeat);
-	return 0;
-}
-
-int LoadingMode::KeyReleased(int keyCode, int scanCode)
-{
-	RECOIL_DETAILED_TRACY_ZONE;
-	if (luaIntro != nullptr)
-		luaIntro->KeyRelease(keyCode, scanCode);
-	return 0;
-}
 }

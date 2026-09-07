@@ -1,7 +1,5 @@
 /* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
 
-// VKFUN-HOOK(runtime-host-include)
-#include "SystemNext/Diagnostics/LegacyRuntimeDiagnostics.h"
 #include <functional>
 #include <iostream>
 #include <chrono>
@@ -759,8 +757,6 @@ void SpringApp::Startup()
 
 void SpringApp::Reload(const std::string script)
 {
-	// VKFUN-HOOK(runtime-reload-detach)
-	runtime::legacy::EndSession();
 	LOG("[SpringApp::%s][1]", __func__);
 
 	// get rid of any running worker threads
@@ -930,8 +926,6 @@ int SpringApp::Run()
 		if ((gu->globalQuit = !Init() || gu->globalQuit))
 			spring::exitCode = spring::EXIT_CODE_NOINIT;
 
-		// VKFUN-HOOK(runtime-diagnostics-init)
-		runtime::legacy::InitializeDiagnostics();
 
 		while (!gu->globalQuit) {
 			Watchdog::ClearTimer(WDT_MAIN);
@@ -946,8 +940,6 @@ int SpringApp::Run()
 			} else {
 				gu->globalQuit = (!Update() || gu->globalQuit);
 			}
-			// VKFUN-HOOK(runtime-diagnostics-drain)
-			runtime::legacy::DrainDiagnostics();
 		}
 	} CATCH_SPRING_ERRORS
 
@@ -972,8 +964,6 @@ int SpringApp::Run()
 	if (!threadError->Empty())
 		LOG_L(L_ERROR, "[SpringApp::%s] errorMsg=\"[thread::error::kill] %s\" msgCaption=\"%s\"", __func__, threadError->message, threadError->caption);
 
-	// VKFUN-HOOK(runtime-diagnostics-finish)
-	runtime::legacy::FinishDiagnostics(true);
 
 	// cleanup signal handlers, etc
 	CrashHandler::Remove();
@@ -1015,10 +1005,6 @@ void SpringApp::Kill(bool fromRun)
 	// block any (main-thread) exceptions thrown here from causing another Kill
 	killedCount += 1;
 
-	// VKFUN-HOOK(runtime-shutdown-detach)
-	runtime::legacy::EndSession();
-	// VKFUN-HOOK(runtime-diagnostics-abort)
-	if (!fromRun) runtime::legacy::FinishDiagnostics(false);
 
 	LOG("[SpringApp::%s][1] fromRun=%d", __func__, fromRun);
 	ThreadPool::SetThreadCount(0);

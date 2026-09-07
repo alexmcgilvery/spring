@@ -1,129 +1,161 @@
 /* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
 
-#include "Menu/LuaMenuController.h"
-
-#include "Game/GlobalUnsynced.h"
-#include "Game/UI/InfoConsole.h"
-#include "Game/UI/MouseHandler.h"
-#include "Lua/LuaInputReceiver.h"
-#include "Lua/LuaMenu.h"
-#include "System/Config/ConfigHandler.h"
-#include "System/EventHandler.h"
-#include "System/FileSystem/VFSHandler.h"
-#include "System/SafeUtil.h"
-#include "System/Log/ILog.h"
-
-#include "System/Misc/TracyDefs.h"
-
-
 #include "LuaMenuMode.h"
 
 namespace runtime {
-bool LuaMenuMode::HandlesSession() const { return false; }
-DisplayPhase LuaMenuMode::GetDisplayPhase() const { return DisplayPhase::BeforeGraphics; }
-bool LuaMenuMode::Reset()
+LuaMenuMode::LuaMenuMode(): IMode(ModeKind::LuaMenu, false, DisplayPhase::BeforeGraphics) {}
+
+void LuaMenuMode::Input(const ModeInputContext& supplied)
 {
-	auto& backing = *static_cast<CLuaMenuController*>(Controller());
-	if (!backing.Valid()) {
-		// if no LuaMenu, cursor will not be updated (again) until game exists so force a reset
-		// calling ReloadCursors here is not possible since no archives are loaded at this point
-		mouse->ResetCursor();
-		return false;
-	}
+	/*
+	 * Expected legacy sources (investigation starting points):
+	 * [LuaMenuController.cpp](../../../Menu/LuaMenuController.cpp) —
+	 * CLuaMenuController::Activate(), Update(), Draw(), KeyPressed(), TextInput(),
+	 * TextEditing()
+	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::Run(), Update(),
+	 * MainEventHandler(), Init(), Reload(), Kill()
+	 *
+	 * Context contract:
+	 * [LuaMenuContext.h](LuaMenuContext.h) — LuaMenuInputContext explicitly lists the
+	 * expected dependencies. Mutable references are permitted outputs/live work;
+	 * const references are borrowed views, not frozen or deeply immutable state.
+	 * The caller resolves valid dependencies for this activation and invocation;
+	 * a retiring transition ends their use. No global lookup or private access is
+	 * supplied by this parameter. Owning publication leases are separately named.
+	 *
+	 * Expected responsibility:
+	 * Deliver menu interaction to Lua with the existing event-consumption semantics.
+	 *
+	 * Expected work, in conceptual order:
+	 * Establish or activate menu context; route key/text interaction; account for resize and
+	 * focus; describe requests that start, reset or leave the menu.
+	 *
+	 * Expected dependencies:
+	 * Lua menu availability, archive identity, text/editing events, window geometry, platform
+	 * filtering and transition requests.
+	 *
+	 * Expected relationships:
+	 * Input can change eligibility for later display/render work. Activation and archive reset
+	 * are mode lifecycle expectations, not a second recurring session phase.
+	 */
 
-	LOG("[LuaMenuController::%s] using menu archive \"%s\"", __func__, backing.menuArchive.c_str());
+	// Bind only this mode's declared dependency bundle; behavior remains an outline.
+	[[maybe_unused]] const auto& context = std::get<LuaMenuInputContext>(supplied);
 
-	// lock should not be needed here, but does no harm either
-	vfsHandler->GrabLock();
-	vfsHandler->SetName("LuaMenuVFS");
-	vfsHandler->AddArchiveWithDeps(backing.menuArchive, false);
-	vfsHandler->SetName("SpringVFS");
-	vfsHandler->FreeLock();
+	/*
+	 * Event ownership:
+	 * Expect one route for each keyboard, text-editing and text-input event. Trace the legacy
+	 * platform filtering before deciding where callbacks belong.
+	 */
 
-	mouse->ReloadCursors();
-	return true;
+	/*
+	 * Menu activation:
+	 * Expect menu validity, reset and activation-message behavior to determine which Lua
+	 * environment receives input. Track input-triggered startup or exit without assuming
+	 * callbacks leave the current menu alive.
+	 */
+
 }
-bool LuaMenuMode::Activate(const std::string& msg)
+
+void LuaMenuMode::Display(const ModeDisplayContext& supplied)
 {
-	auto& backing = *static_cast<CLuaMenuController*>(Controller());
-	LOG("[LuaMenuController::%s(msg=\"%s\")] luaMenu=%p", __func__, msg.c_str(), luaMenu);
+	/*
+	 * Expected legacy sources (investigation starting points):
+	 * [LuaMenuController.cpp](../../../Menu/LuaMenuController.cpp) —
+	 * CLuaMenuController::Activate(), Update(), Draw(), KeyPressed(), TextInput(),
+	 * TextEditing()
+	 *
+	 * Context contract:
+	 * [LuaMenuContext.h](LuaMenuContext.h) — LuaMenuDisplayContext explicitly lists the
+	 * expected dependencies. Mutable references are permitted outputs/live work;
+	 * const references are borrowed views, not frozen or deeply immutable state.
+	 * The caller resolves valid dependencies for this activation and invocation;
+	 * a retiring transition ends their use. No global lookup or private access is
+	 * supplied by this parameter. Owning publication leases are separately named.
+	 *
+	 * Expected responsibility:
+	 * Maintain client interaction and Lua menu state before drawing.
+	 *
+	 * Expected work, in conceptual order:
+	 * Perform garbage collection and console delivery; maintain mouse/cursor state; invoke
+	 * update callbacks; evaluate interaction and tooltip state.
+	 *
+	 * Expected dependencies:
+	 * Active Lua handlers, queued console notifications, mouse state, real time and client
+	 * visibility.
+	 *
+	 * Expected relationships:
+	 * Display is conceptually separate from render eligibility. Its existing callback order
+	 * may influence rendering or transitions even when drawing is skipped.
+	 */
 
-	// LuaMenu might have failed to load, making the controller deadweight
-	if (luaMenu == nullptr)
-		return false;
+	// Bind only this mode's declared dependency bundle; behavior remains an outline.
+	[[maybe_unused]] const auto& context = std::get<LuaMenuDisplayContext>(supplied);
 
-	assert(backing.Valid());
-	SetActiveController(luaMenuController);
+	/*
+	 * Client maintenance:
+	 * Expect collection, console notifications and mouse updates to retain their relative
+	 * callback ordering when implementation is studied.
+	 */
 
-	mouse->ShowMouse();
-	luaMenu->ActivateMenu(msg);
-	return true;
+	/*
+	 * Lua interaction:
+	 * Expect update and tooltip evaluation against the currently active menu. The annotation
+	 * pass should identify graphics-dependent work and callbacks capable of changing menu
+	 * state.
+	 */
+
 }
-void LuaMenuMode::ResizeEvent()
+
+void LuaMenuMode::Render(const ModeRenderContext& supplied)
 {
-	eventHandler.ViewResize();
+	/*
+	 * Expected legacy sources (investigation starting points):
+	 * [LuaMenuController.cpp](../../../Menu/LuaMenuController.cpp) —
+	 * CLuaMenuController::Activate(), Update(), Draw(), KeyPressed(), TextInput(),
+	 * TextEditing()
+	 *
+	 * Context contract:
+	 * [LuaMenuContext.h](LuaMenuContext.h) — LuaMenuRenderContext explicitly lists the
+	 * expected dependencies. Mutable references are permitted outputs/live work;
+	 * const references are borrowed views, not frozen or deeply immutable state.
+	 * The caller resolves valid dependencies for this activation and invocation;
+	 * a retiring transition ends their use. No global lookup or private access is
+	 * supplied by this parameter. Owning publication leases are separately named.
+	 *
+	 * Expected responsibility:
+	 * Render an eligible Lua menu frame and its cursor, including legacy forced-draw behavior.
+	 *
+	 * Expected work, in conceptual order:
+	 * Evaluate active-window and Lua draw eligibility; account for forced-draw timing; record
+	 * the draw iteration; clear; invoke ordered draw callbacks; draw cursor; record
+	 * completion.
+	 *
+	 * Expected dependencies:
+	 * Current display state, Lua draw permissions, previous draw time, graphics resources and
+	 * cursor visibility.
+	 *
+	 * Expected relationships:
+	 * Skipped drawing and exit are different situations. Shared presentation remains separate;
+	 * display maintenance must not be inferred solely from whether this block draws.
+	 */
+
+	// Bind only this mode's declared dependency bundle; behavior remains an outline.
+	[[maybe_unused]] const auto& context = std::get<LuaMenuRenderContext>(supplied);
+
+	/*
+	 * Eligibility and skipped frames:
+	 * Expect the existing short sleep on skipped drawing and the periodic forced draw when
+	 * inactive. Preserve the exact evaluation points as subjects for annotation rather than
+	 * designing new pacing here.
+	 */
+
+	/*
+	 * Drawing and completion:
+	 * Expect screen, Lua callback and cursor ordering to matter for visible output. Draw
+	 * timestamps and accounting should describe the same intervals as their legacy sources.
+	 */
+
 }
-int LuaMenuMode::KeyReleased(int keyCode, int scanCode)
-{
-	luaInputReceiver->KeyReleased(keyCode, scanCode);
-	return 0;
-}
-int LuaMenuMode::KeyPressed(int keyCode, int scanCode, bool isRepeat)
-{
-	luaInputReceiver->KeyPressed(keyCode, scanCode, isRepeat);
-	return 0;
-}
-int LuaMenuMode::TextInput(const std::string& utf8Text)
-{
-	eventHandler.TextInput(utf8Text);
-	return 0;
-}
-int LuaMenuMode::TextEditing(const std::string& utf8Text, unsigned int start, unsigned int length)
-{
-	eventHandler.TextEditing(utf8Text, start, length);
-	return 0;
-}
-ApplicationStatus LuaMenuMode::UpdateDisplay(ModeFrame&)
-{
-	ZoneScoped;
 
-	// we should not become the active controller unless this holds (see ::Activate)
-	assert(luaMenu != nullptr);
-
-	eventHandler.CollectGarbage(false);
-	infoConsole->PushNewLinesToEventHandler();
-	mouse->Update();
-	mouse->UpdateCursors();
-	eventHandler.Update();
-	// calls IsAbove
-	mouse->GetCurrentTooltip();
-
-	return ApplicationStatus::Continue;
-}
-RenderResult LuaMenuMode::Render(ModeFrame&)
-{
-	auto& backing = *static_cast<CLuaMenuController*>(Controller());
-	// we should not become the active controller unless this holds (see ::Activate)
-	assert(luaMenu != nullptr);
-
-	// render if global rendering active + luamenu allows it, and at least once per 30s
-	const bool allowDraw = (globalRendering->active && luaMenu->AllowDraw());
-	const bool forceDraw = ((spring_gettime() - backing.lastDrawFrameTime).toSecsi() > 30);
-
-	if (allowDraw || forceDraw) {
-		globalRendering->drawFrame = std::max(1U, globalRendering->drawFrame + 1);
-		ClearScreen();
-
-		eventHandler.DrawGenesis();
-		eventHandler.DrawScreen();
-		mouse->DrawCursor();
-		eventHandler.DrawScreenPost();
-
-		backing.lastDrawFrameTime = spring_gettime();
-		return RenderResult::Ready();
-	}
-
-	spring_msecs(10).sleep(true); // no draw needed, sleep a bit
-	return RenderResult::Skipped();
-}
 }

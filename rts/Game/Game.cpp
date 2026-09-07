@@ -1,7 +1,5 @@
 /* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
 
-// VKFUN-HOOK(runtime-game-include)
-#include "SystemNext/Diagnostics/LegacyRuntimeDiagnostics.h"
 #include "Rendering/GL/myGL.h"
 
 #include <Rml/Backends/RmlUi_Backend.h>
@@ -1172,8 +1170,6 @@ bool CGame::Update()
 {
 	RECOIL_DETAILED_TRACY_ZONE;
 	good_fpu_control_registers("CGame::Update");
-	// VKFUN-HOOK(runtime-session-bootstrap)
-	runtime::legacy::BeginSession();
 
 	jobDispatcher.Update();
 	clientNet->Update();
@@ -1220,8 +1216,6 @@ bool CGame::Update()
 
 bool CGame::UpdateUnsynced(const spring_time currentTime)
 {
-	// VKFUN-HOOK(runtime-presentation-phase)
-	runtime::legacy::PhaseScope presentationPhase(runtime::Phase::Presentation);
 	SCOPED_TIMER("Update");
 
 	// timings and frame interpolation
@@ -1443,8 +1437,6 @@ bool CGame::UpdateUnsynced(const spring_time currentTime)
 
 
 bool CGame::Draw() {
-	// VKFUN-HOOK(runtime-draw-phase)
-	runtime::legacy::PhaseScope drawPhase(runtime::Phase::Draw);
 	const spring_time currentTimePreUpdate = spring_gettime();
 
 	if (UpdateUnsynced(currentTimePreUpdate))

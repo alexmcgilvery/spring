@@ -130,12 +130,8 @@ add_subdirectory(Sim)
 #add_subdirectory(System) # this is already added in ../
 
 
-# VKFUN-HOOK(runtime-source-list)
-include(SystemNext/sources.cmake)
 
 make_global_var(engineSources
-		# VKFUN-HOOK(runtime-variant-sources)
-		${sources_systemnext}
 		${sources_engine_Net}
 		${sources_engine_Lua}
 		${sources_engine_Map}

@@ -71,8 +71,6 @@ struct LocalModelPiece
 	void SetRotationNoInterpolation(bool noInterpolate) { noInterpolation[0] = noInterpolate; }
 	void SetPositionNoInterpolation(bool noInterpolate) { noInterpolation[1] = noInterpolate; }
 	void SetScalingNoInterpolation (bool noInterpolate) { noInterpolation[2] = noInterpolate; }
-	// VKFUN-HOOK(runtime-piece-interpolation-read)
-	const std::array<bool, 3>& GetInterpolationDiscontinuities() const { return noInterpolation; }
 
 	void SetWasUpdatedRaw(bool state = true) { wasUpdated[0] = state; }
 	auto GetWasUpdated() const { return wasUpdated[0] || wasUpdated[1]; }

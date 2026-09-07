@@ -1,0 +1,266 @@
+{
+  "stage": "connected interface and orchestration skeleton",
+  "functions": [
+    {
+      "file": "ApplicationLoop.cpp",
+      "class": "ApplicationLoop",
+      "function": "Run",
+      "context": "ApplicationContext",
+      "context_header": "ApplicationContext.h"
+    },
+    {
+      "file": "Modes/SelectMenu/SelectMenuMode.cpp",
+      "class": "SelectMenuMode",
+      "function": "Input",
+      "context": "ModeInputContext",
+      "context_header": "Modes/SelectMenu/SelectMenuContext.h",
+      "concrete_context": "SelectMenuInputContext"
+    },
+    {
+      "file": "Modes/SelectMenu/SelectMenuMode.cpp",
+      "class": "SelectMenuMode",
+      "function": "Render",
+      "context": "ModeRenderContext",
+      "context_header": "Modes/SelectMenu/SelectMenuContext.h",
+      "concrete_context": "SelectMenuRenderContext"
+    },
+    {
+      "file": "Modes/LuaMenu/LuaMenuMode.cpp",
+      "class": "LuaMenuMode",
+      "function": "Input",
+      "context": "ModeInputContext",
+      "context_header": "Modes/LuaMenu/LuaMenuContext.h",
+      "concrete_context": "LuaMenuInputContext"
+    },
+    {
+      "file": "Modes/LuaMenu/LuaMenuMode.cpp",
+      "class": "LuaMenuMode",
+      "function": "Display",
+      "context": "ModeDisplayContext",
+      "context_header": "Modes/LuaMenu/LuaMenuContext.h",
+      "concrete_context": "LuaMenuDisplayContext"
+    },
+    {
+      "file": "Modes/LuaMenu/LuaMenuMode.cpp",
+      "class": "LuaMenuMode",
+      "function": "Render",
+      "context": "ModeRenderContext",
+      "context_header": "Modes/LuaMenu/LuaMenuContext.h",
+      "concrete_context": "LuaMenuRenderContext"
+    },
+    {
+      "file": "Modes/PreGame/PreGameMode.cpp",
+      "class": "PreGameMode",
+      "function": "Input",
+      "context": "ModeInputContext",
+      "context_header": "Modes/PreGame/PreGameContext.h",
+      "concrete_context": "PreGameInputContext"
+    },
+    {
+      "file": "Modes/PreGame/PreGameMode.cpp",
+      "class": "PreGameMode",
+      "function": "Session",
+      "context": "ModeSessionContext",
+      "context_header": "Modes/PreGame/PreGameContext.h",
+      "concrete_context": "PreGameSessionContext"
+    },
+    {
+      "file": "Modes/PreGame/PreGameMode.cpp",
+      "class": "PreGameMode",
+      "function": "Render",
+      "context": "ModeRenderContext",
+      "context_header": "Modes/PreGame/PreGameContext.h",
+      "concrete_context": "PreGameRenderContext"
+    },
+    {
+      "file": "Modes/Loading/LoadingMode.cpp",
+      "class": "LoadingMode",
+      "function": "Input",
+      "context": "ModeInputContext",
+      "context_header": "Modes/Loading/LoadingContext.h",
+      "concrete_context": "LoadingInputContext"
+    },
+    {
+      "file": "Modes/Loading/LoadingMode.cpp",
+      "class": "LoadingMode",
+      "function": "Session",
+      "context": "ModeSessionContext",
+      "context_header": "Modes/Loading/LoadingContext.h",
+      "concrete_context": "LoadingSessionContext"
+    },
+    {
+      "file": "Modes/Loading/LoadingMode.cpp",
+      "class": "LoadingMode",
+      "function": "Display",
+      "context": "ModeDisplayContext",
+      "context_header": "Modes/Loading/LoadingContext.h",
+      "concrete_context": "LoadingDisplayContext"
+    },
+    {
+      "file": "Modes/Loading/LoadingMode.cpp",
+      "class": "LoadingMode",
+      "function": "Render",
+      "context": "ModeRenderContext",
+      "context_header": "Modes/Loading/LoadingContext.h",
+      "concrete_context": "LoadingRenderContext"
+    },
+    {
+      "file": "Modes/Game/GameMode.cpp",
+      "class": "GameMode",
+      "function": "Input",
+      "context": "ModeInputContext",
+      "context_header": "Modes/Game/GameContext.h",
+      "concrete_context": "GameInputContext"
+    },
+    {
+      "file": "Modes/Game/GameMode.cpp",
+      "class": "GameMode",
+      "function": "Session",
+      "context": "ModeSessionContext",
+      "context_header": "Modes/Game/GameContext.h",
+      "concrete_context": "GameSessionContext"
+    },
+    {
+      "file": "Modes/Game/GameMode.cpp",
+      "class": "GameMode",
+      "function": "Display",
+      "context": "ModeDisplayContext",
+      "context_header": "Modes/Game/GameContext.h",
+      "concrete_context": "GameDisplayContext"
+    },
+    {
+      "file": "Modes/Game/GameMode.cpp",
+      "class": "GameMode",
+      "function": "Render",
+      "context": "ModeRenderContext",
+      "context_header": "Modes/Game/GameContext.h",
+      "concrete_context": "GameRenderContext"
+    },
+    {
+      "file": "Modes/Game/Simulation/Simulation.cpp",
+      "class": "Simulation",
+      "function": "Step",
+      "context": "SimulationStepContext",
+      "context_header": "Modes/Game/Simulation/SimulationContext.h"
+    },
+    {
+      "file": "Modes/Game/Simulation/Publication/Publication.cpp",
+      "class": "Publication",
+      "function": "Publish",
+      "context": "PublicationContext",
+      "context_header": "Modes/Game/Simulation/Publication/PublicationContext.h"
+    },
+    {
+      "file": "Modes/Game/Simulation/Observation/Observation.cpp",
+      "class": "Observation",
+      "function": "Observe",
+      "context": "SimulationObservationContext",
+      "context_header": "Modes/Game/Simulation/Observation/ObservationContext.h"
+    },
+    {
+      "file": "Globals/Graphics/Graphics.cpp",
+      "class": "Graphics",
+      "function": "Synchronize",
+      "context": "GraphicsSynchronizationContext",
+      "context_header": "Globals/Graphics/GraphicsContext.h"
+    },
+    {
+      "file": "Globals/Graphics/Graphics.cpp",
+      "class": "Graphics",
+      "function": "Present",
+      "context": "PresentContext",
+      "context_header": "Globals/Graphics/GraphicsContext.h"
+    },
+    {
+      "file": "Globals/Lifecycle/Lifecycle.cpp",
+      "class": "Lifecycle",
+      "function": "Initialize",
+      "context": "InitializationContext",
+      "context_header": "Globals/Lifecycle/LifecycleContext.h"
+    },
+    {
+      "file": "Globals/Lifecycle/Lifecycle.cpp",
+      "class": "Lifecycle",
+      "function": "Reload",
+      "context": "ReloadContext",
+      "context_header": "Globals/Lifecycle/LifecycleContext.h"
+    },
+    {
+      "file": "Globals/Lifecycle/Lifecycle.cpp",
+      "class": "Lifecycle",
+      "function": "Shutdown",
+      "context": "ShutdownContext",
+      "context_header": "Globals/Lifecycle/LifecycleContext.h"
+    },
+    {
+      "file": "Globals/Diagnostics/Diagnostics.cpp",
+      "class": "Diagnostics",
+      "function": "Observe",
+      "context": "DiagnosticObservationContext",
+      "context_header": "Globals/Diagnostics/DiagnosticsContext.h"
+    },
+    {
+      "file": "Globals/Diagnostics/Diagnostics.cpp",
+      "class": "Diagnostics",
+      "function": "Report",
+      "context": "DiagnosticReportContext",
+      "context_header": "Globals/Diagnostics/DiagnosticsContext.h"
+    }
+  ],
+  "contract_headers": [
+    "Globals/InvocationContext.h",
+    "Globals/Graphics/GraphicsContext.h",
+    "Globals/Lifecycle/LifecycleContext.h",
+    "Globals/Diagnostics/DiagnosticsContext.h",
+    "ApplicationContext.h",
+    "Modes/SelectMenu/SelectMenuContext.h",
+    "Modes/LuaMenu/LuaMenuContext.h",
+    "Modes/PreGame/PreGameContext.h",
+    "Modes/Loading/LoadingContext.h",
+    "Modes/Game/Simulation/Publication/PublishedFrame.h",
+    "Modes/Game/GameContext.h",
+    "Modes/Game/Simulation/SimulationContext.h",
+    "Modes/Game/Simulation/Publication/PublicationContext.h",
+    "Modes/Game/Simulation/Observation/ObservationContext.h",
+    "Modes/ModeBinding.h",
+    "Modes/ModeContexts.h",
+    "Modes/IMode.h",
+    "Modes/ModeContextProvider.h",
+    "Globals/Graphics/GraphicsScope.h",
+    "Globals/Lifecycle/ApplicationHost.h"
+  ],
+  "architecture_sources": [
+    "ApplicationLoop.cpp",
+    "Modes/IMode.cpp",
+    "Modes/ModeContextProvider.cpp",
+    "Globals/Graphics/GraphicsScope.cpp",
+    "Globals/Lifecycle/ApplicationHost.cpp"
+  ],
+  "mode_capabilities": {
+    "SelectMenuMode": [
+      "SelectMenu",
+      "false",
+      "Absent"
+    ],
+    "LuaMenuMode": [
+      "LuaMenu",
+      "false",
+      "BeforeGraphics"
+    ],
+    "PreGameMode": [
+      "PreGame",
+      "true",
+      "Absent"
+    ],
+    "LoadingMode": [
+      "Loading",
+      "true",
+      "WithGraphics"
+    ],
+    "GameMode": [
+      "Game",
+      "true",
+      "WithGraphics"
+    ]
+  }
+}

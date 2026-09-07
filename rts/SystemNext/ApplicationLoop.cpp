@@ -1,142 +1,169 @@
 /* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
 
 #include "ApplicationLoop.h"
-
-#include "Diagnostics/LoopPhaseScope.h"
-#include "Presentation/IVisualFrame.h"
-#include "Session/IRuntimeMode.h"
-#include "Session/Session.h"
-#include "Modes/Mode.h"
+#include "Globals/Lifecycle/ApplicationHost.h"
+#include "Modes/IMode.h"
 #include "Modes/ModeBinding.h"
-
+#include "Modes/ModeContextProvider.h"
+#include <stdexcept>
 namespace runtime {
-ApplicationLoop::ApplicationLoop(LoopServices services):
-	input(services.input), lifecycle(services.lifecycle), platform(services.platform),
-	diagnostics(services.diagnostics), session(services.session), visuals(services.visuals), modes(services.modes)
-{}
-
-void ApplicationLoop::BlockCurrentMode(const BlockedFlow& failure)
-{
-	if (!failure.id.starts_with("MODE-CHANGED-"))
-		blockedGeneration = modes.Generation();
-	diagnostics.ReportBlocked(failure);
+namespace {
+struct ContextLifetime {
+	ModeContextProvider& contexts;
+	~ContextLifetime() { contexts.EndIteration(); }
+};
 }
-
-void ApplicationLoop::Run()
+void ApplicationLoop::Run(const ApplicationContext& context)
 {
-	while (!lifecycle.ExitRequested())
-		RunIteration();
-}
+	/*
+	 * Expected legacy sources (investigation starting points):
+	 * [SpringApp.cpp](../System/SpringApp.cpp) — SpringApp::Run(), Update(),
+	 * MainEventHandler(), Init(), Reload(), Kill()
+	 *
+	 * Context contract:
+	 * [ApplicationContext.h](ApplicationContext.h) — ApplicationContext borrows
+	 * host-lifetime input, configuration, mode selection, lifecycle, graphics and
+	 * diagnostics resources. It is not the context passed wholesale into modes.
+	 * The application constructs a fresh, narrow concern context after mode
+	 * selection and again whenever that activation changes. Concrete context assembly is not implemented; the loop dispatches
+	 * through contracts and performs no global lookups.
+	 *
+	 * Expected responsibility:
+	 * Own application iteration and the visible ordering of mode concerns, while lifecycle
+	 * establishes and retires their dependencies.
+	 *
+	 * Expected work, in conceptual order:
+	 * Initialize the application; repeat input, session, display, render and shared present;
+	 * service reload or exit requests; complete shutdown. Advance simulation only within
+	 * accepted session work.
+	 *
+	 * Expected dependencies:
+	 * An active mode and its lifetime, platform events, session readiness, real-time
+	 * measurements, graphics availability and lifecycle requests. The context declares host dependencies; context construction and
+	 * resource ownership still require implementation.
+	 *
+	 * Expected relationships:
+	 * Mode blocks define behavior. This loop determines when they execute. Mode selection may
+	 * change during input, session work or loading; subsequent blocks must describe which mode
+	 * they belong to.
+	 */
 
-/**
- * Finish the selected iteration even if input requests exit partway through it.
- * Reload replaces normal update/draw work, while diagnostics drain on either
- * normal path. Engine exceptions unwind directly to the application handlers.
- */
-void ApplicationLoop::RunIteration()
-{
-	LoopPhaseScope iteration(diagnostics, Phase::Host);
-	try {
-		ProcessInputAndLifecycle();
-		if (lifecycle.ReloadRequested()) {
-			blockedGeneration.reset();
-			ReloadSession();
-		} else {
-			UpdateAndDraw();
-		}
-	} catch (const IncompleteFlow& failure) {
-		BlockCurrentMode(failure.Failure());
+	/*
+	 * Input and lifecycle boundary:
+	 * Expect platform filtering and routing before ordinary mode work. Account for watchdog
+	 * service, queued saves, window/configuration changes and reload decisions. The later
+	 * annotation pass must identify their actual legacy ordering.
+	 */
+
+	/*
+	 * Session and authoritative simulation:
+	 * Expect session-bearing modes to process their own work. Game session processing may
+	 * advance zero, one or multiple authoritative frames. There is no loop-local simulation
+	 * accumulator or replacement command queue.
+	 */
+
+	/*
+	 * Display, render and present:
+	 * Expect the selected mode to update client presentation, prepare visual state and draw,
+	 * followed by shared window presentation. Loading can request progress-driven execution
+	 * while normal iteration is occupied; its relationship to this order needs a separate
+	 * annotated path.
+	 */
+
+	/*
+	 * Transitions and eventual scheduling separation:
+	 * Expect newly selected modes to be considered before later concerns without repeating
+	 * completed work. Account for null modes, cancellation, exceptions and teardown. Rendering
+	 * and present initially block session work; independent scheduling later requires valid
+	 * owning inputs and explicit synchronization, not merely a new thread.
+	 */
+	// [ lifecycle ] Establish resources before iterating; normal shutdown follows.
+	auto& host = context.host;
+	host.Initialize();
+	std::uint64_t iteration = 0;
+	while (host.BeginIteration()) {
+		Update(context, ++iteration);
+		// [ diagnostics ] Frame data and graphics scopes have already retired.
+		host.FlushDiagnostics();
 	}
-
-	FlushDiagnostics();
+	host.Shutdown();
 }
 
 /**
- * Dispatch input and complete queued saves before selecting reload.
- * Input can request lifecycle changes. Saves require current session objects
- * to remain valid until serialization completes. Service the watchdog once
- * per iteration, including iterations spent on reload rather than gameplay.
+ * One visible pass through mode concerns. Rebind after input/session and graphics
+ * synchronization. A replacement receives no second input or session call. A mode
+ * replaced during display/render cannot present its obsolete frame; continue with
+ * its replacement next iteration. No independent simulation pacing is introduced.
  */
-void ApplicationLoop::ProcessInputAndLifecycle()
+void ApplicationLoop::Update(const ApplicationContext& context, std::uint64_t iteration)
 {
-	lifecycle.ServiceWatchdog();
-	input.ProcessEvents();
-	lifecycle.ProcessQueuedSave();
-}
+	auto& [host, contexts, activeMode] = context;
 
-/** Reload replaces session dependencies, so no ordinary update follows it. */
-void ApplicationLoop::ReloadSession()
-{
-	lifecycle.ReloadSession();
-}
-
-/** Apply configuration before window maintenance, then sample the frame clock. */
-void ApplicationLoop::UpdatePlatformState()
-{
-	platform.UpdateConfiguration();
-	platform.UpdateWindow();
-	platform.UpdateClock();
-}
-
-/**
- * Preserve serial execution while visual work can still access live state.
- * Apply exit requests only after the guarded visual completion path returns.
- * Moving rendering off-thread without removing that dependency is insufficient.
- */
-void ApplicationLoop::UpdateAndDraw()
-{
-	LoopPhaseScope update(diagnostics, Phase::Update);
-	UpdatePlatformState();
-	if (blockedGeneration && *blockedGeneration == modes.Generation())
+	// [ input ] Platform collection precedes one selected mode's interpretation.
+	host.CollectInput();
+	if (host.ReloadRequested()) {
+		host.Reload();
 		return;
-	blockedGeneration.reset();
-	UpdateModeBlocks();
-}
+	}
+	std::unique_ptr<GraphicsScope> graphics;
+	contexts.BeginIteration(iteration);
+	ContextLifetime contextLifetime{contexts};
+	auto selected = activeMode;
+	if (selected.mode == nullptr)
+		return;
+	{
+		const auto invocation = host.CaptureInvocation({selected.mode->kind, selected.generation}, iteration);
+		selected.mode->Input(contexts.Input(invocation));
+	}
+	if (host.ReloadRequested())
+		return; // Retire invocation storage before next iteration performs reload.
 
-/**
- * Select session/client update once; graphics rebinds after synchronization.
- * Input was already dispatched at the iteration boundary. Display completion
- * is explicit and independent of session capability. A replacement may render
- * this iteration, but must not receive a second before-graphics client update.
- */
-void ApplicationLoop::UpdateModeBlocks()
-{
-	const ModeSelection update = modes.Select();
+	// [ session / simulation ] Only the selected session owns authoritative ticks.
+	selected = activeMode;
+	if (selected.mode != nullptr && selected.mode->handlesSession) {
+		const auto invocation = host.CaptureInvocation({selected.mode->kind, selected.generation}, iteration);
+		selected.mode->Session(contexts.Session(invocation));
+	}
+	selected = activeMode;
+	if (selected.mode == nullptr || host.ReloadRequested())
+		return;
 
-	// [ session / simulation ] Accepted stream processing owns simulation ticks.
-	const auto result = session.AdvanceMode(update.mode);
-	if (result.applicationStatus == ApplicationStatus::Blocked)
-		throw IncompleteFlow(result.blocked.id, result.blocked.reason);
-	ModeFrame frame;
-	frame.allowRender = result.applicationStatus != ApplicationStatus::ExitRequested;
-	frame.bindingGeneration = update.generation;
-
-	// [ display ] Select client maintenance once, independently of session work.
-	auto displayStatus = ApplicationStatus::Continue;
-	if (frame.allowRender && update.mode != nullptr && modes.Select() == update &&
-		update.mode->GetDisplayPhase() == DisplayPhase::BeforeGraphics) {
-		displayStatus = update.mode->UpdateDisplay(frame);
-		if (displayStatus == ApplicationStatus::Blocked)
-			throw IncompleteFlow(frame.blocked.id, frame.blocked.reason);
-		frame.allowRender &= displayStatus != ApplicationStatus::ExitRequested;
+	// [ display ] Client-only maintenance can precede graphics acquisition.
+	if (selected.mode->displayPhase == DisplayPhase::BeforeGraphics) {
+		const auto invocation = host.CaptureInvocation({selected.mode->kind, selected.generation}, iteration);
+		selected.mode->Display(contexts.Display(invocation));
+		if (!(activeMode == selected))
+			return;
 	}
 
-	// [ display / render / present ] One shared graphics synchronization scope.
-	const auto visualStatus = visuals.ExecuteModeFrame(modes, frame);
-	ApplyApplicationStatus(result.applicationStatus,
-		displayStatus == ApplicationStatus::ExitRequested ? displayStatus : visualStatus);
-}
+	// [ graphics ] Scope spans dependent display, rendering and presentation.
+	graphics = host.AcquireGraphics();
+	if (!graphics)
+		throw std::logic_error("Host returned no graphics scope");
+	const auto beforeGraphics = selected;
+	selected = activeMode;
+	if (selected.mode == nullptr)
+		return;
+	if (selected.mode->displayPhase == DisplayPhase::BeforeGraphics && !(selected == beforeGraphics))
+		return; // Replacement needs its before-graphics display next iteration.
 
-/** Requests are monotonic: an earlier exit request must never be cleared. */
-void ApplicationLoop::ApplyApplicationStatus(ApplicationStatus sessionStatus, ApplicationStatus clientStatus)
-{
-	if (sessionStatus == ApplicationStatus::ExitRequested || clientStatus == ApplicationStatus::ExitRequested)
-		lifecycle.RequestExit();
-}
+	// [ display ] Graphics-dependent preparation belongs inside the scope.
+	if (selected.mode->displayPhase == DisplayPhase::WithGraphics) {
+		const auto invocation = host.CaptureInvocation({selected.mode->kind, selected.generation}, iteration);
+		selected.mode->Display(contexts.Display(invocation));
+	}
+	if (!(activeMode == selected) || host.ReloadRequested())
+		return;
 
-/** File serialization may block, so it stays outside hot execution callbacks. */
-void ApplicationLoop::FlushDiagnostics()
-{
-	diagnostics.Flush();
+	// [ render ] The provider supplies this activation's prepared frame context.
+	{
+		const auto invocation = host.CaptureInvocation({selected.mode->kind, selected.generation}, iteration);
+		selected.mode->Render(contexts.Render(invocation));
+	}
+	if (!(activeMode == selected) || host.ReloadRequested())
+		return;
+
+	// [ present ] Serial and blocking. Loading progress requires a separate path.
+	host.Present(PresentationOrigin::OrdinaryIteration);
 }
 }

@@ -1,7 +1,5 @@
 /* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
 
-// VKFUN-HOOK(runtime-net-include)
-#include "SystemNext/Diagnostics/LegacyRuntimeDiagnostics.h"
 #include <cinttypes>
 
 #include "Game/Game.h"
@@ -315,8 +313,6 @@ void CGame::ClientReadNet()
 		const uint8_t* inbuf = packet->data;
 		const uint32_t dataLength = packet->length;
 		const uint8_t packetCode = inbuf[0];
-		// VKFUN-HOOK(runtime-accepted-message)
-		runtime::legacy::AcceptedMessage(gs->frameNum, inbuf, dataLength);
 
 		switch (packetCode) {
 			case NETMSG_QUIT: {
@@ -642,13 +638,6 @@ void CGame::ClientReadNet()
 					CSyncChecker::NewFrame();
 #endif
 				AddTraffic(-1, packetCode, dataLength);
-#ifdef SYNCCHECK
-				// VKFUN-HOOK(runtime-completed-frame-sync)
-				runtime::legacy::CompletedFrame(gs->frameNum, CSyncChecker::GetPrevChecksum(), true);
-#else
-				// VKFUN-HOOK(runtime-completed-frame-nosync)
-				runtime::legacy::CompletedFrame(gs->frameNum, 0, false);
-#endif
 			} break;
 
 			case NETMSG_SYNCRESPONSE: {
