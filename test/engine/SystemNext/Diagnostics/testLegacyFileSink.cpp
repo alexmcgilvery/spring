@@ -6,6 +6,7 @@
 #include <sstream>
 
 #include "System/Log/FileSink.h"
+#include "SystemNext/Diagnostics/RuntimeLogFile.h"
 #include "System/Log/StreamSink.h"
 
 TEST_CASE("Runtime file-open failure cannot broadcast to other logging sinks")
@@ -18,8 +19,10 @@ TEST_CASE("Runtime file-open failure cannot broadcast to other logging sinks")
 	const auto missing = std::filesystem::temp_directory_path() / ("rfc0-missing-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
 	REQUIRE_FALSE(std::filesystem::exists(missing));
 	const auto quiet = (missing / "quiet.jsonl").string();
-	log_file_addLogFile(quiet.c_str(), "__runtime__", LOG_LEVEL_NONE, LOG_LEVEL_NONE, false);
-	CHECK(log_file_getLogFileStream(quiet.c_str()) == nullptr);
+	runtime::RuntimeLogFile file;
+	CHECK_FALSE(file.Open(quiet.c_str()));
+	CHECK(file.Stream() == nullptr);
+	CHECK(file.Close());
 	CHECK(capture.str().empty());
 	const auto ordinary = (missing / "ordinary.log").string();
 	log_file_addLogFile(ordinary.c_str());
