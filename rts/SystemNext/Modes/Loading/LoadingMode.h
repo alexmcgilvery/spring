@@ -2,39 +2,44 @@
 
 #pragma once
 
-#include <string_view>
+#include <string>
 
-#include "SystemNext/Session/IRuntimeMode.h"
+#include "SystemNext/Modes/Mode.h"
+
+class CLoadScreen;
+class ILoadSaveHandler;
 
 namespace runtime {
-class ILoadingServices;
-class LoadingVisuals;
-enum class LoadingUpdate { Pending, ControllerRetired };
-
 /**
- * Deliver loading progress and complete the transition into a playable session.
- * Ordinary session iterations and synchronous loading callbacks are separate
- * entry points. Neither advances authoritative simulation. Existing controller
- * storage owns the loading process; this mode survives backing retirement.
- * Abstract service resolution deliberately leaves this block-out unregistered.
+ * Run loading with one existing owner for queued progress, threads and timing.
+ * Session completion precedes graphics work. Display/render share frame-owned
+ * eligibility and profiling state; presenting belongs to their caller. Progress
+ * callbacks have their own synchronous execution path because Game::Load can
+ * occupy the main stack before ordinary application iterations resume.
  */
-class LoadingMode : public IRuntimeMode {
+//FIXME ADAPTER-LOADING-BACKING: The implementation copy currently
+// reads private legacy fields/helpers. Its added friendship and legacy-side
+// forwarding have been removed. Supply backing state/access entirely in
+// SystemNext before compiling or connecting this adapter; legacy stays intact.
+class LoadingMode final : public Mode {
 public:
 	bool HandlesSession() const final;
+	DisplayPhase GetDisplayPhase() const final;
 	SessionUpdate UpdateSession(Session& session) final;
-	void ReportProgress(std::string_view text, bool replaceLast, LoadingVisuals& visuals);
+	ApplicationStatus UpdateDisplay(ModeFrame& frame) final;
+	RenderResult Render(ModeFrame& frame) final;
 
-protected:
-	virtual ILoadingServices& ResolveLoadingServices() = 0;
+	SessionUpdate ReportProgress(CLoadScreen& controller, const std::string& text, bool replaceLast, Session& session);
+	void BeginLoading(std::string&& mapFileName, std::string&& modFileName, ILoadSaveHandler* saveFile);
+	bool InitializeLoading();
+	void StopLoadingResources();
+	void FinishControllerDestruction();
+	void ResizeEvent() final;
+	int KeyPressed(int keyCode, int scanCode, bool isRepeat) final;
+	int KeyReleased(int keyCode, int scanCode) final;
 
 private:
-	LoadingUpdate UpdateLoading();
+	void RetireLoadingController();
+	void AnnounceLoadingCompletion();
 };
-
-//FIXME [LOAD-004] CLoadScreen::Init/CreateDeleteInstance can finish the entire
-// ST load before an ordinary loop iteration. Activation therefore needs an
-// explicit startup owner, not a first-UpdateSession initialization shortcut.
-// Preserve pregame setup, heartbeat start, game allocation, font/load locking,
-// intro creation and synchronous completion ordering. Define partial-init
-// cleanup and fake adjacent-mode transitions before binding this mode.
 }

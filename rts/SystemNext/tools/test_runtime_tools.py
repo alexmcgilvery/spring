@@ -12,6 +12,18 @@ import unittest
 
 import analyze_runtime_log as analyze
 import check_runtime_contracts as check_contracts
+import check_legacy_surface as check_surface
+
+
+class LegacySurfaceTests(unittest.TestCase):
+    def test_additive_hook_preserves_body(self):
+        self.assertEqual(check_surface.removed_lines('void Update() {\nWork();\n}\n', 'void Update() {\nObserve();\nWork();\n}\n'), [])
+
+    def test_replacement_dispatch_is_rejected(self):
+        self.assertTrue(check_surface.removed_lines('Work();\n', 'adapter.Work();\n'))
+
+    def test_interface_removal_is_rejected(self):
+        self.assertTrue(check_surface.removed_lines('bool Update();\nbool Draw();\n', 'bool Draw();\n'))
 
 
 class DependencyTests(unittest.TestCase):

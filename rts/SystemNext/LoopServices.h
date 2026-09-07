@@ -5,9 +5,10 @@
 #include "SystemNext/Diagnostics/PhaseToken.h"
 
 namespace runtime {
-class IRuntimeMode;
+struct BlockedFlow;
 class Session;
 class IVisualFrame;
+class ModeBinding;
 
 /** Input dispatch preserves the existing route from user intent to commands. */
 class ILoopInput {
@@ -43,6 +44,7 @@ public:
 	virtual PhaseToken BeginPhase(Phase phase) noexcept = 0;
 	virtual void EndPhase(PhaseToken token) noexcept = 0;
 	virtual void Flush() noexcept = 0;
+	virtual void ReportBlocked(const BlockedFlow& failure) noexcept = 0;
 };
 
 /**
@@ -55,8 +57,8 @@ struct LoopServices {
 	ILoopLifecycle& lifecycle;
 	ILoopPlatform& platform;
 	ILoopDiagnostics& diagnostics;
-	IRuntimeMode& mode;
 	Session& session;
 	IVisualFrame& visuals;
+	ModeBinding& modes;
 };
 }

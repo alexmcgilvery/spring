@@ -12,12 +12,10 @@ namespace runtime {
  */
 class SerialVisualFrame : public IVisualFrame {
 public:
-	ApplicationStatus ExecuteFrame(const VisualFrameContext& context) final;
+	ApplicationStatus ExecuteModeFrame(ModeBinding& modes, ModeFrame& frame) final;
 protected:
-	virtual ApplicationStatus UpdateClientMode() = 0;
 	virtual void LockDraw() = 0;
 	virtual void UnlockDraw() noexcept = 0;
-	virtual bool Draw() = 0;
 	virtual void Present(bool allowSwap) = 0;
 private:
 	class DrawScope {
@@ -29,6 +27,5 @@ private:
 	private:
 		SerialVisualFrame& frame;
 	};
-	bool PrepareAndRender(const VisualFrameContext& context, ApplicationStatus clientStatus);
 };
 }

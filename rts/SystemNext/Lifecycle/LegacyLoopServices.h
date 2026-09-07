@@ -3,7 +3,8 @@
 #pragma once
 
 #include "SystemNext/LoopServices.h"
-#include "SystemNext/Session/LegacySession.h"
+#include "SystemNext/Session/Session.h"
+#include "SystemNext/Modes/LegacyModeBinding.h"
 #include "SystemNext/Presentation/LegacyVisualFrame.h"
 
 class SpringApp;
@@ -31,10 +32,11 @@ public:
 	PhaseToken BeginPhase(Phase phase) noexcept override;
 	void EndPhase(PhaseToken token) noexcept override;
 	void Flush() noexcept override;
+	void ReportBlocked(const BlockedFlow& failure) noexcept override;
 private:
 	SpringApp& host;
-	LegacyRuntimeMode mode;
-	LegacySession session;
+	runtime::LegacyModeBinding modes;
+	Session session;
 	LegacyVisualFrame visuals;
 };
 }

@@ -5,6 +5,8 @@
 #include "SystemNext/Session/SessionUpdate.h"
 
 namespace runtime {
+class ModeBinding;
+struct ModeFrame;
 /**
  * Execute presentation, rendering and display presentation as one visual unit.
  * The return value reports client-mode exit requests, never rendering success.
@@ -15,6 +17,6 @@ namespace runtime {
 class IVisualFrame {
 public:
 	virtual ~IVisualFrame() = default;
-	virtual ApplicationStatus ExecuteFrame(const VisualFrameContext& context) = 0;
+	virtual ApplicationStatus ExecuteModeFrame(ModeBinding& modes, ModeFrame& frame) = 0;
 };
 }

@@ -1,30 +1,25 @@
 /* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
 
 #pragma once
-
-#include "SystemNext/Session/IRuntimeMode.h"
-
+#include "SystemNext/Modes/Mode.h"
 namespace runtime {
-class ILuaMenuServices;
-/**
- * Maintain script-defined menu interaction without authoritative session work.
- *
- * Client update runs before the outer loading/draw guard. Existing input routes
- * remain separate: keyboard goes through LuaInputReceiver, text through event
- * dispatch, and resize through ViewResize. The mode does not poll input again.
- * This research type remains abstract and unregistered; its operation ordering
- * can be exercised with substitute services without activating a real Lua menu.
- */
-class LuaMenuMode : public IRuntimeMode {
+/** Lua-backed menu input, client display and graphics; no session work. */
+//FIXME ADAPTER-LUAMENU-BACKING: The implementation copy currently
+// reads private legacy fields/helpers. Its added friendship and legacy-side
+// forwarding have been removed. Supply backing state/access entirely in
+// SystemNext before compiling or connecting this adapter; legacy stays intact.
+class LuaMenuMode final : public Mode {
 public:
-	explicit LuaMenuMode(ILuaMenuServices& services);
-	bool HandlesSession() const final;
-	SessionUpdate UpdateSession(Session& session) override = 0;
-	ApplicationStatus UpdateClientState();
-
-private:
-	void MaintainClientServices();
-	void UpdateMenuInteraction();
-	ILuaMenuServices& services;
+	bool HandlesSession() const override;
+	DisplayPhase GetDisplayPhase() const override;
+	ApplicationStatus UpdateDisplay(ModeFrame&) override;
+	RenderResult Render(ModeFrame&) override;
+	bool Reset();
+	bool Activate(const std::string& msg);
+	void ResizeEvent() override;
+	int KeyReleased(int keyCode, int scanCode) override;
+	int KeyPressed(int keyCode, int scanCode, bool isRepeat) override;
+	int TextInput(const std::string& utf8Text) override;
+	int TextEditing(const std::string& utf8Text, unsigned int start, unsigned int length) override;
 };
 }

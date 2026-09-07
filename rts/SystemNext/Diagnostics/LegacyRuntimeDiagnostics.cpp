@@ -15,7 +15,7 @@
 #include "Game/GameVersion.h"
 #include "Game/GameSetup.h"
 #include "System/Config/ConfigHandler.h"
-#include "System/Log/FileSink.h"
+#include "RuntimeLogFile.h"
 #include "System/LogOutput.h"
 #include "System/Platform/Threading.h"
 
@@ -30,6 +30,7 @@ CONFIG(std::string, RuntimeInputId).defaultValue("").description("Accepted demo 
 namespace runtime::legacy {
 namespace {
 BoundedTraceBuffer buffer;
+RuntimeLogFile file;
 std::unique_ptr<JsonLinesTraceWriter> writer;
 std::string path;
 std::uint64_t epoch = 0;
@@ -81,8 +82,11 @@ void InitializeDiagnostics() noexcept
 			return;
 		const auto runId = std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
 		path = (std::filesystem::path(logOutput.GetFilePath()).parent_path() / ("vkfun-runtime-" + runId + ".jsonl")).string();
-		log_file_addLogFile(path.c_str(), "__vkfun_runtime_file_only__", LOG_LEVEL_NONE, LOG_LEVEL_NONE, false);
-		writer = std::make_unique<JsonLinesTraceWriter>(log_file_getLogFileStream(path.c_str()), MiB("RuntimeLogMaxMiB"));
+		if (!file.Open(path.c_str())) {
+			buffer.Invalidate();
+			return;
+		}
+		writer = std::make_unique<JsonLinesTraceWriter>(file.Stream(), MiB("RuntimeLogMaxMiB"));
 		Json::Value header;
 		header["run_id"] = runId;
 		header["engine_revision"] = SpringVersion::GetFull();
@@ -218,7 +222,8 @@ void FinishDiagnostics(bool complete) noexcept
 		writer.reset();
 	}
 	if (!path.empty()) {
-		log_file_removeLogFile(path.c_str());
+		if (!file.Close())
+			buffer.Invalidate();
 		path.clear();
 	}
 }

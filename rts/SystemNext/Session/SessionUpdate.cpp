@@ -3,15 +3,20 @@
 #include "SessionUpdate.h"
 
 namespace runtime {
+SessionUpdate SessionUpdate::Incomplete(std::string_view id, std::string_view reason)
+{
+	return {ApplicationStatus::Blocked, {std::string(id), std::string(reason)}};
+}
+
 SessionUpdate SessionUpdate::NoSession()
 {
-	return {ApplicationStatus::Continue, {SessionOutcome::NoSession}};
+	return {ApplicationStatus::Continue, {}};
 }
 
 SessionUpdate SessionUpdate::FromContinuation(bool continueRunning)
 {
 	return continueRunning
-		? SessionUpdate{ApplicationStatus::Continue, {SessionOutcome::Continue}}
-		: SessionUpdate{ApplicationStatus::ExitRequested, {SessionOutcome::ExitRequested}};
+		? SessionUpdate{ApplicationStatus::Continue, {}}
+		: SessionUpdate{ApplicationStatus::ExitRequested, {}};
 }
 }

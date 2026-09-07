@@ -5,6 +5,7 @@
 #include "SessionUpdate.h"
 
 namespace runtime {
+class IRuntimeMode;
 /**
  * Advance an authoritative session while preserving command/tick stream order.
  * The backing implementation owns timing, accepted commands and permitted ticks;
@@ -14,6 +15,7 @@ namespace runtime {
 class Session {
 public:
 	virtual ~Session() = default;
-	virtual SessionUpdate Advance() = 0;
+	/** Dispatch once to the selected mode; no authority is inferred from draw. */
+	SessionUpdate AdvanceMode(IRuntimeMode* mode);
 };
 }

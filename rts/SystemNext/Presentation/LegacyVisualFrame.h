@@ -11,10 +11,8 @@ namespace runtime::legacy {
 /** Bind serial visual execution to current controller and graphics operations. */
 class LegacyVisualFrame final : public SerialVisualFrame {
 protected:
-	ApplicationStatus UpdateClientMode() override;
 	void LockDraw() override;
 	void UnlockDraw() noexcept override;
-	bool Draw() override;
 	void Present(bool allowSwap) override;
 private:
 	bool context = false;

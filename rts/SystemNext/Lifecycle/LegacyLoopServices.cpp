@@ -3,6 +3,9 @@
 #include "LegacyLoopServices.h"
 
 #include <utility>
+#include <cstdio>
+#include "System/Log/FileSink.h"
+#include "System/LogOutput.h"
 #include "Game/GameSetup.h"
 #include "Game/GlobalUnsynced.h"
 #include "Rendering/GlobalRendering.h"
@@ -17,10 +20,13 @@ namespace runtime::legacy {
 LegacyLoopServices::LegacyLoopServices(SpringApp& host): host(host)
 {}
 
+//FIXME ADAPTER-HOST: Input collection and Reload below assume private host
+// access. Supply a SystemNext host with its own lifecycle/input ownership.
+// The legacy host is not redirected here; this adapter is not compiled.
 LoopServices LegacyLoopServices::Bind()
 {
 	return {.input = *this, .lifecycle = *this, .platform = *this,
-		.diagnostics = *this, .mode = mode, .session = session, .visuals = visuals};
+		.diagnostics = *this, .session = session, .visuals = visuals, .modes = modes};
 }
 
 void LegacyLoopServices::ProcessEvents()
@@ -88,4 +94,14 @@ void LegacyLoopServices::Flush() noexcept
 {
 	DrainDiagnostics();
 }
+/** Report once at the outer boundary without console/Lua rebroadcast. */
+void LegacyLoopServices::ReportBlocked(const BlockedFlow& failure) noexcept
+{
+	std::fprintf(stderr, "[mode blocked: %s] %s\n", failure.id.c_str(), failure.reason.c_str());
+	if (auto* stream = log_file_getLogFileStream(logOutput.GetFilePath().c_str())) {
+		std::fprintf(stream, "[mode blocked: %s] %s\n", failure.id.c_str(), failure.reason.c_str());
+		std::fflush(stream);
+	}
+}
+
 }

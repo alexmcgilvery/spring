@@ -1,6 +1,8 @@
 /* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
 
 #include "SerialVisualFrame.h"
+#include "SystemNext/Modes/Mode.h"
+#include "SystemNext/Modes/ModeBinding.h"
 
 namespace runtime {
 SerialVisualFrame::DrawScope::DrawScope(SerialVisualFrame& frame): frame(frame)
@@ -14,32 +16,43 @@ SerialVisualFrame::DrawScope::~DrawScope()
 }
 
 /**
- * Complete visual work even when session or client update requests exit.
- * Client-mode update runs before loading synchronization, matching session
- * update. Drawing and present share the guard because both access graphics
- * state. A false draw decision still reaches present, which may force a swap.
+ * Display state belongs to a binding generation, not a reusable mode address.
+ * A callback that replaces a prepared binding stops this frame. A replacement
+ * selected before guarded preparation may prepare/render once in this iteration.
  */
-ApplicationStatus SerialVisualFrame::ExecuteFrame(const VisualFrameContext& context)
+ApplicationStatus SerialVisualFrame::ExecuteModeFrame(ModeBinding& modes, ModeFrame& frame)
 {
-	const auto clientStatus = context.sessionOutcome == SessionOutcome::NoSession
-		? UpdateClientMode()
-		: ApplicationStatus::Continue;
-
 	DrawScope drawScope(*this);
-	const bool allowSwap = PrepareAndRender(context, clientStatus);
-	Present(allowSwap);
-	return clientStatus;
-}
+	struct FrameLifetime {
+		ModeFrame& frame;
+		~FrameLifetime() { frame.data.reset(); }
+	} lifetime{frame};
+	const auto visual = modes.Select();
+	if (frame.bindingGeneration != visual.generation)
+		frame.data.reset();
+	frame.bindingGeneration = visual.generation;
+	auto displayStatus = ApplicationStatus::Continue;
+	if (frame.allowRender && visual.mode != nullptr &&
+		visual.mode->GetDisplayPhase() == DisplayPhase::WithGraphics) {
+		displayStatus = visual.mode->UpdateDisplay(frame);
+		if (displayStatus == ApplicationStatus::Blocked)
+			throw IncompleteFlow(frame.blocked.id, frame.blocked.reason);
+		frame.allowRender &= displayStatus != ApplicationStatus::ExitRequested;
+	}
 
-/**
- * Visual eligibility belongs here rather than in session scheduling.
- * Update exit requests suppress draw, but do not suppress the guarded present
- * path. Draw implementations resolve the current mode after update and locking.
- */
-bool SerialVisualFrame::PrepareAndRender(const VisualFrameContext& context, ApplicationStatus clientStatus)
-{
-	if (context.sessionOutcome == SessionOutcome::ExitRequested || clientStatus == ApplicationStatus::ExitRequested)
-		return false;
-	return Draw();
+	// [ render ] Never consume data prepared for a retired or reused binding.
+	if (!(modes.Select() == visual))
+		throw IncompleteFlow("MODE-CHANGED-DURING-DISPLAY", "Display callback replaced its frame binding; no render or present performed");
+	const auto rendered = frame.allowRender && visual.mode != nullptr
+		? visual.mode->Render(frame) : RenderResult::Skipped();
+	if (rendered.state == RenderState::Blocked)
+		throw IncompleteFlow(rendered.blocked.id, rendered.blocked.reason);
+	if (!(modes.Select() == visual))
+		throw IncompleteFlow("MODE-CHANGED-DURING-RENDER", "Render callback replaced its frame binding; no partial output presented");
+
+	// [ present ] Cross-phase scopes end before window presentation.
+	frame.data.reset();
+	Present(rendered.AllowPresent());
+	return displayStatus;
 }
 }

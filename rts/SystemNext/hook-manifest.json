@@ -265,81 +265,6 @@
       "upstreamable": false
     },
     {
-      "id": "runtime-file-sink-quiet-interface",
-      "file": "rts/System/Log/FileSink.h",
-      "symbol": "log_file_addLogFile",
-      "kind": "read_interface",
-      "reason": "Optional quiet open failure prevents diagnostics from broadcasting to console/Lua; existing callers retain default behavior",
-      "ordering": "Existing FileSink ownership, no new sink registration or thread",
-      "fragment": "void log_file_addLogFile(const char* filePath, const char* sections = NULL, int minLevel = LOG_LEVEL_ALL, int flushLevel = LOG_LEVEL_ERROR, bool reportErrors = true);",
-      "tests": [
-        "testILog",
-        "testRuntimeJsonLines",
-        "testRuntimeContracts"
-      ],
-      "upstreamable": true
-    },
-    {
-      "id": "runtime-file-sink-quiet-implementation",
-      "file": "rts/System/Log/FileSink.cpp",
-      "symbol": "log_file_addLogFile",
-      "kind": "runtime_call",
-      "reason": "Optional quiet open failure prevents diagnostics from broadcasting to console/Lua; existing callers retain default behavior",
-      "ordering": "Existing FileSink ownership, no new sink registration or thread",
-      "fragment": "void log_file_addLogFile(const char* filePath, const char* sections, int minLevel, int flushLevel, bool reportErrors)",
-      "tests": [
-        "testILog",
-        "testRuntimeJsonLines",
-        "testRuntimeContracts"
-      ],
-      "upstreamable": true
-    },
-    {
-      "id": "runtime-file-sink-quiet-error",
-      "file": "rts/System/Log/FileSink.cpp",
-      "symbol": "log_file_addLogFile",
-      "kind": "runtime_call",
-      "reason": "Optional quiet open failure prevents diagnostics from broadcasting to console/Lua; existing callers retain default behavior",
-      "ordering": "Existing FileSink ownership, no new sink registration or thread",
-      "fragment": "if (reportErrors)",
-      "tests": [
-        "testILog",
-        "testRuntimeJsonLines",
-        "testRuntimeContracts"
-      ],
-      "upstreamable": true
-    },
-    {
-      "id": "runtime-serial-coordinator",
-      "file": "rts/System/SpringApp.cpp",
-      "symbol": "SpringApp::Run",
-      "kind": "runtime_call",
-      "reason": "Delegate repeated execution while retaining startup, teardown and exception handlers",
-      "ordering": "After initialization and diagnostics setup; zero iterations when exit is already requested",
-      "fragment": "loop.Run();",
-      "tests": [
-        "testRuntimeCoordinator",
-        "testRuntimeContracts",
-        "coordinator versus instrumentation-only synctest"
-      ],
-      "upstreamable": false
-    },
-    {
-      "id": "runtime-host-provider-include",
-      "file": "rts/System/SpringApp.cpp",
-      "symbol": "SpringApp::Update",
-      "kind": "build_test",
-      "reason": "Delegate serial orchestration through legacy host provider",
-      "ordering": "Preserve configuration/window/timer/update/guard/draw/swap order; reread controller after update",
-      "fragment": "#include \"SystemNext/ApplicationLoop.h\"",
-      "tests": [
-        "testRuntimeCoordinator",
-        "testRuntimeContracts",
-        "coordinator versus instrumentation-only synctest"
-      ],
-      "upstreamable": false
-    },
-    {
       "id": "runtime-piece-interpolation-read",
       "file": "rts/Rendering/Models/LocalModelPiece.hpp",
       "symbol": "LocalModelPiece::GetInterpolationDiscontinuities",
@@ -354,15 +279,15 @@
       "upstreamable": true
     },
     {
-      "id": "runtime-lifecycle-access",
-      "file": "rts/System/SpringApp.h",
-      "symbol": "SpringApp lifecycle adapter access",
-      "kind": "read_interface",
-      "reason": "Keep reload private while allowing the loop lifecycle adapter to invoke it",
-      "ordering": "No execution change",
-      "fragment": "friend class runtime::legacy::LegacyLoopServices;",
+      "id": "runtime-diagnostics-drain",
+      "file": "rts/System/SpringApp.cpp",
+      "symbol": "SpringApp::Run iteration end",
+      "kind": "runtime_call",
+      "reason": "Drain bounded diagnostic records without replacing the legacy host loop",
+      "ordering": "After the original reload or update branch",
+      "fragment": "runtime::legacy::DrainDiagnostics();",
       "tests": [
-        "testRuntimeCoordinator"
+        "testRuntimeContracts"
       ],
       "upstreamable": false
     }

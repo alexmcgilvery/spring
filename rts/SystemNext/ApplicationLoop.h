@@ -4,6 +4,8 @@
 
 #include "LoopServices.h"
 #include "Session/SessionUpdate.h"
+#include <optional>
+#include <cstdint>
 
 namespace runtime {
 /**
@@ -19,20 +21,23 @@ public:
 	explicit ApplicationLoop(LoopServices services);
 	void Run();
 	void RunIteration();
+	/** Keep the host responsive when initial mode setup cannot complete. */
+	void BlockCurrentMode(const BlockedFlow& failure);
 private:
 	void ProcessInputAndLifecycle();
 	void ReloadSession();
 	void UpdatePlatformState();
 	void UpdateAndDraw();
-	SessionUpdate ServiceSession();
+	void UpdateModeBlocks();
 	void ApplyApplicationStatus(ApplicationStatus sessionStatus, ApplicationStatus clientStatus);
 	void FlushDiagnostics();
 	ILoopInput& input;
 	ILoopLifecycle& lifecycle;
 	ILoopPlatform& platform;
 	ILoopDiagnostics& diagnostics;
-	IRuntimeMode& activeMode;
 	Session& session;
 	IVisualFrame& visuals;
+	ModeBinding& modes;
+	std::optional<std::uint64_t> blockedGeneration;
 };
 }

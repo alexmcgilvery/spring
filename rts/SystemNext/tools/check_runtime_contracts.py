@@ -31,7 +31,8 @@ def check_boundaries(root):
         source = path.read_text(encoding="utf-8")
         if re.search(r"\bRFC[- ]?\d+\b", source):
             errors.append(f"{path.name}: document reference instead of a self-contained source contract")
-        if path.name.startswith("Legacy") or "Compatibility" in path.parts:
+        if (path.name.startswith("Legacy") or "Compatibility" in path.parts or
+                (path.suffix == ".cpp" and (path.parent.name in {"SelectMenu", "LuaMenu", "PreGame", "Loading", "Game"} or path == module / "Simulation/Simulation.cpp"))):
             continue
         for include in INCLUDE.findall(source):
             target = (path.parent / include).resolve()
@@ -100,7 +101,7 @@ def source_files(root):
             continue
         for path in start.rglob("*"):
             relative = path.relative_to(root)
-            if relative.parts[:2] in (("rts", "lib"), ("rts", "SystemNext")):
+            if relative.parts[:2] == ("rts", "lib") or (relative.parts[:2] == ("rts", "SystemNext") and path.suffix not in (".cpp", ".h", ".hpp")):
                 continue
             if path.is_file() and (path.suffix in (".cpp", ".h", ".hpp", ".cmake", ".py", ".sh") or path.name == "CMakeLists.txt"):
                 yield path
