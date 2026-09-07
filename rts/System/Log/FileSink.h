@@ -1,6 +1,7 @@
 /* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
 
-#pragma once
+#ifndef LOG_FILE_SINK_H
+#define LOG_FILE_SINK_H
 
 /**
  * This is a simple sink for the ILog.h logging API.
@@ -31,9 +32,8 @@ extern "C" {
  * @param flushLevel every log message above this level is flushed to disk
  *   ",,".
  */
-// VKFUN-HOOK(runtime-file-sink-quiet-interface)
 void log_file_addLogFile(const char* filePath, const char* sections = NULL,
-		int minLevel = LOG_LEVEL_ALL, int flushLevel = LOG_LEVEL_ERROR, bool reportErrors = true);
+		int minLevel = LOG_LEVEL_ALL, int flushLevel = LOG_LEVEL_ERROR);
 
 FILE* log_file_getLogFileStream(const char* filePath);
 
@@ -46,4 +46,6 @@ void log_file_removeAllLogFiles();
 #ifdef __cplusplus
 } // extern "C"
 #endif
+
+#endif // LOG_FILE_SINK_H
 
