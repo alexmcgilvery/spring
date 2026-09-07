@@ -883,9 +883,6 @@ void SpringApp::Reload(const std::string script)
 }
 
 /**
- * @return return code of ActiveController::Update
- */
-/**
  * Executes the application
  * Initialization and shutdown surround the independently described main loop.
  */

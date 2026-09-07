@@ -26,9 +26,13 @@ def check_boundaries(root):
     module = (root / "rts/SystemNext").resolve()
     errors = []
     for path in module.rglob("*"):
-        if path.suffix not in (".h", ".hpp", ".cpp") or path.name.startswith("Legacy") or "Compatibility" in path.parts:
+        if path.suffix not in (".h", ".hpp", ".cpp"):
             continue
         source = path.read_text(encoding="utf-8")
+        if re.search(r"\bRFC[- ]?\d+\b", source):
+            errors.append(f"{path.name}: document reference instead of a self-contained source contract")
+        if path.name.startswith("Legacy") or "Compatibility" in path.parts:
+            continue
         for include in INCLUDE.findall(source):
             target = (path.parent / include).resolve()
             if not target.exists():

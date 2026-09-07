@@ -1,82 +1,96 @@
-# SystemNext — RFC-0 runtime module
+# SystemNext runtime
 
-Start with [GameRuntime.cpp](GameRuntime.cpp). The main loop lives directly in
-SystemNext; GameRuntime.h declares its interface. Its current serial flow is:
+Start with [ApplicationLoop.cpp](ApplicationLoop.cpp). Source implementations and
+their documentation blocks define the current behavior and its rationale. This
+overview is a navigation aid, not a separate source of runtime policy.
 
-```cpp
-host.UpdatePlatformState();
-const bool running = session.Advance();
-auto guard = legacyFrame.AcquireGuard();
-const bool frameReady = running && legacyFrame.PrepareAndDraw();
-graphics.Present(frameReady);
+```text
+[ input ] -> [ session ] -> [ simulation ]
+                                  |
+                           published state
+                                  v
+                           [ presentation ]
+                                  |
+                            render snapshot
+                                  v
+                            [ rendering ]
+                                  v
+                             [ present ]
 ```
 
-Session advancement retains the authoritative network/demo pump and existing
-simulation scheduling. Legacy frame execution still contains client preparation,
-world/Lua/UI drawing and capture. Splitting those operations is subsequent work;
-the loop must expose real operations as they become independently callable.
+These are responsibility boundaries, not six once-per-iteration calls. Session
+service processes commands and permitted ticks in authoritative stream order.
+The active mode supplies session behavior when applicable. Client modes without
+a session update through presentation. Visual work still runs synchronously and
+blocks subsequent session service; no concurrent-rendering capability is claimed.
+
+## Execution entry points
+
+- `ApplicationLoop::Run` owns repetition. Initialization and shutdown surround it.
+- `RunIteration` services watchdog/input/save, selects reload or update/draw, then
+  drains diagnostics. A mid-iteration quit request does not truncate that work.
+- `ServiceSession` dispatches only modes that handle a session. Its named result
+  destructures into application continuation and visual context.
+- `SerialVisualFrame::ExecuteFrame` updates a client-only mode when required,
+  acquires loading synchronization, decides drawing eligibility, and presents.
+  An update exit request suppresses drawing but still reaches the swap function.
+
+Session and visual bindings resolve the current controller at their actual call
+sites. A controller replaced during update is drawn without being updated twice.
+A frame context contains only iteration facts, not live pointers or a snapshot.
+
+## Owned mode preparation
+
+[Modes/README.md](Modes/README.md) introduces the five one-to-one research
+skeletons. Their source briefs record confirmed constraints; their session methods
+remain abstract and they are not registered with the loop. Visual/service APIs
+will be defined after each mode's data, ordering and lifetime review.
 
 ## Source layout
 
-Folders describe major loop concerns. Legacy adapters live beside the concern
-that they implement. Ordinary methods belong in .cpp files, with declarations
-in corresponding .h files. Value records, trivial accessors and genuine generic
-allocator code may remain in headers.
-
 ```text
 SystemNext/
-  GameRuntime.h/.cpp                 # main loop
-  LegacyGameRuntime.h/.cpp           # constructs legacy bindings
-  Platform/
-    IPlatformHost.h                  # platform update contract
-    LegacyPlatformHost.h/.cpp        # configuration, window, timer
+  ApplicationLoop.h/.cpp                 # scoped main loop
+  LoopServices.h                        # named concern contracts and binding bundle
+  Lifecycle/
+    LegacyLoopServices.h/.cpp            # one-time bindings to existing host operations
+  Session/
+    IRuntimeMode.h                      # mode-provided session behavior
+    Session.h                           # authoritative session advancement contract
+    SessionUpdate.h/.cpp                 # destructured application/visual facts
+    LegacySession.h/.cpp                 # game/loading session adapters and mode mapping
   Simulation/
-    ISimulationSession.h             # session advance contract
-    LegacySessionPump.h/.cpp         # existing controller update
-    LegacySimulationStateReader.h    # extraction interface, implementation pending
-    Publication/
-      PublishedSimFrame.h/.cpp       # owning simulation values and catalog
-      SimFramePublicationStore.h/.cpp
-      PublicationMemoryBudget.h/.cpp
-    Observation/
-      EntityIdentityRegistry.h/.cpp
-      SimulationNotifications.h/.cpp
-      SimulationEventJournal.h/.cpp
-      event-classification.json
+    LegacySimulationStateReader.h       # extraction interface; implementation pending
+    Publication/                        # owned state, catalogs, bounded frame storage
+    Observation/                        # identity, notifications and event retention
   Presentation/
-    IPresentationFrame.h/.cpp         # legacy combined preparation/draw contract
-    LegacyFrameExecutor.h/.cpp       # controller draw and load guard
-  Graphics/
-    IGraphicsPresenter.h             # present contract
-    LegacyGraphicsPresenter.h/.cpp   # existing swap
+    IVisualFrame.h                      # visual execution boundary
+    SerialVisualFrame.h/.cpp             # serial eligibility and guarded visual scope
+    LegacyVisualFrame.h/.cpp             # existing draw and present bindings
   Diagnostics/
+    PhaseToken.h
+    LoopPhaseScope.h/.cpp                # balanced loop observation
     BoundedTraceBuffer.h/.cpp
     JsonLinesTraceWriter.h/.cpp
     LegacyRuntimeDiagnostics.h/.cpp
-  tools/
-    analyze_runtime_log.py
-    check_runtime_contracts.py
-    test_runtime_tools.py
+  tools/                                # offline validation and analysis
   hook-manifest.json
   sources.cmake
   tests.cmake
 ```
 
-Rendering remains implemented by existing drawers; RFC-1 owns RenderingNext.
-No empty renderer implementation is introduced here. Input/lifecycle remain in
-SpringApp until their existing ordering can be migrated with evidence.
+Ordinary implementation belongs in .cpp files. Public contracts depend on copied
+values and other public contracts. Legacy-prefixed adapters may include required
+engine types and compile separately with each engine variant's definitions.
 
-Public contracts and storage depend on standard-library values and other public
-SystemNext contracts. Only Legacy-prefixed private adapters include engine
-subsystems. The JSON writer implementation also uses the existing JSON library.
-Compile adapters under each engine variant's definitions. Tests mirror the
-concern folders in test/engine/SystemNext and use existing Catch2/CTest support.
+Presentation preparation, rendering and capture remain combined inside existing
+drawing implementations. Graphics device ownership and independent scheduling
+remain future work. There are no empty renderer implementations or pretend
+snapshot-consuming adapters here.
 
-The engine-owned hook manifest registers changes outside this module. The event
-classification accounts for every legacy event, including synchronous callbacks.
-The architecture and evidence tracker are in recoil-docs/vkfun-main-loop-rfc.md
-and recoil-docs/work/rfc0. Engine validation does not require that checkout.
+The source checker validates hook presence, event classification and dependency
+boundaries. Runtime source contracts must stand alone without design-document
+references. Tests under `test/engine/SystemNext` use existing Catch2/CTest support.
 
-Status: implementation in progress. The serial loop and diagnostics have engine
-bindings. Publication storage is tested independently; production extraction,
-event observation and complete RFC-0 acceptance evidence remain outstanding.
+Publication storage and notification retention have isolated tests; production
+extraction and complete observation coverage are still under implementation.

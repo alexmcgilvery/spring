@@ -42,6 +42,16 @@ class DependencyTests(unittest.TestCase):
                 source.write_text('#include "Game/Game.h"\n')
             self.assertEqual(len(check_contracts.check_boundaries(root)), 3)
 
+    def test_source_contracts_do_not_depend_on_external_design_documents(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "rts/SystemNext/Session/LegacySession.cpp"
+            source.parent.mkdir(parents=True)
+            source.write_text("// Follow " + "RFC-0" + " for ordering.\n")
+            self.assertTrue(check_contracts.check_boundaries(root))
+            source.write_text("// Preserve commands between authoritative ticks.\n")
+            self.assertEqual(check_contracts.check_boundaries(root), [])
+
 
 def capture():
     records = [

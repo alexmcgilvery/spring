@@ -84,4 +84,3 @@ private:
  * (could be a PreGame, could be a Game, etc)
  */
 extern CGameController* activeController;
-
