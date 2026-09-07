@@ -2,9 +2,6 @@
 
 // VKFUN-HOOK(runtime-host-include)
 #include "SystemNext/Diagnostics/LegacyRuntimeDiagnostics.h"
-// VKFUN-HOOK(runtime-host-provider-include)
-#include "SystemNext/ApplicationLoop.h"
-#include "SystemNext/Lifecycle/LegacyLoopServices.h"
 #include <functional>
 #include <iostream>
 #include <chrono>
@@ -883,8 +880,41 @@ void SpringApp::Reload(const std::string script)
 }
 
 /**
+ * @return return code of ActiveController::Update
+ */
+bool SpringApp::Update()
+{
+	bool retc = true;
+	bool swap = true;
+
+	configHandler->Update();
+	globalRendering->UpdateWindow();
+	globalRendering->UpdateTimer();
+
+	#if 0
+	if (activeController == nullptr)
+		return true;
+	if (!activeController->Update())
+		return false;
+	if (!activeController->Draw())
+		return true;
+	#else
+	// sic; Update can set the controller to null
+	retc = (        activeController == nullptr || activeController->Update());
+
+	auto lock = CLoadLock::GetUniqueLock();
+	swap = (retc && activeController != nullptr && activeController->Draw());
+	#endif
+
+	// always swap by default, not doing so can upset some drivers
+	globalRendering->SwapBuffers(swap, false);
+	return retc;
+}
+
+
+/**
  * Executes the application
- * Initialization and shutdown surround the independently described main loop.
+ * (contains main game loop)
  */
 int SpringApp::Run()
 {
@@ -902,11 +932,23 @@ int SpringApp::Run()
 
 		// VKFUN-HOOK(runtime-diagnostics-init)
 		runtime::legacy::InitializeDiagnostics();
-		// Bind once; each operation resolves the current session after reloads.
-		runtime::legacy::LegacyLoopServices services(*this);
-		runtime::ApplicationLoop loop(services.Bind());
-		// VKFUN-HOOK(runtime-serial-coordinator)
-		loop.Run();
+
+		while (!gu->globalQuit) {
+			Watchdog::ClearTimer(WDT_MAIN);
+			input.PushEvents();
+
+			// move to clear global data if a save is queued
+			ILoadSaveHandler::CreateSave(std::move(globalSaveFileData));
+
+			if (gu->globalReload) {
+				// copy; reloadScript is cleared by ResetState
+				Reload(gameSetup->reloadScript);
+			} else {
+				gu->globalQuit = (!Update() || gu->globalQuit);
+			}
+			// VKFUN-HOOK(runtime-diagnostics-drain)
+			runtime::legacy::DrainDiagnostics();
+		}
 	} CATCH_SPRING_ERRORS
 
 	// no exception from main, check if some other thread interrupted our regular loop
@@ -972,11 +1014,11 @@ void SpringApp::Kill(bool fromRun)
 
 	// block any (main-thread) exceptions thrown here from causing another Kill
 	killedCount += 1;
+
 	// VKFUN-HOOK(runtime-shutdown-detach)
 	runtime::legacy::EndSession();
 	// VKFUN-HOOK(runtime-diagnostics-abort)
-	if (!fromRun)
-		runtime::legacy::FinishDiagnostics(false);
+	if (!fromRun) runtime::legacy::FinishDiagnostics(false);
 
 	LOG("[SpringApp::%s][1] fromRun=%d", __func__, fromRun);
 	ThreadPool::SetThreadCount(0);

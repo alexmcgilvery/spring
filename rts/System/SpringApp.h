@@ -1,14 +1,13 @@
 /* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
 
-#pragma once
+#ifndef SPRING_APP
+#define SPRING_APP
 
 #include <string>
 #include <memory>
 
 #include "System/Log/ConsoleSink.h"
 #include "System/Input/InputHandler.h"
-
-namespace runtime::legacy { class LegacyLoopServices; }
 
 class ClientSetup;
 class CGameController;
@@ -41,10 +40,6 @@ public:
 	int Run();                                      //!< Run game loop
 
 private:
-	// Bind lifecycle services without exposing reload as a general public operation.
-	// VKFUN-HOOK(runtime-lifecycle-access)
-	friend class runtime::legacy::LegacyLoopServices;
-
 	bool Init();                                    //!< Initializes engine
 	bool InitWindow(const char* title);             //!< Initializes window
 	bool InitPlatformLibs();
@@ -52,6 +47,7 @@ private:
 	static void CleanFonts();
 	bool InitFileSystem();
 	bool MainEventHandler(const SDL_Event& ev);     //!< Handles SDL input events
+	bool Update();                                  //!< Run simulation and rendering
 
 	void ParseCmdLine(int argc, char* argv[]);      //!< Parse command line
 	void Startup();                                 //!< Parses startup data (script etc.) and starts SelectMenu or PreGame
@@ -84,3 +80,5 @@ private:
  * (could be a PreGame, could be a Game, etc)
  */
 extern CGameController* activeController;
+
+#endif
