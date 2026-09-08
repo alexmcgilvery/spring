@@ -2,19 +2,23 @@
 
 #pragma once
 
-#include "../IMode.h"
+#include "PreGameSnapshots.h"
+#include "../Mode.h"
 
 namespace runtime {
-/*
- * Connection/setup concern outline. Independent recurring display work is absent initially.
- * Startup workers, connection progress and transition into Loading belong to session;
- * cancellation belongs to input.
+
+/**
+ * PreGame behavior outline with executable typed dispatch.
+ * Display is absent by design; Render consumes Session directly.
+ * Bodies return no publication until their documented behavior is implemented.
  */
-class PreGameMode final : public IMode {
+class PreGameMode final : public Mode<PreGameMode, PreGameContracts> {
 public:
 	PreGameMode();
-	void Input(const ModeInputContext& context) override;
-	void Session(const ModeSessionContext& context) override;
-	void Render(const ModeRenderContext& context) override;
+
+	InputPublication Input(const InputSnapshots& snapshots);
+	SessionPublication Session(const SessionSnapshots& snapshots);
+	RenderPublication Render(const RenderSnapshots& snapshots);
 };
-}
+
+} // namespace runtime

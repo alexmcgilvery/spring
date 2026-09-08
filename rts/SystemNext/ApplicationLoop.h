@@ -1,18 +1,41 @@
 /* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
 
 #pragma once
+
 #include "ApplicationContext.h"
-#include <cstdint>
+#include "Globals/InvocationContext.h"
+
 namespace runtime {
+
+// Forward declarations: requests cross the Session/lifecycle boundary by value.
+struct LifecycleRequest;
+
 /**
- * Connected serial orchestration over explicit host, binding and context contracts.
- * Modes still contain concern outlines; this code is not registered with the engine.
- * Platform adapters, eligibility/results and loading-progress execution remain work.
+ * Serial execution of independently identified logical and visual iterations.
+ * Stage methods take IDs; the manager owns immutable input association.
  */
 class ApplicationLoop {
 public:
-	void Run(const ApplicationContext& context);
+	explicit ApplicationLoop(ApplicationContext context);
+
+	void Run();
+
 private:
-	void Update(const ApplicationContext& context, std::uint64_t iteration);
+	bool UpdateLogic(LogicalIterationId iteration);
+	void UpdateVisuals(VisualIterationId iteration);
+
+	void Input(LogicalIterationId iteration);
+	void Session(LogicalIterationId iteration);
+	void Display(VisualIterationId iteration);
+	void Render(VisualIterationId iteration);
+	void Present(VisualIterationId iteration);
+
+	void CommitLifecycle(const LifecycleRequest& request);
+	void Shutdown();
+
+private:
+	ApplicationContext context;
+	bool exitRequested = false;
 };
-}
+
+} // namespace runtime

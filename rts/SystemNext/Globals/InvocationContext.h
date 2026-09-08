@@ -6,29 +6,62 @@
 #include <cstdint>
 
 namespace runtime {
-enum class ModeKind { Inactive, SelectMenu, LuaMenu, PreGame, Loading, Game };
 
-/** Identifies activation, not the address of a controller. Zero is unbound. */
+enum class ModeKind {
+	Inactive,
+	SelectMenu,
+	LuaMenu,
+	PreGame,
+	Loading,
+	Game,
+};
+
+/** Every activation gets a new generation, including reuse of the same object. */
 struct ModeIdentity {
+public:
+	bool operator==(const ModeIdentity&) const = default;
+
+public:
 	ModeKind kind = ModeKind::Inactive;
 	std::uint64_t generation = 0;
 };
 
-/**
- * Value metadata sampled by the application boundary for one concern invocation.
- * sampledAt/realDelta use a monotonic clock and describe this concern's sample;
- * they do not replace additional legacy timing samples or freeze referenced state.
- *
- * A context is a synchronous borrow. Referents must exist throughout its call.
- * If a callback retires/replaces a mode, stop using that invocation's borrows and
- * obtain a fresh context. No context may be queued to another thread or retained
- * by a mode. Generations describe this rule; validation/lifetime management are
- * not implemented by these structs. Const access is shallow for legacy objects.
- */
-struct InvocationContext {
-	ModeIdentity mode;
-	std::uint64_t iteration;
-	std::chrono::nanoseconds sampledAt;
-	std::chrono::nanoseconds realDelta;
+struct LogicalIterationId {
+public:
+	bool operator==(const LogicalIterationId&) const = default;
+
+public:
+	std::uint64_t value = 0;
 };
-}
+
+struct VisualIterationId {
+public:
+	bool operator==(const VisualIterationId&) const = default;
+
+public:
+	std::uint64_t value = 0;
+};
+
+enum class Flow {
+	Logical,
+	Visual,
+};
+
+/** One clock sample per flow invocation; downstream stages reuse these facts. */
+struct IterationTiming {
+public:
+	std::chrono::nanoseconds sampledAt {};
+	std::chrono::nanoseconds realDelta {};
+};
+
+/** Immutable invocation facts. These values grant no mutable resource access. */
+struct InvocationContext {
+public:
+	ModeIdentity mode;
+	Flow flow = Flow::Logical;
+	std::uint64_t iteration = 0;
+	std::chrono::nanoseconds sampledAt {};
+	std::chrono::nanoseconds realDelta {};
+};
+
+} // namespace runtime

@@ -5,6 +5,7 @@
 #include "SimulationContext.h"
 
 namespace runtime {
+
 /*
  * Game-local authoritative frame outline. Other modes do not own gameplay simulation;
  * publication consumers do not make the simulation producer application-global.
@@ -13,4 +14,5 @@ class Simulation {
 public:
 	void Step(const SimulationStepContext& context);
 };
-}
+
+} // namespace runtime

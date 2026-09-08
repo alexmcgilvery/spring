@@ -1,27 +1,42 @@
 /* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
 
 #pragma once
-#include "ModeContexts.h"
+
+#include "../Globals/InvocationContext.h"
+#include "../Globals/Graphics/VisualOutput.h"
+#include "../Globals/Snapshots/SnapshotManager.h"
+
+#include <memory>
+
 namespace runtime {
-enum class DisplayPhase { Absent, BeforeGraphics, WithGraphics };
+
+// Render product: invocation-owned admission spans command preparation and execution.
+struct RenderWork {
+public:
+	InvocationLease invocation;
+	std::unique_ptr<const RenderCommands> commands;
+};
+
 /**
- * Common concern contract for every mode. Capabilities describe scheduling;
- * they are independent of controller inheritance or legacy Update/Draw methods.
- * Context alternatives keep each concrete mode's dependencies explicit. Calling
- * an absent concern or supplying another mode's context is a programming error.
- * Concern bodies are still outlines; interface conformance is not implementation.
+ * Runtime mode interface. The generated Mode bridge implements dispatch once;
+ * concrete modes define only their typed concern functions. No capability flags
+ * duplicate the presence or absence of those functions.
  */
 class IMode {
 public:
 	virtual ~IMode();
-	const ModeKind kind;
-	const bool handlesSession;
-	const DisplayPhase displayPhase;
-	virtual void Input(const ModeInputContext& context) = 0;
-	virtual void Session(const ModeSessionContext& context);
-	virtual void Display(const ModeDisplayContext& context);
-	virtual void Render(const ModeRenderContext& context) = 0;
+
+	virtual void RegisterSnapshots(SnapshotManager& snapshots) const = 0;
+	virtual void ExecuteInput(SnapshotManager& snapshots, LogicalIterationId iteration) = 0;
+	virtual void ExecuteSession(SnapshotManager& snapshots, LogicalIterationId iteration) = 0;
+	virtual void ExecuteDisplay(SnapshotManager& snapshots, VisualIterationId iteration) = 0;
+	virtual std::optional<RenderWork> DescribeRender(SnapshotManager& snapshots, VisualIterationId iteration) = 0;
+
 protected:
-	IMode(ModeKind kind, bool handlesSession, DisplayPhase displayPhase);
+	explicit IMode(ModeKind kind);
+
+public:
+	const ModeKind kind;
 };
-}
+
+} // namespace runtime

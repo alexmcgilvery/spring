@@ -3,35 +3,45 @@
 #pragma once
 
 #include "../InvocationContext.h"
-#include <string>
-class SpringApp;
-class ConfigHandler;
-class CGlobalUnsynced;
+
+#include "../Snapshots/SnapshotTypes.h"
+
 namespace runtime {
-/** Owned requests, not permission to retire resources from inside a callback. */
-struct LifecycleRequests {
-	bool exitRequested = false;
-	bool reloadRequested = false;
-	std::string reloadScript;
+
+// Forward declarations: application-owned configuration and resources.
+class ApplicationConfiguration;
+class ApplicationResources;
+
+/** Private lifecycle bookkeeping; modes issue decisions through SessionOutput. */
+struct ApplicationLifecycleState {
+public:
+	bool initialized = false;
+	bool shuttingDown = false;
 };
+
 struct InitializationContext {
+public:
 	const InvocationContext& invocation;
-	SpringApp& host;
-	ConfigHandler& configuration;
-	LifecycleRequests& requests;
+	const ApplicationConfiguration& configuration;
+	ApplicationResources& resources;
+	ApplicationLifecycleState& state;
 };
+
 struct ReloadContext {
+public:
 	const InvocationContext& invocation;
-	SpringApp& host;
-	CGlobalUnsynced& client;
-	LifecycleRequests& requests;
+	const ApplicationConfiguration& configuration;
+	ApplicationResources& resources;
+	ApplicationLifecycleState& state;
+	const Handoff& handoff;
 };
+
 struct ShutdownContext {
+public:
 	const InvocationContext& invocation;
-	SpringApp& host;
-	LifecycleRequests& requests;
+	ApplicationResources& resources;
+	ApplicationLifecycleState& state;
 	bool initializationCompleted;
 };
-/* Host references do not expose private SpringApp methods. Construction,
- * resource retirement and routing these requests remain adaptation work. */
-}
+
+} // namespace runtime

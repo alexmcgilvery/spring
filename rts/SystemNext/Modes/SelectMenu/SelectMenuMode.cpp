@@ -3,108 +3,161 @@
 #include "SelectMenuMode.h"
 
 namespace runtime {
-SelectMenuMode::SelectMenuMode(): IMode(ModeKind::SelectMenu, false, DisplayPhase::Absent) {}
 
-void SelectMenuMode::Input(const ModeInputContext& supplied)
+SelectMenuMode::SelectMenuMode()
+	: Mode(ModeKind::SelectMenu)
+{
+}
+
+SelectMenuMode::InputPublication SelectMenuMode::Input(const InputSnapshots&)
 {
 	/*
+	 * Expected responsibility and why:
+	 * Interpret selection, settings and connection interaction into menu actions.
+	 *
 	 * Expected legacy sources (investigation starting points):
-	 * [SelectMenu.cpp](../../../Menu/SelectMenu.cpp) — SelectMenu::SelectMenu(),
-	 * HandleEventSelf(), Demo(), Load(), Single(), DirectConnect(), Draw()
-	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::Run(), Update(),
-	 * MainEventHandler(), Init(), Reload(), Kill()
+	 * [SelectMenu.cpp](../../../Menu/SelectMenu.cpp) — SelectMenu::HandleEventSelf(), Demo(), Load(), Single(), DirectConnect(), Draw()
+	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::MainEventHandler(), Init(), Reload(), Kill()
 	 *
-	 * Context contract:
-	 * [SelectMenuContext.h](SelectMenuContext.h) — SelectMenuInputContext explicitly lists the
-	 * expected dependencies. Mutable references are permitted outputs/live work;
-	 * const references are borrowed views, not frozen or deeply immutable state.
-	 * The caller resolves valid dependencies for this activation and invocation;
-	 * a retiring transition ends their use. No global lookup or private access is
-	 * supplied by this parameter. Owning publication leases are separately named.
+	 * Snapshot contract:
+	 * [SelectMenuSnapshots.h](SelectMenuSnapshots.h) — SelectMenuContracts::InputReads.
+	 * Application.Current (required); Activation.Current (required); Session.Previous (optional).
+	 * Application.Current supplies the collected event batch. Activation.Current supplies owned
+	 * startup context. Session.Previous supplies prior logical interpretation state; its absence is
+	 * normal on entry.
+	 * Inputs are immutable owning selections. Retained views keep their values alive;
+	 * publications carry activation and invocation identity rather than live globals.
 	 *
-	 * Expected responsibility:
-	 * Interpret built-in menu interaction and describe the resulting settings or mode
-	 * transition.
+	 * Expected outputs and authority:
+	 * Session decides logical consequences and normal transitions. This concern grants no simulation,
+	 * resource-retirement or activation authority.
 	 *
 	 * Expected work, in conceptual order:
-	 * Establish menu controls and callbacks; interpret selection/settings actions; collect
-	 * connection or content choices; request startup, cancellation or exit.
+	 * Route filtered interaction once; distinguish editing a choice from committing StartGame,
+	 * demo/save, direct-connect, cancellation or exit intent.
 	 *
-	 * Expected dependencies:
-	 * Client setup, selected game/map/demo/save, GUI focus and event-consumption state,
-	 * configuration and menu widget lifetime.
-	 *
-	 * Expected relationships:
-	 * Application input collection supplies events. Selected actions may initiate PreGame or
-	 * retire the menu; rendering must use the mode appropriate after those actions.
-	 */
-
-	// Bind only this mode's declared dependency bundle; behavior remains an outline.
-	[[maybe_unused]] const auto& context = std::get<SelectMenuInputContext>(supplied);
-
-	/*
-	 * Selection and settings:
-	 * Expect game/map choices, single-player startup, demo and save selection, direct-connect
-	 * address entry and settings editing. Preserve the distinction between changing a choice
-	 * and committing an action.
+	 * Scheduling and lifetime:
+	 * Logical work runs without a visual subsystem.
+	 * Missing required inputs prevent invocation; optional history is absent at bootstrap.
+	 * Retired activations reject new work and publications while issued views stay readable.
 	 */
 
 	/*
-	 * Construction and retirement:
-	 * Expect control initialization and callback registration when entering the mode, then
-	 * cleanup on departure. Deferred GUI removal and callbacks that initiate startup need
-	 * source annotation before choosing ownership or routing details.
+	 * Dependencies and unresolved adaptation:
+	 * GUI focus, event consumption and selected controls need owned interaction state. Input must not
+	 * retire the menu while interpreting an event.
+	 * The linked code is an investigation source, not an implemented adapter or a
+	 * requirement to shape the architecture around its existing function boundaries.
 	 */
 
+	/*
+	 * Implementation status:
+	 * This concern is an outline. Its payload schema, backing operations and input/
+	 * output connections remain unimplemented. Returning no publication reports that
+	 * absence explicitly; it is not evidence of completed input behavior.
+	 */
+	return {};
 }
 
-void SelectMenuMode::Render(const ModeRenderContext& supplied)
+SelectMenuMode::SessionPublication SelectMenuMode::Session(const SessionSnapshots&)
 {
 	/*
+	 * Expected responsibility and why:
+	 * Apply menu decisions and prepare startup handoffs, so menu progression has the same logical
+	 * authority as other modes.
+	 *
 	 * Expected legacy sources (investigation starting points):
-	 * [SelectMenu.cpp](../../../Menu/SelectMenu.cpp) — SelectMenu::SelectMenu(),
-	 * HandleEventSelf(), Demo(), Load(), Single(), DirectConnect(), Draw()
+	 * [SelectMenu.cpp](../../../Menu/SelectMenu.cpp) — SelectMenu::HandleEventSelf(), Demo(), Load(), Single(), DirectConnect(), Draw()
+	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::MainEventHandler(), Init(), Reload(), Kill()
 	 *
-	 * Context contract:
-	 * [SelectMenuContext.h](SelectMenuContext.h) — SelectMenuRenderContext explicitly lists the
-	 * expected dependencies. Mutable references are permitted outputs/live work;
-	 * const references are borrowed views, not frozen or deeply immutable state.
-	 * The caller resolves valid dependencies for this activation and invocation;
-	 * a retiring transition ends their use. No global lookup or private access is
-	 * supplied by this parameter. Owning publication leases are separately named.
+	 * Snapshot contract:
+	 * [SelectMenuSnapshots.h](SelectMenuSnapshots.h) — SelectMenuContracts::SessionReads.
+	 * Input.Current (required); Activation.Current (required).
+	 * Input.Current supplies this iteration's interpreted actions. Activation.Current supplies startup
+	 * handoff data. Any declared Display.Previous is optional observational feedback; historical reads
+	 * cannot replay or acknowledge actions.
+	 * Inputs are immutable owning selections. Retained views keep their values alive;
+	 * publications carry activation and invocation identity rather than live globals.
 	 *
-	 * Expected responsibility:
-	 * Draw the selection interface and describe its existing idle pacing.
+	 * Expected outputs and authority:
+	 * Only this concern may return a normal lifecycle request, attached to an owned Session
+	 * publication. Lifecycle commits it after return; a replacement starts a fresh logical iteration
+	 * with empty mode-local history.
 	 *
 	 * Expected work, in conceptual order:
-	 * Apply menu idle delay; account for the draw iteration; clear the target; draw the active
-	 * menu interface.
+	 * Apply settings and content choices; validate a committed startup action; prepare owned
+	 * host/join/demo/save data; emit at most one lifecycle decision.
 	 *
-	 * Expected dependencies:
-	 * GUI state, window dimensions, graphics context, draw accounting and the menu selected
-	 * after input.
-	 *
-	 * Expected relationships:
-	 * No independent display block is expected. Shared graphics owns synchronization and
-	 * ordinary present; menu drawing itself does not own the application loop.
-	 */
-
-	// Bind only this mode's declared dependency bundle; behavior remains an outline.
-	[[maybe_unused]] const auto& context = std::get<SelectMenuRenderContext>(supplied);
-
-	/*
-	 * Interface and pacing:
-	 * Expect the existing screen clear and GUI draw sequence, including its delay and
-	 * draw-counter update. The delay remains an expected pacing concern until the annotation
-	 * pass establishes its desired placement.
+	 * Scheduling and lifetime:
+	 * Logical work runs without a visual subsystem.
+	 * Missing required inputs prevent invocation; optional history is absent at bootstrap.
+	 * Retired activations reject new work and publications while issued views stay readable.
 	 */
 
 	/*
-	 * Transition during GUI work:
-	 * Expect GUI processing to be capable of retiring controls or changing modes. Identify the
-	 * final usable menu state and avoid assuming the same menu survives every callback.
+	 * Dependencies and unresolved adaptation:
+	 * Selected content and GUI retirement require source investigation. Lifecycle owns activation and
+	 * cleanup after Session returns; construction is not recurring Input work.
+	 * The linked code is an investigation source, not an implemented adapter or a
+	 * requirement to shape the architecture around its existing function boundaries.
 	 */
 
+	/*
+	 * Implementation status:
+	 * This concern is an outline. Its payload schema, backing operations and input/
+	 * output connections remain unimplemented. Returning no publication reports that
+	 * absence explicitly; it is not evidence of completed session behavior.
+	 */
+	return {};
 }
 
+SelectMenuMode::RenderPublication SelectMenuMode::Render(const RenderSnapshots&)
+{
+	/*
+	 * Expected responsibility and why:
+	 * Describe the selection interface directly from published menu state; there is no recurring Display concern.
+	 *
+	 * Expected legacy sources (investigation starting points):
+	 * [SelectMenu.cpp](../../../Menu/SelectMenu.cpp) — SelectMenu::HandleEventSelf(), Demo(), Load(), Single(), DirectConnect(), Draw()
+	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::MainEventHandler(), Init(), Reload(), Kill()
+	 *
+	 * Snapshot contract:
+	 * [SelectMenuSnapshots.h](SelectMenuSnapshots.h) — SelectMenuContracts::RenderReads.
+	 * Application.Current (required); Session.Current (required).
+	 * Session.Current supplies owned frame content. Application.Current supplies associated target
+	 * facts. No fallback may relabel another invocation's data as Current.
+	 * Inputs are immutable owning selections. Retained views keep their values alive;
+	 * publications carry activation and invocation identity rather than live globals.
+	 *
+	 * Expected outputs and authority:
+	 * The application executes commands, publishes an owning rendered output and optionally presents
+	 * that exact output. Rendering has no internal Present and no normal transition authority.
+	 *
+	 * Expected work, in conceptual order:
+	 * Read menu choices and target facts; describe background/interface order and frame accounting;
+	 * produce an owning command product.
+	 *
+	 * Scheduling and lifetime:
+	 * Headless never invokes this concern. The application selects eligible visual stages.
+	 * Missing required inputs prevent invocation; optional history is absent at bootstrap.
+	 * Retired activations reject new work and publications while issued views stay readable.
+	 */
+
+	/*
+	 * Dependencies and unresolved adaptation:
+	 * The existing idle delay and draw-counter behavior need annotation. Pacing belongs to application
+	 * scheduling; it must not become a prerequisite for logical menu decisions.
+	 * The linked code is an investigation source, not an implemented adapter or a
+	 * requirement to shape the architecture around its existing function boundaries.
+	 */
+
+	/*
+	 * Implementation status:
+	 * This concern is an outline. Its payload schema, backing operations and input/
+	 * output connections remain unimplemented. Returning no publication reports that
+	 * absence explicitly; it is not evidence of completed render behavior.
+	 */
+	return {};
 }
+
+} // namespace runtime

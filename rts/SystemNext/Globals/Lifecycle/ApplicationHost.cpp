@@ -2,5 +2,6 @@
 
 #include "ApplicationHost.h"
 namespace runtime {
+
 ApplicationHost::~ApplicationHost() = default;
 }

@@ -2,19 +2,24 @@
 
 #pragma once
 
-#include "../IMode.h"
+#include "LuaMenuSnapshots.h"
+#include "../Mode.h"
 
 namespace runtime {
-/*
- * Lua menu concern outline. Session is absent by design. Input, recurring client display
- * maintenance and rendering are distinct expected blocks; archive/menu activation belongs
- * to this mode.
+
+/**
+ * LuaMenu behavior outline with executable typed dispatch.
+ * Input, Session, Display and Render are independently declared concerns.
+ * Bodies return no publication until their documented behavior is implemented.
  */
-class LuaMenuMode final : public IMode {
+class LuaMenuMode final : public Mode<LuaMenuMode, LuaMenuContracts> {
 public:
 	LuaMenuMode();
-	void Input(const ModeInputContext& context) override;
-	void Display(const ModeDisplayContext& context) override;
-	void Render(const ModeRenderContext& context) override;
+
+	InputPublication Input(const InputSnapshots& snapshots);
+	SessionPublication Session(const SessionSnapshots& snapshots);
+	DisplayPublication Display(const DisplaySnapshots& snapshots);
+	RenderPublication Render(const RenderSnapshots& snapshots);
 };
-}
+
+} // namespace runtime

@@ -3,36 +3,37 @@
 #include "Simulation.h"
 
 namespace runtime {
+
 void Simulation::Step(const SimulationStepContext&)
 {
 	/*
+	 * Expected responsibility and why:
+	 * Execute an authoritative Game frame because only accepted Session processing may advance the
+	 * world.
+	 *
 	 * Expected legacy sources (investigation starting points):
 	 * [Game.cpp](../../../../Game/Game.cpp) — CGame::SimFrame()
 	 * [NetCommands.cpp](../../../../Net/NetCommands.cpp) — CGame::ClientReadNet()
 	 *
 	 * Context contract:
-	 * [SimulationContext.h](SimulationContext.h) — SimulationStepContext explicitly lists the
-	 * expected dependencies. Mutable references are permitted outputs/live work;
-	 * const references are borrowed views, not frozen or deeply immutable state.
-	 * The caller resolves valid dependencies for this activation and invocation;
-	 * a retiring transition ends their use. No global lookup or private access is
-	 * supplied by this parameter. Owning publication leases are separately named.
-	 *
-	 * Expected responsibility:
-	 * Describe one authoritative simulation frame while preserving the existing synced update
-	 * sequence.
+	 * Explicit private ownership dependencies; these contexts are internal skeleton interfaces, not
+	 * the removed common mode contexts. This internal Game operation receives explicit mutable
+	 * simulation authority and ordered effects. It is not a mode snapshot input or a capability
+	 * obtainable from snapshot history.
 	 *
 	 * Expected work, in conceptual order:
-	 * Enter existing tick execution; perform frame bookkeeping and ordered simulation/Lua
-	 * updates; account for inline effects; complete the step for its authoritative caller.
+	 * Apply one accepted tick, retain synchronous authoritative effects, and return to the caller.
+	 * Multiple ticks may occur within one logical iteration; there is no local accumulator.
 	 *
-	 * Expected dependencies:
-	 * Game/world handlers, frame identity, synced state, RNG/checksum behavior, Lua callbacks
-	 * and existing timing state.
+	 * Expected dependencies and relationships:
+	 * The caller completes checksum caching/reset and traffic accounting before publication. No visual
+	 * stage is required. Future adapters must expose live authority narrowly without putting it in
+	 * immutable publications.
 	 *
-	 * Expected relationships:
-	 * Only accepted authoritative processing requests this work. Caller-side checksum
-	 * caching/reset and traffic accounting precede the completed-frame observation boundary.
+	 * Scheduling and lifetime:
+	 * The application owns logical/visual admission and lifecycle commitment. Source links guide later
+	 * investigation; they do not define the target architecture. This concern remains an
+	 * implementation outline, while the generic manager and dispatcher are executable.
 	 */
 
 	/*

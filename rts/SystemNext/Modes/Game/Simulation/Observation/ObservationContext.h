@@ -3,18 +3,21 @@
 #pragma once
 
 #include "../../../../Globals/InvocationContext.h"
+
 #include <cstdint>
+
 namespace runtime {
+
+// Forward declarations: notification input and owning observation journal.
 struct SimulationNotification;
 struct SimulationObservations;
+
 struct SimulationObservationContext {
+public:
 	const InvocationContext& invocation;
 	const SimulationNotification& notification;
 	SimulationObservations& output;
 	std::uint64_t sequence;
 };
-/* Notification is an event-time borrowed input. Any retained payload must be
- * copied into output before nested callbacks can mutate or retire the source.
- * No world/command authority is exposed. Payload and journal definitions follow
- * annotation; there is no event dispatcher or retention implementation here. */
-}
+
+} // namespace runtime

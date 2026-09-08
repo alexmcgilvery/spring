@@ -3,236 +3,222 @@
 #include "GameMode.h"
 
 namespace runtime {
-GameMode::GameMode(): IMode(ModeKind::Game, true, DisplayPhase::WithGraphics) {}
 
-void GameMode::Input(const ModeInputContext& supplied)
+GameMode::GameMode()
+	: Mode(ModeKind::Game)
 {
-	/*
-	 * Expected legacy sources (investigation starting points):
-	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::Run(), Update(),
-	 * MainEventHandler(), Init(), Reload(), Kill()
-	 * [MouseHandler.cpp](../../../Game/UI/MouseHandler.cpp) — CMouseHandler::MousePress(),
-	 * MouseRelease(), Update()
-	 * [Game.cpp](../../../Game/Game.cpp) — CGame::KeyPressed(), KeyReleased(), TextInput(),
-	 * TextEditing(), UpdateUnsynced()
-	 *
-	 * Context contract:
-	 * [GameContext.h](GameContext.h) — GameInputContext explicitly lists the
-	 * expected dependencies. Mutable references are permitted outputs/live work;
-	 * const references are borrowed views, not frozen or deeply immutable state.
-	 * The caller resolves valid dependencies for this activation and invocation;
-	 * a retiring transition ends their use. No global lookup or private access is
-	 * supplied by this parameter. Owning publication leases are separately named.
-	 *
-	 * Expected responsibility:
-	 * Interpret gameplay interaction and describe submission through the existing
-	 * command/network route.
-	 *
-	 * Expected work, in conceptual order:
-	 * Route filtered key/mouse/text interaction; maintain command and text editing state;
-	 * submit completed gameplay, chat or label interaction through existing routes.
-	 *
-	 * Expected dependencies:
-	 * Input focus, GUI consumption, selected interaction state, action bindings, text buffers,
-	 * network command submission and active game lifetime.
-	 *
-	 * Expected relationships:
-	 * Platform input collection precedes ordinary session work conceptually, but some
-	 * submission currently occurs during display maintenance. This outline records both
-	 * responsibilities without selecting a new accepted-input timing.
-	 */
-
-	// Bind only this mode's declared dependency bundle; behavior remains an outline.
-	[[maybe_unused]] const auto& context = std::get<GameInputContext>(supplied);
-
-	/*
-	 * Interaction and commands:
-	 * Expect key maps, action press/release, GUI/mouse routing, chat editing and command
-	 * submission to remain distinguishable. No new local simulation command queue is implied.
-	 */
-
-	/*
-	 * Late submission:
-	 * Expect the input-submission region of UpdateUnsynced to be annotated explicitly. Moving
-	 * it earlier could affect which authoritative interval accepts a command; the skeleton
-	 * neither moves nor resolves it.
-	 */
-
 }
 
-void GameMode::Session(const ModeSessionContext& supplied)
+GameMode::InputPublication GameMode::Input(const InputSnapshots&)
 {
 	/*
+	 * Expected responsibility and why:
+	 * Interpret gameplay interaction into owned command intent; authoritative acceptance remains
+	 * logical Session work.
+	 *
 	 * Expected legacy sources (investigation starting points):
-	 * [Game.cpp](../../../Game/Game.cpp) — CGame::Update(), UpdateUnsynced(), Draw()
+	 * [Game.cpp](../../../Game/Game.cpp) — CGame::KeyPressed(), KeyReleased(), TextInput(), TextEditing(), Update(), UpdateUnsynced(), Draw()
 	 * [NetCommands.cpp](../../../Net/NetCommands.cpp) — CGame::ClientReadNet()
-	 *
-	 * Context contract:
-	 * [GameContext.h](GameContext.h) — GameSessionContext explicitly lists the
-	 * expected dependencies. Mutable references are permitted outputs/live work;
-	 * const references are borrowed views, not frozen or deeply immutable state.
-	 * The caller resolves valid dependencies for this activation and invocation;
-	 * a retiring transition ends their use. No global lookup or private access is
-	 * supplied by this parameter. Owning publication leases are separately named.
-	 *
-	 * Expected responsibility:
-	 * Service the live game session and allow accepted authoritative messages to advance
-	 * simulation.
-	 *
-	 * Expected work, in conceptual order:
-	 * Service pending jobs and transport; account for capture-driven timing; process
-	 * authoritative traffic in order; handle reconnect/timeout and report script allocation
-	 * failures.
-	 *
-	 * Expected dependencies:
-	 * Network packets, job state, game/session status, server/capture state, traffic/checksum
-	 * bookkeeping and synced/FPU scope.
-	 *
-	 * Expected relationships:
-	 * Session processing owns the authority to invoke simulation steps. It can produce no
-	 * ticks or multiple ticks before display. Completion observation belongs after existing
-	 * caller bookkeeping, not at an invented outer-loop barrier.
-	 */
-
-	// Bind only this mode's declared dependency bundle; behavior remains an outline.
-	[[maybe_unused]] const auto& context = std::get<GameSessionContext>(supplied);
-
-	/*
-	 * Jobs, transport and capture:
-	 * Expect the existing ordering among job dispatch, network maintenance and capture-driven
-	 * server work. Their dependencies may include callbacks and game lifetime.
-	 */
-
-	/*
-	 * Accepted stream and simulation:
-	 * Expect ClientReadNet to retain command/message order, budgeting and tick authority. The
-	 * Game-local Simulation outline describes the frame work; no independent accumulator,
-	 * packet batching or replacement replay format is proposed.
-	 */
-
-	/*
-	 * Session failures and continuation:
-	 * Expect reconnects, timeout-triggered game end and Lua allocation-failure reporting.
-	 * Preserve the distinction between session state changes, exit requests and exceptions
-	 * when annotations identify the actual paths.
-	 */
-
-}
-
-void GameMode::Display(const ModeDisplayContext& supplied)
-{
-	/*
-	 * Expected legacy sources (investigation starting points):
-	 * [Game.cpp](../../../Game/Game.cpp) — CGame::Update(), UpdateUnsynced(), Draw()
-	 *
-	 * Context contract:
-	 * [GameContext.h](GameContext.h) — GameDisplayContext explicitly lists the
-	 * expected dependencies. Mutable references are permitted outputs/live work;
-	 * const references are borrowed views, not frozen or deeply immutable state.
-	 * The caller resolves valid dependencies for this activation and invocation;
-	 * a retiring transition ends their use. No global lookup or private access is
-	 * supplied by this parameter. Owning publication leases are separately named.
-	 *
-	 * Expected responsibility:
-	 * Prepare client-visible state for rendering using real-time and completed simulation
-	 * information.
-	 *
-	 * Expected work, in conceptual order:
-	 * Account for timing/interpolation; maintain unsynced client state and callbacks; prepare
-	 * graphics-dependent resources and frame eligibility.
-	 *
-	 * Expected dependencies:
-	 * Real-time samples, simulation progress, pause/catch-up state, camera, UI, audio, Lua and
-	 * graphics resources.
-	 *
-	 * Expected relationships:
-	 * Legacy Draw invokes UpdateUnsynced before drawing. This boundary can span timers and
-	 * graphics scopes, and also contains some input submission. Describe those dependencies
-	 * without inventing frame storage or moving callbacks.
-	 */
-
-	// Bind only this mode's declared dependency bundle; behavior remains an outline.
-	[[maybe_unused]] const auto& context = std::get<GameDisplayContext>(supplied);
-
-	/*
-	 * Timing and interpolation:
-	 * Expect time offsets, elapsed draw time, pause/catch-up and early-return decisions.
-	 * Timestamp sampling points and measured intervals must be identifiable in the legacy
-	 * annotation pass.
-	 */
-
-	/*
-	 * Client presentation:
-	 * Expect camera/mouse, UI, console, Lua, sound listener and client interaction
-	 * maintenance. Some live-world queries and synchronous callbacks affect later rendering or
-	 * input.
-	 */
-
-	/*
-	 * Graphics preparation:
-	 * Expect graphics-resource updates and preparation for world/interface drawing. Identify
-	 * work requiring the context, including font/texture preparation, and describe how shared
-	 * synchronization must surround it.
-	 */
-
-}
-
-void GameMode::Render(const ModeRenderContext& supplied)
-{
-	/*
-	 * Expected legacy sources (investigation starting points):
-	 * [Game.cpp](../../../Game/Game.cpp) — CGame::Update(), UpdateUnsynced(), Draw()
 	 * [WorldDrawer.cpp](../../../Rendering/WorldDrawer.cpp) — CWorldDrawer::Draw()
 	 *
-	 * Context contract:
-	 * [GameContext.h](GameContext.h) — GameRenderContext explicitly lists the
-	 * expected dependencies. Mutable references are permitted outputs/live work;
-	 * const references are borrowed views, not frozen or deeply immutable state.
-	 * The caller resolves valid dependencies for this activation and invocation;
-	 * a retiring transition ends their use. No global lookup or private access is
-	 * supplied by this parameter. Owning publication leases are separately named.
+	 * Snapshot contract:
+	 * [GameSnapshots.h](GameSnapshots.h) — GameContracts::InputReads.
+	 * Application.Current (required); Activation.Current (required); Session.Previous (optional).
+	 * Application.Current supplies the collected event batch. Activation.Current supplies owned
+	 * startup context. Session.Previous supplies prior logical interpretation state; its absence is
+	 * normal on entry.
+	 * Inputs are immutable owning selections. Retained views keep their values alive;
+	 * publications carry activation and invocation identity rather than live globals.
 	 *
-	 * Expected responsibility:
-	 * Draw the world, interface and capture output from the game presentation state.
+	 * Expected outputs and authority:
+	 * Session decides logical consequences and normal transitions. This concern grants no simulation,
+	 * resource-retirement or activation authority.
 	 *
 	 * Expected work, in conceptual order:
-	 * Set up the frame; invoke genesis callbacks; account for inactive-window eligibility;
-	 * draw world and interface in order; capture where enabled; describe completion timing.
+	 * Route filtered keyboard/mouse/text interaction; maintain editing and action interpretation;
+	 * describe gameplay, chat and label intent with event identity.
 	 *
-	 * Expected dependencies:
-	 * Prepared client state, live world, graphics context, Lua draw callbacks, UI, capture
-	 * device and frame timing.
-	 *
-	 * Expected relationships:
-	 * Display and render may share lexical graphics/profiler scopes. Shared presentation
-	 * follows visual completion. Future independent rendering requires a suitable data
-	 * boundary; this skeleton does not claim one exists.
-	 */
-
-	// Bind only this mode's declared dependency bundle; behavior remains an outline.
-	[[maybe_unused]] const auto& context = std::get<GameRenderContext>(supplied);
-
-	/*
-	 * Frame setup and eligibility:
-	 * Expect draw-mode setup, uniform binding, genesis callbacks and inactive-window
-	 * pacing/forced drawing. Source order determines whether work occurs on a frame that later
-	 * skips drawing.
+	 * Scheduling and lifetime:
+	 * Logical work runs without a visual subsystem.
+	 * Missing required inputs prevent invocation; optional history is absent at bootstrap.
+	 * Retired activations reject new work and publications while issued views stay readable.
 	 */
 
 	/*
-	 * World and interface:
-	 * Expect terrain, models, particles, Lua-generated rendering, overlays and UI ordering.
-	 * These are documentation blocks within Render, not new helper functions or service
-	 * layers.
+	 * Dependencies and unresolved adaptation:
+	 * GUI consumption, selection and picking may require published visual knowledge. Late command
+	 * submission inside UpdateUnsynced needs annotation; this outline does not invent a replacement
+	 * network queue or acceptance time.
+	 * The linked code is an investigation source, not an implemented adapter or a
+	 * requirement to shape the architecture around its existing function boundaries.
 	 */
 
 	/*
-	 * Capture and completion:
-	 * Expect capture and timing averages to retain their measured intervals. Distinguish
-	 * completion of rendering from actual window presentation and from a capture-triggered
-	 * simulation step.
+	 * Implementation status:
+	 * This concern is an outline. Its payload schema, backing operations and input/
+	 * output connections remain unimplemented. Returning no publication reports that
+	 * absence explicitly; it is not evidence of completed input behavior.
 	 */
-
+	return {};
 }
 
+GameMode::SessionPublication GameMode::Session(const SessionSnapshots&)
+{
+	/*
+	 * Expected responsibility and why:
+	 * Service the game session and accept authoritative advancement independently of visual availability.
+	 *
+	 * Expected legacy sources (investigation starting points):
+	 * [Game.cpp](../../../Game/Game.cpp) — CGame::KeyPressed(), KeyReleased(), TextInput(), TextEditing(), Update(), UpdateUnsynced(), Draw()
+	 * [NetCommands.cpp](../../../Net/NetCommands.cpp) — CGame::ClientReadNet()
+	 * [WorldDrawer.cpp](../../../Rendering/WorldDrawer.cpp) — CWorldDrawer::Draw()
+	 *
+	 * Snapshot contract:
+	 * [GameSnapshots.h](GameSnapshots.h) — GameContracts::SessionReads.
+	 * Input.Current (required); Activation.Current (required); Display.Previous (optional).
+	 * Input.Current supplies this iteration's interpreted actions. Activation.Current supplies startup
+	 * handoff data. Any declared Display.Previous is optional observational feedback; historical reads
+	 * cannot replay or acknowledge actions.
+	 * Inputs are immutable owning selections. Retained views keep their values alive;
+	 * publications carry activation and invocation identity rather than live globals.
+	 *
+	 * Expected outputs and authority:
+	 * Only this concern may return a normal lifecycle request, attached to an owned Session
+	 * publication. Lifecycle commits it after return; a replacement starts a fresh logical iteration
+	 * with empty mode-local history.
+	 *
+	 * Expected work, in conceptual order:
+	 * Consume interpreted actions through the intended command route; service jobs, transport and
+	 * capture-driven logical timing; process authoritative traffic; invoke Game-local simulation;
+	 * publish state and decide lifecycle consequences.
+	 *
+	 * Scheduling and lifetime:
+	 * Logical work runs without a visual subsystem.
+	 * Missing required inputs prevent invocation; optional history is absent at bootstrap.
+	 * Retired activations reject new work and publications while issued views stay readable.
+	 */
+
+	/*
+	 * Dependencies and unresolved adaptation:
+	 * Preserve command/tick authority and synchronous simulation/Lua relationships when adapting.
+	 * Reconnects, timeout, script failures and required keepalive belong here. Optional visual history
+	 * cannot block headless or bootstrap logic.
+	 * The linked code is an investigation source, not an implemented adapter or a
+	 * requirement to shape the architecture around its existing function boundaries.
+	 */
+
+	/*
+	 * Implementation status:
+	 * This concern is an outline. Its payload schema, backing operations and input/
+	 * output connections remain unimplemented. Returning no publication reports that
+	 * absence explicitly; it is not evidence of completed session behavior.
+	 */
+	return {};
 }
+
+GameMode::DisplayPublication GameMode::Display(const DisplaySnapshots&)
+{
+	/*
+	 * Expected responsibility and why:
+	 * Derive client-visible state from associated logical and simulation publications.
+	 *
+	 * Expected legacy sources (investigation starting points):
+	 * [Game.cpp](../../../Game/Game.cpp) — CGame::KeyPressed(), KeyReleased(), TextInput(), TextEditing(), Update(), UpdateUnsynced(), Draw()
+	 * [NetCommands.cpp](../../../Net/NetCommands.cpp) — CGame::ClientReadNet()
+	 * [WorldDrawer.cpp](../../../Rendering/WorldDrawer.cpp) — CWorldDrawer::Draw()
+	 *
+	 * Snapshot contract:
+	 * [GameSnapshots.h](GameSnapshots.h) — GameContracts::DisplayReads.
+	 * Application.Current (required); Session.Current (required); Display.Previous (optional);
+	 * Simulation.Current (optional); Simulation.Previous (optional).
+	 * Session.Current names the selected logical publication. Application.Current provides associated
+	 * platform facts. Display.Previous supports visual continuity without mutable cross-iteration
+	 * borrows. Declared Simulation reads select completed authoritative states at their own cadence;
+	 * bootstrap may provide neither.
+	 * Inputs are immutable owning selections. Retained views keep their values alive;
+	 * publications carry activation and invocation identity rather than live globals.
+	 *
+	 * Expected outputs and authority:
+	 * Render consumes the owned result. Any logical interaction discovered visually needs later
+	 * Session acceptance through an explicit action route; immutable history alone is not that route.
+	 *
+	 * Expected work, in conceptual order:
+	 * Read completed state; account for timing, pause, catch-up and interpolation; derive camera,
+	 * visibility and interface state; produce an owning visual frame.
+	 *
+	 * Scheduling and lifetime:
+	 * Headless never invokes this concern. The application selects eligible visual stages.
+	 * Missing required inputs prevent invocation; optional history is absent at bootstrap.
+	 * Retired activations reject new work and publications while issued views stay readable.
+	 */
+
+	/*
+	 * Dependencies and unresolved adaptation:
+	 * Lua, GUI, audio and tick-bound client effects require individual annotation. Logical effects
+	 * stay with Session; purely visual work may be skipped. Missing initial simulation data must
+	 * remain visible rather than pretending the schema is a complete world snapshot.
+	 * The linked code is an investigation source, not an implemented adapter or a
+	 * requirement to shape the architecture around its existing function boundaries.
+	 */
+
+	/*
+	 * Implementation status:
+	 * This concern is an outline. Its payload schema, backing operations and input/
+	 * output connections remain unimplemented. Returning no publication reports that
+	 * absence explicitly; it is not evidence of completed display behavior.
+	 */
+	return {};
+}
+
+GameMode::RenderPublication GameMode::Render(const RenderSnapshots&)
+{
+	/*
+	 * Expected responsibility and why:
+	 * Describe world, interface and capture output from the prepared immutable visual frame.
+	 *
+	 * Expected legacy sources (investigation starting points):
+	 * [Game.cpp](../../../Game/Game.cpp) — CGame::KeyPressed(), KeyReleased(), TextInput(), TextEditing(), Update(), UpdateUnsynced(), Draw()
+	 * [NetCommands.cpp](../../../Net/NetCommands.cpp) — CGame::ClientReadNet()
+	 * [WorldDrawer.cpp](../../../Rendering/WorldDrawer.cpp) — CWorldDrawer::Draw()
+	 *
+	 * Snapshot contract:
+	 * [GameSnapshots.h](GameSnapshots.h) — GameContracts::RenderReads.
+	 * Application.Current (required); Display.Current (required).
+	 * Display.Current supplies owned frame content. Application.Current supplies associated target
+	 * facts. No fallback may relabel another invocation's data as Current.
+	 * Inputs are immutable owning selections. Retained views keep their values alive;
+	 * publications carry activation and invocation identity rather than live globals.
+	 *
+	 * Expected outputs and authority:
+	 * The application executes commands, publishes an owning rendered output and optionally presents
+	 * that exact output. Rendering has no internal Present and no normal transition authority.
+	 *
+	 * Expected work, in conceptual order:
+	 * Establish eligible frame commands; order world, Lua-generated visual and interface work; request
+	 * capture output; describe rendering completion intervals.
+	 *
+	 * Scheduling and lifetime:
+	 * Headless never invokes this concern. The application selects eligible visual stages.
+	 * Missing required inputs prevent invocation; optional history is absent at bootstrap.
+	 * Retired activations reject new work and publications while issued views stay readable.
+	 */
+
+	/*
+	 * Dependencies and unresolved adaptation:
+	 * Terrain, particles, Lua visuals and resources still need real adapters. Device synchronization
+	 * remains application-owned. Profiler and timing intervals spanning concerns must be owned by
+	 * shared frame execution, not narrowed silently.
+	 * The linked code is an investigation source, not an implemented adapter or a
+	 * requirement to shape the architecture around its existing function boundaries.
+	 */
+
+	/*
+	 * Implementation status:
+	 * This concern is an outline. Its payload schema, backing operations and input/
+	 * output connections remain unimplemented. Returning no publication reports that
+	 * absence explicitly; it is not evidence of completed render behavior.
+	 */
+	return {};
+}
+
+} // namespace runtime

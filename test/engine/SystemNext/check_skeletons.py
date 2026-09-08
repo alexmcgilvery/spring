@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # This file is part of the Spring engine (GPL v2 or later), see LICENSE.html
-"""Validate concern/context contracts; optionally compile/link without running them."""
+"""Check documented outlines separately from executable infrastructure; compile and run isolated tests."""
 import argparse
 import json
 import os
@@ -9,98 +9,113 @@ import re
 import subprocess
 
 
+def without_comments(source):
+    return re.sub(r'/\*.*?\*/|//[^\n]*', '', source, flags=re.S)
+
+
 def verify(root):
     module = root / 'rts/SystemNext'
     manifest = json.loads((module / 'skeleton-manifest.json').read_text())
-    files = {}
-    for entry in manifest['functions']:
-        files.setdefault(entry['file'], []).append(entry)
+    assert manifest['version'] == 2
     actual = {str(p.relative_to(module)) for p in module.rglob('*.cpp')}
-    assert actual == set(files) | set(manifest['architecture_sources']), 'Missing or unlisted runtime source'
-    for name in actual:
-        path = module / name
-        for link in re.findall(r'\[[^\]]+\]\(([^)]+)\)', path.read_text()):
-            assert (path.parent / link).is_file(), name + ': broken architecture source link ' + link
+    outlined_files = {entry['file'] for entry in manifest['outlines']}
+    assert actual == outlined_files | set(manifest['architecture_sources']), 'Missing or unclassified runtime source'
     headers = {str(p.relative_to(module)) for p in module.rglob('*.h')}
-    assert headers == {str(Path(p).with_suffix('.h')) for p in files} | set(manifest['contract_headers']), 'Unexpected runtime headers'
-    for name in manifest['contract_headers']:
-        path = module / name
-        code = re.sub(r'/\*.*?\*/|//[^\n]*', '', path.read_text(), flags=re.S)
-        assert not re.search(r'\bextern\b|\bvoid\s*\*', code), name + ': global or untyped dependency'
-        assert not re.search(r'\)\s*(?:const\s*)?\{', code), name + ': executable contract body'
-        for include in re.findall(r'#include \"([^\"]+)\"', code):
-            target = (path.parent / include).resolve()
-            assert target.is_relative_to(module.resolve()) and target.is_file(), name + ': non-contract dependency'
-    for name, entries in files.items():
-        if name == 'ApplicationLoop.cpp':
-            continue
+    assert headers == set(manifest['headers']), 'Missing or unclassified runtime header'
+
+    for name in sorted(actual | headers):
         path = module / name
         source = path.read_text()
-        clean = re.sub(r'/\*.*?\*/|//[^\n]*', '', source, flags=re.S)
-        expected = '#include "' + path.stem + '.h"\nnamespace runtime {\n'
-        mode = entries[0]['class'] in manifest['mode_capabilities']
-        if mode:
-            kind, session, display = manifest['mode_capabilities'][entries[0]['class']]
-            cls = entries[0]['class']
-            expected += cls + '::' + cls + '(): IMode(ModeKind::' + kind + ', ' + session + ', DisplayPhase::' + display + ') {}\n'
-        for e in entries:
-            if mode:
-                expected += 'void %s::%s(const %s& supplied) { [[maybe_unused]] const auto& context = std::get<%s>(supplied); }\n' % (e['class'], e['function'], e['context'], e['concrete_context'])
-            else:
-                expected += 'void %s::%s(const %s&) {}\n' % (e['class'], e['function'], e['context'])
-        expected += '}\n'
-        assert re.sub(r'\s+', '', clean) == re.sub(r'\s+', '', expected), name + ': unexpected concern implementation'
-        header = re.sub(r'/\*.*?\*/', '', path.with_suffix('.h').read_text(), flags=re.S)
-        include = '../IMode.h' if mode else Path(entries[0]['context_header']).name
-        expected_header = '#pragma once\n#include "' + include + '"\nnamespace runtime { class ' + entries[0]['class']
-        expected_header += ' final : public IMode { public:\n' if mode else ' { public:\n'
-        if mode:
-            expected_header += entries[0]['class'] + '();\n'
-        expected_header += ''.join('void %s(const %s& context)%s;\n' % (e['function'], e['context'], ' override' if mode else '') for e in entries) + '}; }'
-        assert re.sub(r'\s+', '', header) == re.sub(r'\s+', '', expected_header), name + ': unexpected concern declaration'
-        for e in entries:
-            body = source.split('void %s::%s(const %s&%s)\n{' % (e['class'], e['function'], e['context'], ' supplied' if mode else ''), 1)[1].split('\n}', 1)[0]
-            for label in ['Context contract:', 'Expected legacy sources', 'Expected responsibility:', 'Expected work, in conceptual order:', 'Expected dependencies:', 'Expected relationships:']:
-                assert label in body, name + ': missing ' + label
-            assert body.count('/*') >= 3, name + ': needs internal concern documentation'
-            assert len(body.split()) >= 150, name + ': insufficient concern detail'
-        assert 'FIXME' not in source and '#if' not in source, name + ': obsolete conflict machinery'
+        code = without_comments(source)
         for link in re.findall(r'\[[^\]]+\]\(([^)]+)\)', source):
             assert (path.parent / link).is_file(), name + ': broken source link ' + link
+        for include in re.findall(r'#include "([^"]+)"', code):
+            target = (path.parent / include).resolve()
+            assert target.is_relative_to(module.resolve()) and target.is_file(), name + ': engine dependency in isolated infrastructure'
+        assert not re.search(r'\bextern\b|\bglobalRendering\b|\bactiveController\b', code), name + ': global/legacy execution dependency'
+        assert '#if 0' not in source and 'FIXME' not in source, name + ': obsolete conflict scaffolding'
+
+    groups = {}
+    for entry in manifest['outlines']:
+        groups.setdefault(entry['file'], []).append(entry)
+    for name, entries in groups.items():
+        source = (module / name).read_text()
+        expected = '#include "' + Path(name).stem + '.h"\nnamespace runtime {\n'
+        mode = entries[0].get('mode')
+        if mode:
+            cls = entries[0]['class']
+            expected += cls + '::' + cls + '(): Mode(ModeKind::' + mode + ') {}\n'
+        for entry in entries:
+            signature = entry['signature']
+            start = source.index(signature + '\n{') + len(signature) + 2
+            end = source.index('\n}', start)
+            body = source[start:end]
+            expected += signature + '{' + ('return {};' if mode else '') + '}\n'
+            labels = ['Expected responsibility and why:', 'Expected legacy sources',
+                      'Expected work, in conceptual order:', 'Scheduling and lifetime:']
+            labels += ['Snapshot contract:', 'Expected outputs and authority:'] if mode else ['Context contract:']
+            for label in labels:
+                assert label in body, name + ': missing stage explanation ' + label
+            assert body.count('/*') >= 3 and len(body.split()) >= 140, name + ': insufficient stage documentation'
+            if mode:
+                assert 'return {};' in body and 'Implementation status:' in body
+                contract = (module / 'Modes' / mode / (mode + 'Snapshots.h')).read_text()
+                reads = re.search(r'using ' + entry['function'] + r'Reads = SnapshotReads<(.*?)\n\t>;', contract, re.S)
+                assert reads, name + ': missing consumption declaration'
+                for required, stage, slot in re.findall(r'(Required|Optional)<Stage::(\w+), Slot::(\w+)>', reads.group(1)):
+                    assert stage + '.' + slot in body, name + ': read missing from explanation'
+        expected += '}\n'
+        assert re.sub(r'\s+', '', without_comments(source)) == re.sub(r'\s+', '', expected), name + ': hidden/duplicate behavior in outline'
+
     for name in ['rts/CMakeLists.txt', 'test/CMakeLists.txt', 'test/headercheck/CMakeLists.txt']:
         assert 'SystemNext' not in (root / name).read_text(), name + ': production skeleton registration'
     assert json.loads((module / 'hook-manifest.json').read_text())['hooks'] == []
-    markers = []
     for folder in ['rts', 'test']:
         for path in (root / folder).rglob('*'):
-            if path.suffix in {'.cpp', '.h', '.hpp', '.cmake', '.txt'} and 'SystemNext' not in path.parts and 'RenderingNext' not in path.parts:
-                if 'VKFUN-HOOK(' in path.read_text(errors='replace'):
-                    markers.append(str(path.relative_to(root)))
-    assert not markers, 'Remaining hook markers: ' + str(markers)
-    return sorted(actual), len(manifest['functions'])
+            if path.suffix in {'.cpp', '.h', '.hpp', '.cmake', '.txt'} and not {'SystemNext', 'RenderingNext'} & set(path.parts):
+                assert 'VKFUN-HOOK(' not in path.read_text(errors='replace'), 'Remaining hook marker: ' + str(path)
+    return sorted(actual), manifest
 
 
 def compile_sources(root, files, output):
     module = root / 'rts/SystemNext'
+    tests = root / 'test/engine/SystemNext'
     compiler = os.environ.get('CXX', 'g++')
+    failures = [
+        'UNDECLARED_SOURCE', 'UNDECLARED_DEPTH', 'CURRENT_DISPLAY', 'MUTABLE_SNAPSHOT',
+        'INPUT_TRANSITION', 'FORWARD_CURRENT', 'REQUIRED_VISUAL', 'DUPLICATE_READ',
+        'MISSING_PAYLOAD', 'UNKNOWN_SOURCE', 'CURRENT_CYCLE',
+    ]
     for variant in ['legacy', 'headless']:
         directory = output / variant
         directory.mkdir(parents=True, exist_ok=True)
         flags = ['-std=c++23', '-Wall', '-Wextra', '-Werror', '-fPIC']
         if variant == 'headless':
             flags.append('-DHEADLESS')
-        objects = []
-        for header in module.rglob('*.h'):
+        print('Checking isolated headers and contracts: ' + variant, flush=True)
+        for header in sorted(module.rglob('*.h')):
             subprocess.run([compiler, *flags, '-x', 'c++', '-fsyntax-only', '-include', str(header), '/dev/null'], check=True)
-        subprocess.run([compiler, *flags, '-I', str(module), '-fsyntax-only', str(root / 'test/engine/SystemNext/testContextContracts.cpp')], check=True)
+        subprocess.run([compiler, *flags, '-I', str(module), '-fsyntax-only', str(tests / 'testContextContracts.cpp')], check=True)
+        # A positive control must compile before negative diagnostics can count.
+        command = [compiler, *flags, '-I', str(module), '-fsyntax-only', str(tests / 'compileFailSnapshots.cpp')]
+        subprocess.run(command, check=True)
+        for case in failures:
+            result = subprocess.run(command + ['-D' + case], capture_output=True, text=True)
+            (directory / (case + '.log')).write_text(result.stderr)
+            assert result.returncode != 0 and 'error:' in result.stderr, 'Invalid contract compiled: ' + case
+        print('PASS 11 compile-failure contracts: ' + variant, flush=True)
+
+        objects = []
         for index, name in enumerate(files):
-            source = module / name
             obj = directory / ('concern-%d.o' % index)
-            subprocess.run([compiler, *flags, '-c', str(source), '-o', str(obj)], check=True)
+            subprocess.run([compiler, *flags, '-c', str(module / name), '-o', str(obj)], check=True)
             objects.append(str(obj))
-        subprocess.run([compiler, *flags, '-I', str(module), str(root / 'test/engine/SystemNext/testLoopArchitecture.cpp'), *objects, '-o', str(directory / 'testLoopArchitecture')], check=True)
-        subprocess.run([str(directory / 'testLoopArchitecture')], check=True)
-        subprocess.run([compiler, '-shared', '-Wl,--no-undefined', *objects, '-o', str(directory / 'skeletons.so')], check=True)
+        for test in ['testSnapshotManager', 'testLoopArchitecture']:
+            executable = directory / test
+            subprocess.run([compiler, *flags, '-I', str(module), str(tests / (test + '.cpp')), *objects, '-o', str(executable)], check=True)
+            subprocess.run([str(executable)], check=True)
+        subprocess.run([compiler, '-shared', '-Wl,--no-undefined', *objects, '-o', str(directory / 'systemnext-contracts.so')], check=True)
+        print('PASS standalone compilation, linkage and runtime tests: ' + variant, flush=True)
 
 
 if __name__ == '__main__':
@@ -108,7 +123,8 @@ if __name__ == '__main__':
     parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[3])
     parser.add_argument('--compile-dir', type=Path)
     args = parser.parse_args()
-    files, count = verify(args.root)
+    files, manifest = verify(args.root)
     if args.compile_dir:
         compile_sources(args.root, files, args.compile_dir)
-    print('PASS: %d concern contracts, %d translation units; context contracts, outlines, links and isolation verified%s' % (count, len(files), '; compiled/linked legacy and headless independently' if args.compile_dir else ''))
+    print('PASS: %d documented concerns, %d translation units; source boundaries and documentation verified%s' % (
+        len(manifest['outlines']), len(files), '; isolated legacy/headless checks passed' if args.compile_dir else ''))

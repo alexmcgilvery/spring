@@ -2,20 +2,24 @@
 
 #pragma once
 
-#include "../IMode.h"
+#include "GameSnapshots.h"
+#include "../Mode.h"
 
 namespace runtime {
-/*
- * Gameplay concern outline. Simulation execution, publication and observation are owned
- * beneath this mode. Input/session/display/render are conceptual blocks; their relationship
- * to current callback timing is documentation, not an implemented separation.
+
+/**
+ * Game behavior outline with executable typed dispatch.
+ * Input, Session, Display and Render are independently declared concerns.
+ * Bodies return no publication until their documented behavior is implemented.
  */
-class GameMode final : public IMode {
+class GameMode final : public Mode<GameMode, GameContracts> {
 public:
 	GameMode();
-	void Input(const ModeInputContext& context) override;
-	void Session(const ModeSessionContext& context) override;
-	void Display(const ModeDisplayContext& context) override;
-	void Render(const ModeRenderContext& context) override;
+
+	InputPublication Input(const InputSnapshots& snapshots);
+	SessionPublication Session(const SessionSnapshots& snapshots);
+	DisplayPublication Display(const DisplaySnapshots& snapshots);
+	RenderPublication Render(const RenderSnapshots& snapshots);
 };
-}
+
+} // namespace runtime

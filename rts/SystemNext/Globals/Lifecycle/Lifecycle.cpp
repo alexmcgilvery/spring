@@ -3,36 +3,36 @@
 #include "Lifecycle.h"
 
 namespace runtime {
+
 void Lifecycle::Initialize(const InitializationContext&)
 {
 	/*
+	 * Expected responsibility and why:
+	 * Establish application resources and initial activation before ordinary concerns can run.
+	 *
 	 * Expected legacy sources (investigation starting points):
 	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::Run(), Update(),
 	 * MainEventHandler(), Init(), Reload(), Kill()
 	 *
 	 * Context contract:
-	 * [LifecycleContext.h](LifecycleContext.h) — InitializationContext explicitly lists the
-	 * expected dependencies. Mutable references are permitted outputs/live work;
-	 * const references are borrowed views, not frozen or deeply immutable state.
-	 * The caller resolves valid dependencies for this activation and invocation;
-	 * a retiring transition ends their use. No global lookup or private access is
-	 * supplied by this parameter. Owning publication leases are separately named.
-	 *
-	 * Expected responsibility:
-	 * Establish application resources required before any mode concern can execute.
+	 * Explicit private ownership dependencies; these contexts are internal skeleton interfaces, not
+	 * the removed common mode contexts. Application configuration and resource ownership are explicit
+	 * lifecycle dependencies. Startup handoff data is owned. These internal dependencies are not a
+	 * global mode context.
 	 *
 	 * Expected work, in conceptual order:
-	 * Initialize platform/configuration, filesystem, window/graphics, input and common client
-	 * resources; interpret startup intent; describe initial mode selection.
+	 * Initialize required platform/input services; create optional visual resources only for
+	 * configured output; construct the initial mode and register its contracts before activation.
 	 *
-	 * Expected dependencies:
-	 * Command-line/configuration input, write/content directories, platform services and
-	 * startup failure information.
+	 * Expected dependencies and relationships:
+	 * Initial activation does not require a Session request. OS termination and startup failure work
+	 * without a mode. Partial initialization must reach cleanup; constructing a replacement does not
+	 * by itself publish successful activation.
 	 *
-	 * Expected relationships:
-	 * Initialization surrounds the eventual active SystemNext loop. Constructing a legacy
-	 * controller does not automatically construct an adapter; initial selection and ownership
-	 * remain implementation work.
+	 * Scheduling and lifetime:
+	 * The application owns logical/visual admission and lifecycle commitment. Source links guide later
+	 * investigation; they do not define the target architecture. This concern remains an
+	 * implementation outline, while the generic manager and dispatcher are executable.
 	 */
 
 	/*
@@ -52,33 +52,33 @@ void Lifecycle::Initialize(const InitializationContext&)
 void Lifecycle::Reload(const ReloadContext&)
 {
 	/*
+	 * Expected responsibility and why:
+	 * Retire application/session dependencies and establish a replacement without reusing old
+	 * activation identity.
+	 *
 	 * Expected legacy sources (investigation starting points):
 	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::Run(), Update(),
 	 * MainEventHandler(), Init(), Reload(), Kill()
 	 *
 	 * Context contract:
-	 * [LifecycleContext.h](LifecycleContext.h) — ReloadContext explicitly lists the
-	 * expected dependencies. Mutable references are permitted outputs/live work;
-	 * const references are borrowed views, not frozen or deeply immutable state.
-	 * The caller resolves valid dependencies for this activation and invocation;
-	 * a retiring transition ends their use. No global lookup or private access is
-	 * supplied by this parameter. Owning publication leases are separately named.
-	 *
-	 * Expected responsibility:
-	 * Retire the current application session dependencies and establish the requested
-	 * replacement.
+	 * Explicit private ownership dependencies; these contexts are internal skeleton interfaces, not
+	 * the removed common mode contexts. Session may request reload through a committed publication;
+	 * application-originated reload remains lifecycle work. Handoff owns needed startup data while
+	 * lifecycle owns resource transfer.
 	 *
 	 * Expected work, in conceptual order:
-	 * Preserve needed reload intent; complete relevant save work; retire dependent resources;
-	 * restore common resources and select the next mode.
+	 * Prepare needed reload inputs; stop new old-activation admission; account for outstanding work;
+	 * establish replacement resources and a fresh activation; begin its next logical iteration.
 	 *
-	 * Expected dependencies:
-	 * Reload request, game/setup ownership, workers, Lua/graphics resources, save state and
-	 * observation lifetime.
+	 * Expected dependencies and relationships:
+	 * Application-wide continuity is separate from mode history. A new mode has no Previous or Older
+	 * snapshots by default. Issued leases remain readable. Failed construction must not be reported as
+	 * a successful switch.
 	 *
-	 * Expected relationships:
-	 * Reload replaces ordinary iteration work rather than becoming an extra mode update.
-	 * Mode-local cleanup contributes to application-wide ordering.
+	 * Scheduling and lifetime:
+	 * The application owns logical/visual admission and lifecycle commitment. Source links guide later
+	 * investigation; they do not define the target architecture. This concern remains an
+	 * implementation outline, while the generic manager and dispatcher are executable.
 	 */
 
 	/*
@@ -89,7 +89,7 @@ void Lifecycle::Reload(const ReloadContext&)
 
 	/*
 	 * Replacement resources:
-	 * Expect common resources and next-mode state to be established in source-defined order.
+	 * Expect common resources and next-mode state to be established under explicit lifecycle ownership.
 	 * Failed reload must not be described as successful activation of the requested mode.
 	 */
 }
@@ -97,32 +97,32 @@ void Lifecycle::Reload(const ReloadContext&)
 void Lifecycle::Shutdown(const ShutdownContext&)
 {
 	/*
+	 * Expected responsibility and why:
+	 * End publication acceptance before retiring the resources on which active work depends.
+	 *
 	 * Expected legacy sources (investigation starting points):
 	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::Run(), Update(),
 	 * MainEventHandler(), Init(), Reload(), Kill()
 	 *
 	 * Context contract:
-	 * [LifecycleContext.h](LifecycleContext.h) — ShutdownContext explicitly lists the
-	 * expected dependencies. Mutable references are permitted outputs/live work;
-	 * const references are borrowed views, not frozen or deeply immutable state.
-	 * The caller resolves valid dependencies for this activation and invocation;
-	 * a retiring transition ends their use. No global lookup or private access is
-	 * supplied by this parameter. Owning publication leases are separately named.
-	 *
-	 * Expected responsibility:
-	 * Describe application-wide termination and resource retirement.
+	 * Explicit private ownership dependencies; these contexts are internal skeleton interfaces, not
+	 * the removed common mode contexts. Lifecycle owns initialization state and application resources.
+	 * No mode receives unrestricted shutdown authority; normal user exit is decided by Session, while
+	 * OS/fatal termination remains application-owned.
 	 *
 	 * Expected work, in conceptual order:
-	 * Respond to quit/error state; stop or join work; retire session and graphics
-	 * dependencies; finish diagnostics and platform cleanup.
+	 * Mark exit monotonically; reject further admissions/commits; account for workers and retained
+	 * backend outputs; retire active bindings; finish reporting and platform cleanup.
 	 *
-	 * Expected dependencies:
-	 * Current initialization stage, active threads/modes, Lua, network, audio, graphics and
-	 * failure state.
+	 * Expected dependencies and relationships:
+	 * Cleanup follows failed startup, stage exceptions and normal termination. Existing owning
+	 * snapshots survive manager retirement. Backend completion and resource destruction need explicit
+	 * production ownership; this outline implements no cleanup adapter.
 	 *
-	 * Expected relationships:
-	 * Shutdown surrounds the loop and may follow incomplete startup. No mode-specific Render
-	 * or Present should be assumed available once its dependencies are retired.
+	 * Scheduling and lifetime:
+	 * The application owns logical/visual admission and lifecycle commitment. Source links guide later
+	 * investigation; they do not define the target architecture. This concern remains an
+	 * implementation outline, while the generic manager and dispatcher are executable.
 	 */
 
 	/*

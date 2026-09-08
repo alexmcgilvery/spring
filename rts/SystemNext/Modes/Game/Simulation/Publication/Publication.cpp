@@ -3,9 +3,13 @@
 #include "Publication.h"
 
 namespace runtime {
+
 void Publication::Publish(const PublicationContext&)
 {
 	/*
+	 * Expected responsibility and why:
+	 * Extract owning completed-state data so visual consumers can progress without live-world borrows.
+	 *
 	 * Expected legacy sources (investigation starting points):
 	 * [Game.cpp](../../../../../Game/Game.cpp) — CGame::Update(), SimFrame()
 	 * [NetCommands.cpp](../../../../../Net/NetCommands.cpp) — CGame::ClientReadNet()
@@ -16,29 +20,24 @@ void Publication::Publish(const PublicationContext&)
 	 * CProjectileHandler::Update()
 	 *
 	 * Context contract:
-	 * [PublicationContext.h](PublicationContext.h) — PublicationContext explicitly lists the
-	 * expected dependencies. Mutable references are permitted outputs/live work;
-	 * const references are borrowed views, not frozen or deeply immutable state.
-	 * The caller resolves valid dependencies for this activation and invocation;
-	 * a retiring transition ends their use. No global lookup or private access is
-	 * supplied by this parameter. Owning publication leases are separately named.
-	 *
-	 * Expected responsibility:
-	 * Describe an owning observation of completed authoritative state for future consumers.
+	 * Explicit private ownership dependencies; these contexts are internal skeleton interfaces, not
+	 * the removed common mode contexts. Inputs are completed authoritative state and ordered
+	 * observations under Game-local ownership. The extraction result is owned; the application
+	 * snapshot manager commits its identity and retains it.
 	 *
 	 * Expected work, in conceptual order:
-	 * Identify bootstrap or completed-frame state; collect the intended covered values;
-	 * associate event and catalog context; make observation available under explicit lifetime
-	 * expectations.
+	 * Handle bootstrap, completed ticks and changed state without a new tick; copy covered fields
+	 * without triggering lazy writes; retain immutable catalog/observation ownership.
 	 *
-	 * Expected dependencies:
-	 * Units, features, synced projectiles, pose/hierarchy, knowledge, catalog identifiers,
-	 * frame/checksum identity and ordered observations.
+	 * Expected dependencies and relationships:
+	 * The manager keeps each tick/revision distinct and freezes visual associations. Extraction does
+	 * not drive simulation. The payload schema and extraction remain outlines, so no complete-world
+	 * coverage is claimed.
 	 *
-	 * Expected relationships:
-	 * Simulation remains authoritative and legacy stores remain reference sources. Camera,
-	 * culling, material selection, UI geometry and GPU preparation belong after publication,
-	 * not in this producer.
+	 * Scheduling and lifetime:
+	 * The application owns logical/visual admission and lifecycle commitment. Source links guide later
+	 * investigation; they do not define the target architecture. This concern remains an
+	 * implementation outline, while the generic manager and dispatcher are executable.
 	 */
 
 	/*
@@ -59,7 +58,8 @@ void Publication::Publish(const PublicationContext&)
 	 * Lifetime and bounded retention:
 	 * Expect consumers to retain valid owned data across producer progress and teardown.
 	 * Memory limits, skipped state and broken observation continuity must eventually be
-	 * explicit; this pass implements no pool, lease or overflow policy.
+	 * explicit. The generic manager implements owning leases and declared history;
+	 * this extraction outline implements no producer or production overflow policy.
 	 */
 }
 

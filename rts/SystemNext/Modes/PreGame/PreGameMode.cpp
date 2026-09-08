@@ -3,166 +3,161 @@
 #include "PreGameMode.h"
 
 namespace runtime {
-PreGameMode::PreGameMode(): IMode(ModeKind::PreGame, true, DisplayPhase::Absent) {}
 
-void PreGameMode::Input(const ModeInputContext& supplied)
+PreGameMode::PreGameMode()
+	: Mode(ModeKind::PreGame)
+{
+}
+
+PreGameMode::InputPublication PreGameMode::Input(const InputSnapshots&)
 {
 	/*
+	 * Expected responsibility and why:
+	 * Interpret pregame cancellation and interaction while keeping the connection lifecycle in Session.
+	 *
 	 * Expected legacy sources (investigation starting points):
-	 * [PreGame.cpp](../../../Game/PreGame.cpp) — CPreGame::Update(), UpdateClientNet(),
-	 * AsyncExecute(), KeyPressed(), Draw()
-	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::Run(), Update(),
-	 * MainEventHandler(), Init(), Reload(), Kill()
+	 * [PreGame.cpp](../../../Game/PreGame.cpp) — CPreGame::Update(), Draw(), KeyPressed()
+	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::Init(), Reload()
 	 *
-	 * Context contract:
-	 * [PreGameContext.h](PreGameContext.h) — PreGameInputContext explicitly lists the
-	 * expected dependencies. Mutable references are permitted outputs/live work;
-	 * const references are borrowed views, not frozen or deeply immutable state.
-	 * The caller resolves valid dependencies for this activation and invocation;
-	 * a retiring transition ends their use. No global lookup or private access is
-	 * supplied by this parameter. Owning publication leases are separately named.
+	 * Snapshot contract:
+	 * [PreGameSnapshots.h](PreGameSnapshots.h) — PreGameContracts::InputReads.
+	 * Application.Current (required); Activation.Current (required); Session.Previous (optional).
+	 * Application.Current supplies the collected event batch. Activation.Current supplies owned
+	 * startup context. Session.Previous supplies prior logical interpretation state; its absence is
+	 * normal on entry.
+	 * Inputs are immutable owning selections. Retained views keep their values alive;
+	 * publications carry activation and invocation identity rather than live globals.
 	 *
-	 * Expected responsibility:
-	 * Handle connection cancellation and pregame interaction while startup is in progress.
+	 * Expected outputs and authority:
+	 * Session decides logical consequences and normal transitions. This concern grants no simulation,
+	 * resource-retirement or activation authority.
 	 *
 	 * Expected work, in conceptual order:
-	 * Receive filtered input; interpret cancellation; describe feedback and the requested
-	 * return to menu or exit.
+	 * Route filtered input; distinguish cancellation from ordinary interaction; publish an action
+	 * describing the desired cancellation or exit.
 	 *
-	 * Expected dependencies:
-	 * Connection state, pending setup work, active menu availability, input events and
-	 * ownership of objects being retired.
-	 *
-	 * Expected relationships:
-	 * Cancellation can affect session work before the next ordinary iteration. Its effects on
-	 * setup workers and later rendering require annotation, not an assumed cancellation
-	 * policy.
-	 */
-
-	// Bind only this mode's declared dependency bundle; behavior remains an outline.
-	[[maybe_unused]] const auto& context = std::get<PreGameInputContext>(supplied);
-
-	/*
-	 * Cancellation route:
-	 * Expect key handling and menu activation messages to preserve existing semantics.
-	 * Distinguish a request to cancel from completion of backing-object retirement.
+	 * Scheduling and lifetime:
+	 * Logical work runs without a visual subsystem.
+	 * Missing required inputs prevent invocation; optional history is absent at bootstrap.
+	 * Retired activations reject new work and publications while issued views stay readable.
 	 */
 
 	/*
-	 * Pending startup work:
-	 * Expect cancellation while asynchronous setup is running. Identify which callbacks, tasks
-	 * and resources still refer to the pregame state before implementation chooses a lifetime
-	 * model.
+	 * Dependencies and unresolved adaptation:
+	 * Cancellation intent does not prove workers are stopped or resources are retired. Input produces
+	 * no replacement binding and owns no connection teardown.
+	 * The linked code is an investigation source, not an implemented adapter or a
+	 * requirement to shape the architecture around its existing function boundaries.
 	 */
 
+	/*
+	 * Implementation status:
+	 * This concern is an outline. Its payload schema, backing operations and input/
+	 * output connections remain unimplemented. Returning no publication reports that
+	 * absence explicitly; it is not evidence of completed input behavior.
+	 */
+	return {};
 }
 
-void PreGameMode::Session(const ModeSessionContext& supplied)
+PreGameMode::SessionPublication PreGameMode::Session(const SessionSnapshots&)
 {
 	/*
+	 * Expected responsibility and why:
+	 * Establish a session and decide when Loading can begin, independently of connection-screen availability.
+	 *
 	 * Expected legacy sources (investigation starting points):
-	 * [PreGame.cpp](../../../Game/PreGame.cpp) — CPreGame::Update(), UpdateClientNet(),
-	 * AsyncExecute(), KeyPressed(), Draw()
+	 * [PreGame.cpp](../../../Game/PreGame.cpp) — CPreGame::Update(), Draw(), KeyPressed()
+	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::Init(), Reload()
 	 *
-	 * Context contract:
-	 * [PreGameContext.h](PreGameContext.h) — PreGameSessionContext explicitly lists the
-	 * expected dependencies. Mutable references are permitted outputs/live work;
-	 * const references are borrowed views, not frozen or deeply immutable state.
-	 * The caller resolves valid dependencies for this activation and invocation;
-	 * a retiring transition ends their use. No global lookup or private access is
-	 * supplied by this parameter. Owning publication leases are separately named.
+	 * Snapshot contract:
+	 * [PreGameSnapshots.h](PreGameSnapshots.h) — PreGameContracts::SessionReads.
+	 * Input.Current (required); Activation.Current (required).
+	 * Input.Current supplies this iteration's interpreted actions. Activation.Current supplies startup
+	 * handoff data. Any declared Display.Previous is optional observational feedback; historical reads
+	 * cannot replay or acknowledge actions.
+	 * Inputs are immutable owning selections. Retained views keep their values alive;
+	 * publications carry activation and invocation identity rather than live globals.
 	 *
-	 * Expected responsibility:
-	 * Establish a playable session from hosting, joining, replay or save input, then describe
-	 * the handoff to Loading.
+	 * Expected outputs and authority:
+	 * Only this concern may return a normal lifecycle request, attached to an owned Session
+	 * publication. Lifecycle commits it after return; a replacement starts a fresh logical iteration
+	 * with empty mode-local history.
 	 *
 	 * Expected work, in conceptual order:
-	 * Initialize setup work; service ready task results and connection traffic; process setup
-	 * packets in accepted order; verify content/setup data; prepare loading ownership and
-	 * transition.
+	 * Consume cancellation; service setup jobs and connection traffic; validate host/join/demo/save
+	 * content; observe failures; prepare Loading handoff or a return-to-menu decision.
 	 *
-	 * Expected dependencies:
-	 * Client setup, game data, archives, transport, asynchronous task state, save handler and
-	 * synced/FPU execution context.
-	 *
-	 * Expected relationships:
-	 * This mode establishes the session rather than advancing gameplay ticks. Loading may run
-	 * synchronously during the transition, so handoff and pregame retirement cannot be assumed
-	 * to occur between ordinary iterations.
-	 */
-
-	// Bind only this mode's declared dependency bundle; behavior remains an outline.
-	[[maybe_unused]] const auto& context = std::get<PreGameSessionContext>(supplied);
-
-	/*
-	 * Startup sources:
-	 * Expect separate paths for setup scripts, demos and saves, including archive mounting,
-	 * server creation, game-data preparation and incompatible content handling.
+	 * Scheduling and lifetime:
+	 * Logical work runs without a visual subsystem.
+	 * Missing required inputs prevent invocation; optional history is absent at bootstrap.
+	 * Retired activations reject new work and publications while issued views stay readable.
 	 */
 
 	/*
-	 * Connection service:
-	 * Expect polling of pending work, timeout/reconnect or rejection handling, and ordered
-	 * game-data/player-assignment processing. Document expected traffic/checksum bookkeeping
-	 * without selecting new packet or task APIs.
+	 * Dependencies and unresolved adaptation:
+	 * Connection processing, accepted packet order and synced/FPU scopes require annotation. Slow work
+	 * and cancellation must permit application lifecycle service; synchronous loading during a
+	 * callback does not define the desired architecture.
+	 * The linked code is an investigation source, not an implemented adapter or a
+	 * requirement to shape the architecture around its existing function boundaries.
 	 */
 
 	/*
-	 * Completion and ownership:
-	 * Expect the save handler, selected content and connection state to reach Loading once
-	 * setup is ready. Identify cancellation, failed setup, self-retirement and worker
-	 * completion paths during annotation; do not resolve their sequencing here.
+	 * Implementation status:
+	 * This concern is an outline. Its payload schema, backing operations and input/
+	 * output connections remain unimplemented. Returning no publication reports that
+	 * absence explicitly; it is not evidence of completed session behavior.
 	 */
-
+	return {};
 }
 
-void PreGameMode::Render(const ModeRenderContext& supplied)
+PreGameMode::RenderPublication PreGameMode::Render(const RenderSnapshots&)
 {
 	/*
+	 * Expected responsibility and why:
+	 * Describe connection and setup status directly from Session publication; independent Display work is absent.
+	 *
 	 * Expected legacy sources (investigation starting points):
-	 * [PreGame.cpp](../../../Game/PreGame.cpp) — CPreGame::Update(), UpdateClientNet(),
-	 * AsyncExecute(), KeyPressed(), Draw()
+	 * [PreGame.cpp](../../../Game/PreGame.cpp) — CPreGame::Update(), Draw(), KeyPressed()
+	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::Init(), Reload()
 	 *
-	 * Context contract:
-	 * [PreGameContext.h](PreGameContext.h) — PreGameRenderContext explicitly lists the
-	 * expected dependencies. Mutable references are permitted outputs/live work;
-	 * const references are borrowed views, not frozen or deeply immutable state.
-	 * The caller resolves valid dependencies for this activation and invocation;
-	 * a retiring transition ends their use. No global lookup or private access is
-	 * supplied by this parameter. Owning publication leases are separately named.
+	 * Snapshot contract:
+	 * [PreGameSnapshots.h](PreGameSnapshots.h) — PreGameContracts::RenderReads.
+	 * Application.Current (required); Session.Current (required).
+	 * Session.Current supplies owned frame content. Application.Current supplies associated target
+	 * facts. No fallback may relabel another invocation's data as Current.
+	 * Inputs are immutable owning selections. Retained views keep their values alive;
+	 * publications carry activation and invocation identity rather than live globals.
 	 *
-	 * Expected responsibility:
-	 * Display connection/setup status before loading can begin.
+	 * Expected outputs and authority:
+	 * The application executes commands, publishes an owning rendered output and optionally presents
+	 * that exact output. Rendering has no internal Present and no normal transition authority.
 	 *
 	 * Expected work, in conceptual order:
-	 * Read the status needed by the connection screen; select its messages; draw the screen
-	 * using the current window and font state.
+	 * Read owned connection progress; select waiting, connecting and setup messages; describe an
+	 * eligible connection-screen command product.
 	 *
-	 * Expected dependencies:
-	 * Connection/setup progress, hosting/joining state, geometry, fonts and graphics context.
-	 *
-	 * Expected relationships:
-	 * No independent display function is expected yet. Status reads currently reside with
-	 * rendering; a later independently scheduled renderer would need an appropriate
-	 * representation of them.
-	 */
-
-	// Bind only this mode's declared dependency bundle; behavior remains an outline.
-	[[maybe_unused]] const auto& context = std::get<PreGameRenderContext>(supplied);
-
-	/*
-	 * Connection messages:
-	 * Expect waiting-for-server, connecting and setup progress distinctions. Use the source to
-	 * establish when a change becomes visible.
+	 * Scheduling and lifetime:
+	 * Headless never invokes this concern. The application selects eligible visual stages.
+	 * Missing required inputs prevent invocation; optional history is absent at bootstrap.
+	 * Retired activations reject new work and publications while issued views stay readable.
 	 */
 
 	/*
-	 * Lifetime and visibility:
-	 * Expect cancellation and session completion to retire the screen. The intended render
-	 * block must correspond to the mode selected after session work, not a stale pregame
-	 * object.
+	 * Dependencies and unresolved adaptation:
+	 * Target dimensions and published setup status are sufficient contracts for this outline.
+	 * Rendering has no authority to complete startup or retire PreGame.
+	 * The linked code is an investigation source, not an implemented adapter or a
+	 * requirement to shape the architecture around its existing function boundaries.
 	 */
 
+	/*
+	 * Implementation status:
+	 * This concern is an outline. Its payload schema, backing operations and input/
+	 * output connections remain unimplemented. Returning no publication reports that
+	 * absence explicitly; it is not evidence of completed render behavior.
+	 */
+	return {};
 }
 
-}
+} // namespace runtime

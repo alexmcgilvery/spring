@@ -3,218 +3,217 @@
 #include "LoadingMode.h"
 
 namespace runtime {
-LoadingMode::LoadingMode(): IMode(ModeKind::Loading, true, DisplayPhase::WithGraphics) {}
 
-void LoadingMode::Input(const ModeInputContext& supplied)
+LoadingMode::LoadingMode()
+	: Mode(ModeKind::Loading)
+{
+}
+
+LoadingMode::InputPublication LoadingMode::Input(const InputSnapshots&)
 {
 	/*
+	 * Expected responsibility and why:
+	 * Interpret permitted loading interaction while the application remains responsive.
+	 *
 	 * Expected legacy sources (investigation starting points):
-	 * [LoadScreen.cpp](../../../Game/LoadScreen.cpp) — CLoadScreen::Init(), Update(), Draw(),
-	 * SetLoadMessage(), Kill()
-	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::Run(), Update(),
-	 * MainEventHandler(), Init(), Reload(), Kill()
+	 * [LoadScreen.cpp](../../../Game/LoadScreen.cpp) — CLoadScreen::Init(), Update(), Draw(), SetLoadMessage(), Kill()
+	 * [GameLoadThread.cpp](../../../System/GameLoadThread.cpp) — CGameLoadThread::WrapFunc(), join()
+	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::MainEventHandler()
 	 *
-	 * Context contract:
-	 * [LoadingContext.h](LoadingContext.h) — LoadingInputContext explicitly lists the
-	 * expected dependencies. Mutable references are permitted outputs/live work;
-	 * const references are borrowed views, not frozen or deeply immutable state.
-	 * The caller resolves valid dependencies for this activation and invocation;
-	 * a retiring transition ends their use. No global lookup or private access is
-	 * supplied by this parameter. Owning publication leases are separately named.
+	 * Snapshot contract:
+	 * [LoadingSnapshots.h](LoadingSnapshots.h) — LoadingContracts::InputReads.
+	 * Application.Current (required); Activation.Current (required); Session.Previous (optional).
+	 * Application.Current supplies the collected event batch. Activation.Current supplies owned
+	 * startup context. Session.Previous supplies prior logical interpretation state; its absence is
+	 * normal on entry.
+	 * Inputs are immutable owning selections. Retained views keep their values alive;
+	 * publications carry activation and invocation identity rather than live globals.
 	 *
-	 * Expected responsibility:
-	 * Keep loading responsive and describe permitted loading-screen input.
+	 * Expected outputs and authority:
+	 * Session decides logical consequences and normal transitions. This concern grants no simulation,
+	 * resource-retirement or activation authority.
 	 *
 	 * Expected work, in conceptual order:
-	 * Collect or route loading input; handle resize and key callbacks; describe cancellation
-	 * or exit requests during synchronous and asynchronous loading.
+	 * Route already-collected input; publish cancellation/exit intent; describe focus and resize
+	 * interaction without pumping events a second time.
 	 *
-	 * Expected dependencies:
-	 * Window events, intro/menu handlers, loading status, thread role and availability of the
-	 * application event pump.
-	 *
-	 * Expected relationships:
-	 * Single-threaded loading can occupy the main stack before an ordinary iteration resumes.
-	 * Input responsiveness therefore cannot be described only as one call at the outer-loop
-	 * boundary.
-	 */
-
-	// Bind only this mode's declared dependency bundle; behavior remains an outline.
-	[[maybe_unused]] const auto& context = std::get<LoadingInputContext>(supplied);
-
-	/*
-	 * Ordinary responsiveness:
-	 * Expect the existing key, resize and intro interaction routes, preserving platform event
-	 * consumption.
+	 * Scheduling and lifetime:
+	 * Logical work runs without a visual subsystem.
+	 * Missing required inputs prevent invocation; optional history is absent at bootstrap.
+	 * Retired activations reject new work and publications while issued views stay readable.
 	 */
 
 	/*
-	 * Progress-driven responsiveness:
-	 * Expect progress notifications to offer an opportunity for event handling during
-	 * synchronous loading. Identify existing direct event/update/draw effects before assigning
-	 * their exact execution site.
+	 * Dependencies and unresolved adaptation:
+	 * Single-threaded loading can monopolize a call stack. Cooperative event-service opportunities
+	 * require later adaptation; a progress callback must not re-enter the full loop.
+	 * The linked code is an investigation source, not an implemented adapter or a
+	 * requirement to shape the architecture around its existing function boundaries.
 	 */
 
+	/*
+	 * Implementation status:
+	 * This concern is an outline. Its payload schema, backing operations and input/
+	 * output connections remain unimplemented. Returning no publication reports that
+	 * absence explicitly; it is not evidence of completed input behavior.
+	 */
+	return {};
 }
 
-void LoadingMode::Session(const ModeSessionContext& supplied)
+LoadingMode::SessionPublication LoadingMode::Session(const SessionSnapshots&)
 {
 	/*
+	 * Expected responsibility and why:
+	 * Own loading progress, required keepalive work and completion decisions without depending on display cadence.
+	 *
 	 * Expected legacy sources (investigation starting points):
-	 * [LoadScreen.cpp](../../../Game/LoadScreen.cpp) — CLoadScreen::Init(), Update(), Draw(),
-	 * SetLoadMessage(), Kill()
-	 * [GameLoadThread.cpp](../../../System/GameLoadThread.cpp) — CGameLoadThread::WrapFunc(),
-	 * join()
+	 * [LoadScreen.cpp](../../../Game/LoadScreen.cpp) — CLoadScreen::Init(), Update(), Draw(), SetLoadMessage(), Kill()
+	 * [GameLoadThread.cpp](../../../System/GameLoadThread.cpp) — CGameLoadThread::WrapFunc(), join()
+	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::MainEventHandler()
 	 *
-	 * Context contract:
-	 * [LoadingContext.h](LoadingContext.h) — LoadingSessionContext explicitly lists the
-	 * expected dependencies. Mutable references are permitted outputs/live work;
-	 * const references are borrowed views, not frozen or deeply immutable state.
-	 * The caller resolves valid dependencies for this activation and invocation;
-	 * a retiring transition ends their use. No global lookup or private access is
-	 * supplied by this parameter. Owning publication leases are separately named.
+	 * Snapshot contract:
+	 * [LoadingSnapshots.h](LoadingSnapshots.h) — LoadingContracts::SessionReads.
+	 * Input.Current (required); Activation.Current (required).
+	 * Input.Current supplies this iteration's interpreted actions. Activation.Current supplies startup
+	 * handoff data. Any declared Display.Previous is optional observational feedback; historical reads
+	 * cannot replay or acknowledge actions.
+	 * Inputs are immutable owning selections. Retained views keep their values alive;
+	 * publications carry activation and invocation identity rather than live globals.
 	 *
-	 * Expected responsibility:
-	 * Manage loading progress and describe when the game is ready to become the active mode.
+	 * Expected outputs and authority:
+	 * Only this concern may return a normal lifecycle request, attached to an owned Session
+	 * publication. Lifecycle commits it after return; a replacement starts a fresh logical iteration
+	 * with empty mode-local history.
 	 *
 	 * Expected work, in conceptual order:
-	 * Establish loading resources and thread mode; receive and deliver progress notifications;
-	 * observe completion/failure; describe transition to Game and retirement of loading
-	 * resources.
+	 * Consume cancellation; service loading progress and worker outcomes; maintain lobby/session
+	 * liveness; distinguish ready, failed and cancelled loading; prepare Game handoff only after
+	 * readiness.
 	 *
-	 * Expected dependencies:
-	 * Game loading status, progress queue, synchronization, loading/heartbeat threads, save
-	 * handler and FPU state.
-	 *
-	 * Expected relationships:
-	 * Ordinary completion and completion nested inside a progress callback are distinct source
-	 * paths. Session establishes readiness; it must not imply that display/render or resource
-	 * retirement has already completed.
-	 */
-
-	// Bind only this mode's declared dependency bundle; behavior remains an outline.
-	[[maybe_unused]] const auto& context = std::get<LoadingSessionContext>(supplied);
-
-	/*
-	 * Startup and worker model:
-	 * Expect single-threaded and multithreaded loading paths, intro setup, lobby keepalive
-	 * ownership and startup fallback behavior. Trace context and worker initialization in
-	 * their actual source locations.
+	 * Scheduling and lifetime:
+	 * Logical work runs without a visual subsystem.
+	 * Missing required inputs prevent invocation; optional history is absent at bootstrap.
+	 * Retired activations reject new work and publications while issued views stay readable.
 	 */
 
 	/*
-	 * Progress and failure:
-	 * Expect notification ordering, replacement messages and delivery under existing
-	 * locking/FPU handling. Nested notification delivery, cancellation and failed loading need
-	 * annotation before an execution policy is chosen.
+	 * Dependencies and unresolved adaptation:
+	 * Worker/resource ownership, queued notifications, FPU scopes and cancellation need source
+	 * annotation. Completion cannot retire resources still used by a worker or admitted invocation.
+	 * The linked code is an investigation source, not an implemented adapter or a
+	 * requirement to shape the architecture around its existing function boundaries.
 	 */
 
 	/*
-	 * Completion and cleanup:
-	 * Expect transition into Game only when loading has completed, with ownership of workers,
-	 * intro resources and save data accounted for. Do not assume deleting the loading object
-	 * is safe at every completion observation point.
+	 * Implementation status:
+	 * This concern is an outline. Its payload schema, backing operations and input/
+	 * output connections remain unimplemented. Returning no publication reports that
+	 * absence explicitly; it is not evidence of completed session behavior.
 	 */
-
+	return {};
 }
 
-void LoadingMode::Display(const ModeDisplayContext& supplied)
+LoadingMode::DisplayPublication LoadingMode::Display(const DisplaySnapshots&)
 {
 	/*
+	 * Expected responsibility and why:
+	 * Prepare loading visual state from an associated progress publication.
+	 *
 	 * Expected legacy sources (investigation starting points):
-	 * [LoadScreen.cpp](../../../Game/LoadScreen.cpp) — CLoadScreen::Init(), Update(), Draw(),
-	 * SetLoadMessage(), Kill()
+	 * [LoadScreen.cpp](../../../Game/LoadScreen.cpp) — CLoadScreen::Init(), Update(), Draw(), SetLoadMessage(), Kill()
+	 * [GameLoadThread.cpp](../../../System/GameLoadThread.cpp) — CGameLoadThread::WrapFunc(), join()
+	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::MainEventHandler()
 	 *
-	 * Context contract:
-	 * [LoadingContext.h](LoadingContext.h) — LoadingDisplayContext explicitly lists the
-	 * expected dependencies. Mutable references are permitted outputs/live work;
-	 * const references are borrowed views, not frozen or deeply immutable state.
-	 * The caller resolves valid dependencies for this activation and invocation;
-	 * a retiring transition ends their use. No global lookup or private access is
-	 * supplied by this parameter. Owning publication leases are separately named.
+	 * Snapshot contract:
+	 * [LoadingSnapshots.h](LoadingSnapshots.h) — LoadingContracts::DisplayReads.
+	 * Application.Current (required); Session.Current (required); Display.Previous (optional).
+	 * Session.Current names the selected logical publication. Application.Current provides associated
+	 * platform facts. Display.Previous supports visual continuity without mutable cross-iteration
+	 * borrows. Declared Simulation reads select completed authoritative states at their own cadence;
+	 * bootstrap may provide neither.
+	 * Inputs are immutable owning selections. Retained views keep their values alive;
+	 * publications carry activation and invocation identity rather than live globals.
 	 *
-	 * Expected responsibility:
-	 * Maintain loading presentation and its pacing before drawing the intro/loading screen.
+	 * Expected outputs and authority:
+	 * Render consumes the owned result. Any logical interaction discovered visually needs later
+	 * Session acceptance through an explicit action route; immutable history alone is not that route.
 	 *
 	 * Expected work, in conceptual order:
-	 * Account for loading-frame timing; maintain lobby/intro/menu state; determine the client
-	 * state needed by the upcoming render block.
+	 * Read published progress and target facts; update visual intro/menu state; prepare messages,
+	 * animation and timing as owned display data.
 	 *
-	 * Expected dependencies:
-	 * Progress state, real time, window/context availability, intro/menu handlers and the
-	 * ordinary or progress-driven invocation source.
-	 *
-	 * Expected relationships:
-	 * This block may need graphics synchronization. Its timing and callbacks must relate
-	 * consistently to Render and to the caller that will request presentation.
-	 */
-
-	// Bind only this mode's declared dependency bundle; behavior remains an outline.
-	[[maybe_unused]] const auto& context = std::get<LoadingDisplayContext>(supplied);
-
-	/*
-	 * Pacing and maintenance:
-	 * Expect existing sleep/timestamp behavior and keepalive activity to be located precisely
-	 * in the source. Separate their responsibility without moving their execution during this
-	 * outline pass.
+	 * Scheduling and lifetime:
+	 * Headless never invokes this concern. The application selects eligible visual stages.
+	 * Missing required inputs prevent invocation; optional history is absent at bootstrap.
+	 * Retired activations reject new work and publications while issued views stay readable.
 	 */
 
 	/*
-	 * Client callbacks:
-	 * Expect intro/menu update callbacks to affect what can be drawn. An ordinary iteration
-	 * and a nested progress entry must not silently be treated as interchangeable.
+	 * Dependencies and unresolved adaptation:
+	 * Intro callbacks may currently mix visuals and keepalive. Required liveness belongs to Session.
+	 * Pacing is requested through the application; progress publication never recursively executes
+	 * display/render/present.
+	 * The linked code is an investigation source, not an implemented adapter or a
+	 * requirement to shape the architecture around its existing function boundaries.
 	 */
 
+	/*
+	 * Implementation status:
+	 * This concern is an outline. Its payload schema, backing operations and input/
+	 * output connections remain unimplemented. Returning no publication reports that
+	 * absence explicitly; it is not evidence of completed display behavior.
+	 */
+	return {};
 }
 
-void LoadingMode::Render(const ModeRenderContext& supplied)
+LoadingMode::RenderPublication LoadingMode::Render(const RenderSnapshots&)
 {
 	/*
+	 * Expected responsibility and why:
+	 * Describe an eligible loading or intro frame without internal presentation.
+	 *
 	 * Expected legacy sources (investigation starting points):
-	 * [LoadScreen.cpp](../../../Game/LoadScreen.cpp) — CLoadScreen::Init(), Update(), Draw(),
-	 * SetLoadMessage(), Kill()
+	 * [LoadScreen.cpp](../../../Game/LoadScreen.cpp) — CLoadScreen::Init(), Update(), Draw(), SetLoadMessage(), Kill()
+	 * [GameLoadThread.cpp](../../../System/GameLoadThread.cpp) — CGameLoadThread::WrapFunc(), join()
+	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::MainEventHandler()
 	 *
-	 * Context contract:
-	 * [LoadingContext.h](LoadingContext.h) — LoadingRenderContext explicitly lists the
-	 * expected dependencies. Mutable references are permitted outputs/live work;
-	 * const references are borrowed views, not frozen or deeply immutable state.
-	 * The caller resolves valid dependencies for this activation and invocation;
-	 * a retiring transition ends their use. No global lookup or private access is
-	 * supplied by this parameter. Owning publication leases are separately named.
+	 * Snapshot contract:
+	 * [LoadingSnapshots.h](LoadingSnapshots.h) — LoadingContracts::RenderReads.
+	 * Application.Current (required); Display.Current (required).
+	 * Display.Current supplies owned frame content. Application.Current supplies associated target
+	 * facts. No fallback may relabel another invocation's data as Current.
+	 * Inputs are immutable owning selections. Retained views keep their values alive;
+	 * publications carry activation and invocation identity rather than live globals.
 	 *
-	 * Expected responsibility:
-	 * Draw the loading or intro screen for the current loading presentation state.
+	 * Expected outputs and authority:
+	 * The application executes commands, publishes an owning rendered output and optionally presents
+	 * that exact output. Rendering has no internal Present and no normal transition authority.
 	 *
 	 * Expected work, in conceptual order:
-	 * Evaluate rendering eligibility; draw the applicable intro/menu content; describe
-	 * completion of this loading visual frame.
+	 * Consume the display snapshot; evaluate visual eligibility; describe intro/menu commands and
+	 * completion accounting.
 	 *
-	 * Expected dependencies:
-	 * Prepared loading presentation, handler eligibility, progress messages, context ownership
-	 * and invocation origin.
-	 *
-	 * Expected relationships:
-	 * Ordinary present is shared. Legacy progress-driven drawing can perform an internal swap,
-	 * so annotation must distinguish that route from an outer-loop swap without deciding how
-	 * to reconcile them.
-	 */
-
-	// Bind only this mode's declared dependency bundle; behavior remains an outline.
-	[[maybe_unused]] const auto& context = std::get<LoadingRenderContext>(supplied);
-
-	/*
-	 * Frame content:
-	 * Expect the applicable intro or menu rendering callbacks and their eligibility checks.
-	 * Account for incomplete loading and handlers that disappear during completion.
+	 * Scheduling and lifetime:
+	 * Headless never invokes this concern. The application selects eligible visual stages.
+	 * Missing required inputs prevent invocation; optional history is absent at bootstrap.
+	 * Retired activations reject new work and publications while issued views stay readable.
 	 */
 
 	/*
-	 * Presentation boundary:
-	 * Expect progress execution to request output while normal iteration is occupied. Document
-	 * both legacy swap sites and their callers; choose no new swap count, context transfer or
-	 * reentrancy mechanism here.
+	 * Dependencies and unresolved adaptation:
+	 * Progress and ordinary rendering share application scheduling and presentation. The legacy nested
+	 * update/draw/internal-swap route requires adaptation, not another presentation implementation.
+	 * The linked code is an investigation source, not an implemented adapter or a
+	 * requirement to shape the architecture around its existing function boundaries.
 	 */
 
+	/*
+	 * Implementation status:
+	 * This concern is an outline. Its payload schema, backing operations and input/
+	 * output connections remain unimplemented. Returning no publication reports that
+	 * absence explicitly; it is not evidence of completed render behavior.
+	 */
+	return {};
 }
 
-}
+} // namespace runtime

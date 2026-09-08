@@ -1,20 +1,15 @@
-# Shared runtime expectations
+# Application-wide responsibilities
 
-Only application-wide resources or responsibilities actually shared across modes
-belong here. These are documentation skeletons, not service implementations.
+- [Snapshots](Snapshots/README.md) owns immutable publication storage, typed access,
+  iteration association and admission. Mode-local schemas remain with modes.
+- [Graphics](Graphics/VisualOutput.h) owns backend execution, resource synchronization,
+  output leases and ordinary presentation. Headless execution has no instance.
+- [Lifecycle](Lifecycle/ApplicationHost.h) supplies platform facts, prepares mode
+  activation and owns application cleanup. It performs accepted Session decisions.
+- [Diagnostics](Diagnostics/Diagnostics.cpp) outlines bounded observation and
+  outer-boundary reporting. Concrete logging and analysis remain unimplemented.
 
-- [Graphics](Graphics/Graphics.cpp): shared context/resources, synchronization and
-  window presentation. Each mode keeps its drawing content. Loading's ordinary
-  and progress-driven present routes need separate source annotation.
-- [Lifecycle](Lifecycle/Lifecycle.cpp): application initialization, reload and
-  shutdown. Mode-specific setup and transitions remain documented in modes.
-- [Diagnostics](Diagnostics/Diagnostics.cpp): cross-mode execution observations
-  and output expectations. Game's semantic simulation observation remains local.
-
-There is no generic utility bucket. Any future addition must identify the shared
-resource or cross-mode use that warrants placing it here.
-
-Invocation metadata is shared because every concern uses the same activation/time
-identity contract. Graphics access and lifecycle requests are shared resources;
-mode-specific dependencies remain in the corresponding mode context. No universal
-GlobalContext is passed to every mode.
+These are identified shared responsibilities, not a general service locator.
+Neither snapshot inputs nor the runtime mode interface expose mutable game globals.
+Private resource contexts beneath simulation, lifecycle and diagnostics describe
+their owner operations; they are not passed to ordinary mode concerns.

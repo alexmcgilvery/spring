@@ -3,9 +3,14 @@
 #include "Diagnostics.h"
 
 namespace runtime {
+
 void Diagnostics::Observe(const DiagnosticObservationContext&)
 {
 	/*
+	 * Expected responsibility and why:
+	 * Explain execution and publication completeness without changing scheduling or simulation
+	 * decisions.
+	 *
 	 * Expected legacy sources (investigation starting points):
 	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::Run(), Update(),
 	 * MainEventHandler(), Init(), Reload(), Kill()
@@ -14,27 +19,25 @@ void Diagnostics::Observe(const DiagnosticObservationContext&)
 	 * [ILog.h](../../../System/Log/ILog.h) — logging interface
 	 *
 	 * Context contract:
-	 * [DiagnosticsContext.h](DiagnosticsContext.h) — DiagnosticObservationContext explicitly lists the
-	 * expected dependencies. Mutable references are permitted outputs/live work;
-	 * const references are borrowed views, not frozen or deeply immutable state.
-	 * The caller resolves valid dependencies for this activation and invocation;
-	 * a retiring transition ends their use. No global lookup or private access is
-	 * supplied by this parameter. Owning publication leases are separately named.
-	 *
-	 * Expected responsibility:
-	 * Describe measurements and records needed to understand the runtime across modes.
+	 * Explicit private ownership dependencies; these contexts are internal skeleton interfaces, not
+	 * the removed common mode contexts. Inputs are immutable invocation/publication facts and explicit
+	 * diagnostic storage ownership. The observer does not gain mutable mode state through the snapshot
+	 * manager.
 	 *
 	 * Expected work, in conceptual order:
-	 * Identify run/configuration and active concern; record ordered observations and
-	 * completion facts; account for costs, transitions and failures.
+	 * Record concern entry/completion, logical/visual association, activation/revision identity,
+	 * accepted tick facts, missing publications and outcomes; append bounded records at observation
+	 * sites.
 	 *
-	 * Expected dependencies:
-	 * Mode identity, concern boundaries, thread/graphics context, accepted-input identity,
-	 * tick/checksum facts and bounded recording resources.
+	 * Expected dependencies and relationships:
+	 * Missing required inputs, skipped visuals and absent skeleton outputs are different facts. A
+	 * frame counter alone cannot prove completeness. Detailed recording must not broadcast console/Lua
+	 * notifications; concrete schema and buffers remain outlines.
 	 *
-	 * Expected relationships:
-	 * Diagnostics observes execution without choosing simulation authority, rendering
-	 * decisions or mode continuation. Game observation provides semantic events separately.
+	 * Scheduling and lifetime:
+	 * The application owns logical/visual admission and lifecycle commitment. Source links guide later
+	 * investigation; they do not define the target architecture. This concern remains an
+	 * implementation outline, while the generic manager and dispatcher are executable.
 	 */
 
 	/*
@@ -55,6 +58,9 @@ void Diagnostics::Observe(const DiagnosticObservationContext&)
 void Diagnostics::Report(const DiagnosticReportContext&)
 {
 	/*
+	 * Expected responsibility and why:
+	 * Move diagnostic output to application boundaries and report what actually completed.
+	 *
 	 * Expected legacy sources (investigation starting points):
 	 * [LogOutput.cpp](../../../System/LogOutput.cpp) — CLogOutput initialization and log path
 	 * [FileSink.cpp](../../../System/Log/FileSink.cpp) — log_file_addLogFile(),
@@ -63,35 +69,30 @@ void Diagnostics::Report(const DiagnosticReportContext&)
 	 * MainEventHandler(), Init(), Reload(), Kill()
 	 *
 	 * Context contract:
-	 * [DiagnosticsContext.h](DiagnosticsContext.h) — DiagnosticReportContext explicitly lists the
-	 * expected dependencies. Mutable references are permitted outputs/live work;
-	 * const references are borrowed views, not frozen or deeply immutable state.
-	 * The caller resolves valid dependencies for this activation and invocation;
-	 * a retiring transition ends their use. No global lookup or private access is
-	 * supplied by this parameter. Owning publication leases are separately named.
-	 *
-	 * Expected responsibility:
-	 * Describe bounded diagnostic output and honest completion reporting.
+	 * Explicit private ownership dependencies; these contexts are internal skeleton interfaces, not
+	 * the removed common mode contexts. Inputs are owned pending records and run identity; output
+	 * stream and resource lifetime are explicit application dependencies. No backend or mutable
+	 * simulation lookup is required.
 	 *
 	 * Expected work, in conceptual order:
-	 * Drain pending records at outer boundaries; serialize/output them; account for output
-	 * cost and errors; finish the run with explicit completeness information.
+	 * Drain bounded pending records; serialize through an owned file stream; measure output cost;
+	 * distinguish I/O failure, truncation, incomplete termination and successful completion.
 	 *
-	 * Expected dependencies:
-	 * Engine write directory, stream lifetime, buffered records, output limits, schema/run
-	 * identity and shutdown state.
+	 * Expected dependencies and relationships:
+	 * Reporting may block and is separate from normal performance measurements. Leases retain only
+	 * explicitly selected data. Consumer-derived history is not a production total-memory limit;
+	 * buffer/file policy and analyser implementation remain subsequent work.
 	 *
-	 * Expected relationships:
-	 * Output can block and therefore belongs outside hot simulation callbacks. Existing
-	 * logging sources are investigation references, not a decision to modify their APIs or
-	 * share their private storage.
+	 * Scheduling and lifetime:
+	 * The application owns logical/visual admission and lifecycle commitment. Source links guide later
+	 * investigation; they do not define the target architecture. This concern remains an
+	 * implementation outline, while the generic manager and dispatcher are executable.
 	 */
 
 	/*
 	 * File and buffer ownership:
 	 * Expect output ownership and cleanup to be explicit, with bounded memory/file size and no
-	 * unintentional broadcasting through console or Lua sinks. No implementation choice is
-	 * fixed by this outline.
+	 * unintentional broadcasting through console or Lua sinks. The diagnostic adapter remains unimplemented.
 	 */
 
 	/*

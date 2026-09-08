@@ -3,159 +3,214 @@
 #include "LuaMenuMode.h"
 
 namespace runtime {
-LuaMenuMode::LuaMenuMode(): IMode(ModeKind::LuaMenu, false, DisplayPhase::BeforeGraphics) {}
 
-void LuaMenuMode::Input(const ModeInputContext& supplied)
+LuaMenuMode::LuaMenuMode()
+	: Mode(ModeKind::LuaMenu)
+{
+}
+
+LuaMenuMode::InputPublication LuaMenuMode::Input(const InputSnapshots&)
 {
 	/*
+	 * Expected responsibility and why:
+	 * Interpret Lua menu interaction as owned actions without granting callbacks activation authority.
+	 *
 	 * Expected legacy sources (investigation starting points):
-	 * [LuaMenuController.cpp](../../../Menu/LuaMenuController.cpp) —
-	 * CLuaMenuController::Activate(), Update(), Draw(), KeyPressed(), TextInput(),
-	 * TextEditing()
-	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::Run(), Update(),
-	 * MainEventHandler(), Init(), Reload(), Kill()
+	 * [LuaMenuController.cpp](../../../Menu/LuaMenuController.cpp) — CLuaMenuController::Activate(), Update(), Draw(), KeyPressed(), TextInput(), TextEditing()
+	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::MainEventHandler(), Reload()
 	 *
-	 * Context contract:
-	 * [LuaMenuContext.h](LuaMenuContext.h) — LuaMenuInputContext explicitly lists the
-	 * expected dependencies. Mutable references are permitted outputs/live work;
-	 * const references are borrowed views, not frozen or deeply immutable state.
-	 * The caller resolves valid dependencies for this activation and invocation;
-	 * a retiring transition ends their use. No global lookup or private access is
-	 * supplied by this parameter. Owning publication leases are separately named.
+	 * Snapshot contract:
+	 * [LuaMenuSnapshots.h](LuaMenuSnapshots.h) — LuaMenuContracts::InputReads.
+	 * Application.Current (required); Activation.Current (required); Session.Previous (optional).
+	 * Application.Current supplies the collected event batch. Activation.Current supplies owned
+	 * startup context. Session.Previous supplies prior logical interpretation state; its absence is
+	 * normal on entry.
+	 * Inputs are immutable owning selections. Retained views keep their values alive;
+	 * publications carry activation and invocation identity rather than live globals.
 	 *
-	 * Expected responsibility:
-	 * Deliver menu interaction to Lua with the existing event-consumption semantics.
+	 * Expected outputs and authority:
+	 * Session decides logical consequences and normal transitions. This concern grants no simulation,
+	 * resource-retirement or activation authority.
 	 *
 	 * Expected work, in conceptual order:
-	 * Establish or activate menu context; route key/text interaction; account for resize and
-	 * focus; describe requests that start, reset or leave the menu.
+	 * Route filtered key, text and focus interaction; identify menu start/reset/leave actions; retain
+	 * event identity for logical acceptance.
 	 *
-	 * Expected dependencies:
-	 * Lua menu availability, archive identity, text/editing events, window geometry, platform
-	 * filtering and transition requests.
-	 *
-	 * Expected relationships:
-	 * Input can change eligibility for later display/render work. Activation and archive reset
-	 * are mode lifecycle expectations, not a second recurring session phase.
-	 */
-
-	// Bind only this mode's declared dependency bundle; behavior remains an outline.
-	[[maybe_unused]] const auto& context = std::get<LuaMenuInputContext>(supplied);
-
-	/*
-	 * Event ownership:
-	 * Expect one route for each keyboard, text-editing and text-input event. Trace the legacy
-	 * platform filtering before deciding where callbacks belong.
+	 * Scheduling and lifetime:
+	 * Logical work runs without a visual subsystem.
+	 * Missing required inputs prevent invocation; optional history is absent at bootstrap.
+	 * Retired activations reject new work and publications while issued views stay readable.
 	 */
 
 	/*
-	 * Menu activation:
-	 * Expect menu validity, reset and activation-message behavior to determine which Lua
-	 * environment receives input. Track input-triggered startup or exit without assuming
-	 * callbacks leave the current menu alive.
+	 * Dependencies and unresolved adaptation:
+	 * Lua callbacks may combine event consumption with logical effects. Their adaptation is
+	 * unresolved: source annotation must separate interpretation from Session decisions.
+	 * The linked code is an investigation source, not an implemented adapter or a
+	 * requirement to shape the architecture around its existing function boundaries.
 	 */
 
+	/*
+	 * Implementation status:
+	 * This concern is an outline. Its payload schema, backing operations and input/
+	 * output connections remain unimplemented. Returning no publication reports that
+	 * absence explicitly; it is not evidence of completed input behavior.
+	 */
+	return {};
 }
 
-void LuaMenuMode::Display(const ModeDisplayContext& supplied)
+LuaMenuMode::SessionPublication LuaMenuMode::Session(const SessionSnapshots&)
 {
 	/*
+	 * Expected responsibility and why:
+	 * Own logical Lua menu progression and lifecycle decisions, including work required when visuals are skipped.
+	 *
 	 * Expected legacy sources (investigation starting points):
-	 * [LuaMenuController.cpp](../../../Menu/LuaMenuController.cpp) —
-	 * CLuaMenuController::Activate(), Update(), Draw(), KeyPressed(), TextInput(),
-	 * TextEditing()
+	 * [LuaMenuController.cpp](../../../Menu/LuaMenuController.cpp) — CLuaMenuController::Activate(), Update(), Draw(), KeyPressed(), TextInput(), TextEditing()
+	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::MainEventHandler(), Reload()
 	 *
-	 * Context contract:
-	 * [LuaMenuContext.h](LuaMenuContext.h) — LuaMenuDisplayContext explicitly lists the
-	 * expected dependencies. Mutable references are permitted outputs/live work;
-	 * const references are borrowed views, not frozen or deeply immutable state.
-	 * The caller resolves valid dependencies for this activation and invocation;
-	 * a retiring transition ends their use. No global lookup or private access is
-	 * supplied by this parameter. Owning publication leases are separately named.
+	 * Snapshot contract:
+	 * [LuaMenuSnapshots.h](LuaMenuSnapshots.h) — LuaMenuContracts::SessionReads.
+	 * Input.Current (required); Activation.Current (required); Display.Previous (optional).
+	 * Input.Current supplies this iteration's interpreted actions. Activation.Current supplies startup
+	 * handoff data. Any declared Display.Previous is optional observational feedback; historical reads
+	 * cannot replay or acknowledge actions.
+	 * Inputs are immutable owning selections. Retained views keep their values alive;
+	 * publications carry activation and invocation identity rather than live globals.
 	 *
-	 * Expected responsibility:
-	 * Maintain client interaction and Lua menu state before drawing.
+	 * Expected outputs and authority:
+	 * Only this concern may return a normal lifecycle request, attached to an owned Session
+	 * publication. Lifecycle commits it after return; a replacement starts a fresh logical iteration
+	 * with empty mode-local history.
 	 *
 	 * Expected work, in conceptual order:
-	 * Perform garbage collection and console delivery; maintain mouse/cursor state; invoke
-	 * update callbacks; evaluate interaction and tooltip state.
+	 * Consume menu actions; service logical script effects and startup/reset intent; prepare owned
+	 * handoff data; decide transition, reload or exit.
 	 *
-	 * Expected dependencies:
-	 * Active Lua handlers, queued console notifications, mouse state, real time and client
-	 * visibility.
-	 *
-	 * Expected relationships:
-	 * Display is conceptually separate from render eligibility. Its existing callback order
-	 * may influence rendering or transitions even when drawing is skipped.
-	 */
-
-	// Bind only this mode's declared dependency bundle; behavior remains an outline.
-	[[maybe_unused]] const auto& context = std::get<LuaMenuDisplayContext>(supplied);
-
-	/*
-	 * Client maintenance:
-	 * Expect collection, console notifications and mouse updates to retain their relative
-	 * callback ordering when implementation is studied.
+	 * Scheduling and lifetime:
+	 * Logical work runs without a visual subsystem.
+	 * Missing required inputs prevent invocation; optional history is absent at bootstrap.
+	 * Retired activations reject new work and publications while issued views stay readable.
 	 */
 
 	/*
-	 * Lua interaction:
-	 * Expect update and tooltip evaluation against the currently active menu. The annotation
-	 * pass should identify graphics-dependent work and callbacks capable of changing menu
-	 * state.
+	 * Dependencies and unresolved adaptation:
+	 * A shared Lua environment may couple update, collection and rendering callbacks. Classify logical
+	 * maintenance here and visual-only maintenance in Display; snapshot history is not reliable action
+	 * delivery.
+	 * The linked code is an investigation source, not an implemented adapter or a
+	 * requirement to shape the architecture around its existing function boundaries.
 	 */
 
+	/*
+	 * Implementation status:
+	 * This concern is an outline. Its payload schema, backing operations and input/
+	 * output connections remain unimplemented. Returning no publication reports that
+	 * absence explicitly; it is not evidence of completed session behavior.
+	 */
+	return {};
 }
 
-void LuaMenuMode::Render(const ModeRenderContext& supplied)
+LuaMenuMode::DisplayPublication LuaMenuMode::Display(const DisplaySnapshots&)
 {
 	/*
+	 * Expected responsibility and why:
+	 * Prepare cursor, tooltip and visual menu state from a fixed logical publication.
+	 *
 	 * Expected legacy sources (investigation starting points):
-	 * [LuaMenuController.cpp](../../../Menu/LuaMenuController.cpp) —
-	 * CLuaMenuController::Activate(), Update(), Draw(), KeyPressed(), TextInput(),
-	 * TextEditing()
+	 * [LuaMenuController.cpp](../../../Menu/LuaMenuController.cpp) — CLuaMenuController::Activate(), Update(), Draw(), KeyPressed(), TextInput(), TextEditing()
+	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::MainEventHandler(), Reload()
 	 *
-	 * Context contract:
-	 * [LuaMenuContext.h](LuaMenuContext.h) — LuaMenuRenderContext explicitly lists the
-	 * expected dependencies. Mutable references are permitted outputs/live work;
-	 * const references are borrowed views, not frozen or deeply immutable state.
-	 * The caller resolves valid dependencies for this activation and invocation;
-	 * a retiring transition ends their use. No global lookup or private access is
-	 * supplied by this parameter. Owning publication leases are separately named.
+	 * Snapshot contract:
+	 * [LuaMenuSnapshots.h](LuaMenuSnapshots.h) — LuaMenuContracts::DisplayReads.
+	 * Application.Current (required); Session.Current (required); Display.Previous (optional).
+	 * Session.Current names the selected logical publication. Application.Current provides associated
+	 * platform facts. Display.Previous supports visual continuity without mutable cross-iteration
+	 * borrows. Declared Simulation reads select completed authoritative states at their own cadence;
+	 * bootstrap may provide neither.
+	 * Inputs are immutable owning selections. Retained views keep their values alive;
+	 * publications carry activation and invocation identity rather than live globals.
 	 *
-	 * Expected responsibility:
-	 * Render an eligible Lua menu frame and its cursor, including legacy forced-draw behavior.
+	 * Expected outputs and authority:
+	 * Render consumes the owned result. Any logical interaction discovered visually needs later
+	 * Session acceptance through an explicit action route; immutable history alone is not that route.
 	 *
 	 * Expected work, in conceptual order:
-	 * Evaluate active-window and Lua draw eligibility; account for forced-draw timing; record
-	 * the draw iteration; clear; invoke ordered draw callbacks; draw cursor; record
-	 * completion.
+	 * Read published menu state and target facts; maintain visual interaction; evaluate visual
+	 * callbacks and tooltips; produce an owning display snapshot.
 	 *
-	 * Expected dependencies:
-	 * Current display state, Lua draw permissions, previous draw time, graphics resources and
-	 * cursor visibility.
-	 *
-	 * Expected relationships:
-	 * Skipped drawing and exit are different situations. Shared presentation remains separate;
-	 * display maintenance must not be inferred solely from whether this block draws.
-	 */
-
-	// Bind only this mode's declared dependency bundle; behavior remains an outline.
-	[[maybe_unused]] const auto& context = std::get<LuaMenuRenderContext>(supplied);
-
-	/*
-	 * Eligibility and skipped frames:
-	 * Expect the existing short sleep on skipped drawing and the periodic forced draw when
-	 * inactive. Preserve the exact evaluation points as subjects for annotation rather than
-	 * designing new pacing here.
+	 * Scheduling and lifetime:
+	 * Headless never invokes this concern. The application selects eligible visual stages.
+	 * Missing required inputs prevent invocation; optional history is absent at bootstrap.
+	 * Retired activations reject new work and publications while issued views stay readable.
 	 */
 
 	/*
-	 * Drawing and completion:
-	 * Expect screen, Lua callback and cursor ordering to matter for visible output. Draw
-	 * timestamps and accounting should describe the same intervals as their legacy sources.
+	 * Dependencies and unresolved adaptation:
+	 * Garbage collection, console callbacks and update callbacks need individual annotation. Any
+	 * required logical side effect belongs to Session. Display feedback is observational; actionable
+	 * feedback needs an explicit ordered logical route.
+	 * The linked code is an investigation source, not an implemented adapter or a
+	 * requirement to shape the architecture around its existing function boundaries.
 	 */
 
+	/*
+	 * Implementation status:
+	 * This concern is an outline. Its payload schema, backing operations and input/
+	 * output connections remain unimplemented. Returning no publication reports that
+	 * absence explicitly; it is not evidence of completed display behavior.
+	 */
+	return {};
 }
 
+LuaMenuMode::RenderPublication LuaMenuMode::Render(const RenderSnapshots&)
+{
+	/*
+	 * Expected responsibility and why:
+	 * Describe eligible Lua menu output and cursor rendering independently of backend ownership.
+	 *
+	 * Expected legacy sources (investigation starting points):
+	 * [LuaMenuController.cpp](../../../Menu/LuaMenuController.cpp) — CLuaMenuController::Activate(), Update(), Draw(), KeyPressed(), TextInput(), TextEditing()
+	 * [SpringApp.cpp](../../../System/SpringApp.cpp) — SpringApp::MainEventHandler(), Reload()
+	 *
+	 * Snapshot contract:
+	 * [LuaMenuSnapshots.h](LuaMenuSnapshots.h) — LuaMenuContracts::RenderReads.
+	 * Application.Current (required); Display.Current (required).
+	 * Display.Current supplies owned frame content. Application.Current supplies associated target
+	 * facts. No fallback may relabel another invocation's data as Current.
+	 * Inputs are immutable owning selections. Retained views keep their values alive;
+	 * publications carry activation and invocation identity rather than live globals.
+	 *
+	 * Expected outputs and authority:
+	 * The application executes commands, publishes an owning rendered output and optionally presents
+	 * that exact output. Rendering has no internal Present and no normal transition authority.
+	 *
+	 * Expected work, in conceptual order:
+	 * Evaluate visual eligibility; describe ordered menu callbacks and cursor commands; account for
+	 * rendering completion and forced-draw expectations.
+	 *
+	 * Scheduling and lifetime:
+	 * Headless never invokes this concern. The application selects eligible visual stages.
+	 * Missing required inputs prevent invocation; optional history is absent at bootstrap.
+	 * Retired activations reject new work and publications while issued views stay readable.
+	 */
+
+	/*
+	 * Dependencies and unresolved adaptation:
+	 * Forced-draw and skipped-draw sleep behavior are investigation subjects for application pacing.
+	 * Callback state and timings must be owned for this invocation; no callback may directly switch
+	 * modes.
+	 * The linked code is an investigation source, not an implemented adapter or a
+	 * requirement to shape the architecture around its existing function boundaries.
+	 */
+
+	/*
+	 * Implementation status:
+	 * This concern is an outline. Its payload schema, backing operations and input/
+	 * output connections remain unimplemented. Returning no publication reports that
+	 * absence explicitly; it is not evidence of completed render behavior.
+	 */
+	return {};
 }
+
+} // namespace runtime

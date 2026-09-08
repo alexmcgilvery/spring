@@ -5,6 +5,7 @@
 #include "LifecycleContext.h"
 
 namespace runtime {
+
 /*
  * Application-wide lifecycle outline. Connection establishment, loading completion and
  * other mode-local transitions remain documented with their modes.
@@ -15,4 +16,5 @@ public:
 	void Reload(const ReloadContext& context);
 	void Shutdown(const ShutdownContext& context);
 };
-}
+
+} // namespace runtime

@@ -1,266 +1,221 @@
 {
-  "stage": "connected interface and orchestration skeleton",
-  "functions": [
+  "version": 2,
+  "outlines": [
     {
-      "file": "ApplicationLoop.cpp",
-      "class": "ApplicationLoop",
-      "function": "Run",
-      "context": "ApplicationContext",
-      "context_header": "ApplicationContext.h"
+      "file": "Modes/SelectMenu/SelectMenuMode.cpp",
+      "class": "SelectMenuMode",
+      "mode": "SelectMenu",
+      "function": "Input",
+      "signature": "SelectMenuMode::InputPublication SelectMenuMode::Input(const InputSnapshots&)"
     },
     {
       "file": "Modes/SelectMenu/SelectMenuMode.cpp",
       "class": "SelectMenuMode",
-      "function": "Input",
-      "context": "ModeInputContext",
-      "context_header": "Modes/SelectMenu/SelectMenuContext.h",
-      "concrete_context": "SelectMenuInputContext"
+      "mode": "SelectMenu",
+      "function": "Session",
+      "signature": "SelectMenuMode::SessionPublication SelectMenuMode::Session(const SessionSnapshots&)"
     },
     {
       "file": "Modes/SelectMenu/SelectMenuMode.cpp",
       "class": "SelectMenuMode",
+      "mode": "SelectMenu",
       "function": "Render",
-      "context": "ModeRenderContext",
-      "context_header": "Modes/SelectMenu/SelectMenuContext.h",
-      "concrete_context": "SelectMenuRenderContext"
+      "signature": "SelectMenuMode::RenderPublication SelectMenuMode::Render(const RenderSnapshots&)"
     },
     {
       "file": "Modes/LuaMenu/LuaMenuMode.cpp",
       "class": "LuaMenuMode",
+      "mode": "LuaMenu",
       "function": "Input",
-      "context": "ModeInputContext",
-      "context_header": "Modes/LuaMenu/LuaMenuContext.h",
-      "concrete_context": "LuaMenuInputContext"
+      "signature": "LuaMenuMode::InputPublication LuaMenuMode::Input(const InputSnapshots&)"
     },
     {
       "file": "Modes/LuaMenu/LuaMenuMode.cpp",
       "class": "LuaMenuMode",
-      "function": "Display",
-      "context": "ModeDisplayContext",
-      "context_header": "Modes/LuaMenu/LuaMenuContext.h",
-      "concrete_context": "LuaMenuDisplayContext"
+      "mode": "LuaMenu",
+      "function": "Session",
+      "signature": "LuaMenuMode::SessionPublication LuaMenuMode::Session(const SessionSnapshots&)"
     },
     {
       "file": "Modes/LuaMenu/LuaMenuMode.cpp",
       "class": "LuaMenuMode",
-      "function": "Render",
-      "context": "ModeRenderContext",
-      "context_header": "Modes/LuaMenu/LuaMenuContext.h",
-      "concrete_context": "LuaMenuRenderContext"
-    },
-    {
-      "file": "Modes/PreGame/PreGameMode.cpp",
-      "class": "PreGameMode",
-      "function": "Input",
-      "context": "ModeInputContext",
-      "context_header": "Modes/PreGame/PreGameContext.h",
-      "concrete_context": "PreGameInputContext"
-    },
-    {
-      "file": "Modes/PreGame/PreGameMode.cpp",
-      "class": "PreGameMode",
-      "function": "Session",
-      "context": "ModeSessionContext",
-      "context_header": "Modes/PreGame/PreGameContext.h",
-      "concrete_context": "PreGameSessionContext"
-    },
-    {
-      "file": "Modes/PreGame/PreGameMode.cpp",
-      "class": "PreGameMode",
-      "function": "Render",
-      "context": "ModeRenderContext",
-      "context_header": "Modes/PreGame/PreGameContext.h",
-      "concrete_context": "PreGameRenderContext"
-    },
-    {
-      "file": "Modes/Loading/LoadingMode.cpp",
-      "class": "LoadingMode",
-      "function": "Input",
-      "context": "ModeInputContext",
-      "context_header": "Modes/Loading/LoadingContext.h",
-      "concrete_context": "LoadingInputContext"
-    },
-    {
-      "file": "Modes/Loading/LoadingMode.cpp",
-      "class": "LoadingMode",
-      "function": "Session",
-      "context": "ModeSessionContext",
-      "context_header": "Modes/Loading/LoadingContext.h",
-      "concrete_context": "LoadingSessionContext"
-    },
-    {
-      "file": "Modes/Loading/LoadingMode.cpp",
-      "class": "LoadingMode",
+      "mode": "LuaMenu",
       "function": "Display",
-      "context": "ModeDisplayContext",
-      "context_header": "Modes/Loading/LoadingContext.h",
-      "concrete_context": "LoadingDisplayContext"
+      "signature": "LuaMenuMode::DisplayPublication LuaMenuMode::Display(const DisplaySnapshots&)"
+    },
+    {
+      "file": "Modes/LuaMenu/LuaMenuMode.cpp",
+      "class": "LuaMenuMode",
+      "mode": "LuaMenu",
+      "function": "Render",
+      "signature": "LuaMenuMode::RenderPublication LuaMenuMode::Render(const RenderSnapshots&)"
+    },
+    {
+      "file": "Modes/PreGame/PreGameMode.cpp",
+      "class": "PreGameMode",
+      "mode": "PreGame",
+      "function": "Input",
+      "signature": "PreGameMode::InputPublication PreGameMode::Input(const InputSnapshots&)"
+    },
+    {
+      "file": "Modes/PreGame/PreGameMode.cpp",
+      "class": "PreGameMode",
+      "mode": "PreGame",
+      "function": "Session",
+      "signature": "PreGameMode::SessionPublication PreGameMode::Session(const SessionSnapshots&)"
+    },
+    {
+      "file": "Modes/PreGame/PreGameMode.cpp",
+      "class": "PreGameMode",
+      "mode": "PreGame",
+      "function": "Render",
+      "signature": "PreGameMode::RenderPublication PreGameMode::Render(const RenderSnapshots&)"
     },
     {
       "file": "Modes/Loading/LoadingMode.cpp",
       "class": "LoadingMode",
-      "function": "Render",
-      "context": "ModeRenderContext",
-      "context_header": "Modes/Loading/LoadingContext.h",
-      "concrete_context": "LoadingRenderContext"
-    },
-    {
-      "file": "Modes/Game/GameMode.cpp",
-      "class": "GameMode",
+      "mode": "Loading",
       "function": "Input",
-      "context": "ModeInputContext",
-      "context_header": "Modes/Game/GameContext.h",
-      "concrete_context": "GameInputContext"
+      "signature": "LoadingMode::InputPublication LoadingMode::Input(const InputSnapshots&)"
     },
     {
-      "file": "Modes/Game/GameMode.cpp",
-      "class": "GameMode",
+      "file": "Modes/Loading/LoadingMode.cpp",
+      "class": "LoadingMode",
+      "mode": "Loading",
       "function": "Session",
-      "context": "ModeSessionContext",
-      "context_header": "Modes/Game/GameContext.h",
-      "concrete_context": "GameSessionContext"
+      "signature": "LoadingMode::SessionPublication LoadingMode::Session(const SessionSnapshots&)"
     },
     {
-      "file": "Modes/Game/GameMode.cpp",
-      "class": "GameMode",
+      "file": "Modes/Loading/LoadingMode.cpp",
+      "class": "LoadingMode",
+      "mode": "Loading",
       "function": "Display",
-      "context": "ModeDisplayContext",
-      "context_header": "Modes/Game/GameContext.h",
-      "concrete_context": "GameDisplayContext"
+      "signature": "LoadingMode::DisplayPublication LoadingMode::Display(const DisplaySnapshots&)"
+    },
+    {
+      "file": "Modes/Loading/LoadingMode.cpp",
+      "class": "LoadingMode",
+      "mode": "Loading",
+      "function": "Render",
+      "signature": "LoadingMode::RenderPublication LoadingMode::Render(const RenderSnapshots&)"
     },
     {
       "file": "Modes/Game/GameMode.cpp",
       "class": "GameMode",
+      "mode": "Game",
+      "function": "Input",
+      "signature": "GameMode::InputPublication GameMode::Input(const InputSnapshots&)"
+    },
+    {
+      "file": "Modes/Game/GameMode.cpp",
+      "class": "GameMode",
+      "mode": "Game",
+      "function": "Session",
+      "signature": "GameMode::SessionPublication GameMode::Session(const SessionSnapshots&)"
+    },
+    {
+      "file": "Modes/Game/GameMode.cpp",
+      "class": "GameMode",
+      "mode": "Game",
+      "function": "Display",
+      "signature": "GameMode::DisplayPublication GameMode::Display(const DisplaySnapshots&)"
+    },
+    {
+      "file": "Modes/Game/GameMode.cpp",
+      "class": "GameMode",
+      "mode": "Game",
       "function": "Render",
-      "context": "ModeRenderContext",
-      "context_header": "Modes/Game/GameContext.h",
-      "concrete_context": "GameRenderContext"
+      "signature": "GameMode::RenderPublication GameMode::Render(const RenderSnapshots&)"
     },
     {
       "file": "Modes/Game/Simulation/Simulation.cpp",
       "class": "Simulation",
       "function": "Step",
-      "context": "SimulationStepContext",
-      "context_header": "Modes/Game/Simulation/SimulationContext.h"
+      "signature": "void Simulation::Step(const SimulationStepContext&)"
     },
     {
       "file": "Modes/Game/Simulation/Publication/Publication.cpp",
       "class": "Publication",
       "function": "Publish",
-      "context": "PublicationContext",
-      "context_header": "Modes/Game/Simulation/Publication/PublicationContext.h"
+      "signature": "void Publication::Publish(const PublicationContext&)"
     },
     {
       "file": "Modes/Game/Simulation/Observation/Observation.cpp",
       "class": "Observation",
       "function": "Observe",
-      "context": "SimulationObservationContext",
-      "context_header": "Modes/Game/Simulation/Observation/ObservationContext.h"
-    },
-    {
-      "file": "Globals/Graphics/Graphics.cpp",
-      "class": "Graphics",
-      "function": "Synchronize",
-      "context": "GraphicsSynchronizationContext",
-      "context_header": "Globals/Graphics/GraphicsContext.h"
-    },
-    {
-      "file": "Globals/Graphics/Graphics.cpp",
-      "class": "Graphics",
-      "function": "Present",
-      "context": "PresentContext",
-      "context_header": "Globals/Graphics/GraphicsContext.h"
+      "signature": "void Observation::Observe(const SimulationObservationContext&)"
     },
     {
       "file": "Globals/Lifecycle/Lifecycle.cpp",
       "class": "Lifecycle",
       "function": "Initialize",
-      "context": "InitializationContext",
-      "context_header": "Globals/Lifecycle/LifecycleContext.h"
+      "signature": "void Lifecycle::Initialize(const InitializationContext&)"
     },
     {
       "file": "Globals/Lifecycle/Lifecycle.cpp",
       "class": "Lifecycle",
       "function": "Reload",
-      "context": "ReloadContext",
-      "context_header": "Globals/Lifecycle/LifecycleContext.h"
+      "signature": "void Lifecycle::Reload(const ReloadContext&)"
     },
     {
       "file": "Globals/Lifecycle/Lifecycle.cpp",
       "class": "Lifecycle",
       "function": "Shutdown",
-      "context": "ShutdownContext",
-      "context_header": "Globals/Lifecycle/LifecycleContext.h"
+      "signature": "void Lifecycle::Shutdown(const ShutdownContext&)"
     },
     {
       "file": "Globals/Diagnostics/Diagnostics.cpp",
       "class": "Diagnostics",
       "function": "Observe",
-      "context": "DiagnosticObservationContext",
-      "context_header": "Globals/Diagnostics/DiagnosticsContext.h"
+      "signature": "void Diagnostics::Observe(const DiagnosticObservationContext&)"
     },
     {
       "file": "Globals/Diagnostics/Diagnostics.cpp",
       "class": "Diagnostics",
       "function": "Report",
-      "context": "DiagnosticReportContext",
-      "context_header": "Globals/Diagnostics/DiagnosticsContext.h"
+      "signature": "void Diagnostics::Report(const DiagnosticReportContext&)"
     }
-  ],
-  "contract_headers": [
-    "Globals/InvocationContext.h",
-    "Globals/Graphics/GraphicsContext.h",
-    "Globals/Lifecycle/LifecycleContext.h",
-    "Globals/Diagnostics/DiagnosticsContext.h",
-    "ApplicationContext.h",
-    "Modes/SelectMenu/SelectMenuContext.h",
-    "Modes/LuaMenu/LuaMenuContext.h",
-    "Modes/PreGame/PreGameContext.h",
-    "Modes/Loading/LoadingContext.h",
-    "Modes/Game/Simulation/Publication/PublishedFrame.h",
-    "Modes/Game/GameContext.h",
-    "Modes/Game/Simulation/SimulationContext.h",
-    "Modes/Game/Simulation/Publication/PublicationContext.h",
-    "Modes/Game/Simulation/Observation/ObservationContext.h",
-    "Modes/ModeBinding.h",
-    "Modes/ModeContexts.h",
-    "Modes/IMode.h",
-    "Modes/ModeContextProvider.h",
-    "Globals/Graphics/GraphicsScope.h",
-    "Globals/Lifecycle/ApplicationHost.h"
   ],
   "architecture_sources": [
     "ApplicationLoop.cpp",
     "Modes/IMode.cpp",
-    "Modes/ModeContextProvider.cpp",
-    "Globals/Graphics/GraphicsScope.cpp",
-    "Globals/Lifecycle/ApplicationHost.cpp"
+    "Globals/Graphics/VisualOutput.cpp",
+    "Globals/Lifecycle/ApplicationHost.cpp",
+    "Globals/Snapshots/SnapshotManager.cpp"
   ],
-  "mode_capabilities": {
-    "SelectMenuMode": [
-      "SelectMenu",
-      "false",
-      "Absent"
-    ],
-    "LuaMenuMode": [
-      "LuaMenu",
-      "false",
-      "BeforeGraphics"
-    ],
-    "PreGameMode": [
-      "PreGame",
-      "true",
-      "Absent"
-    ],
-    "LoadingMode": [
-      "Loading",
-      "true",
-      "WithGraphics"
-    ],
-    "GameMode": [
-      "Game",
-      "true",
-      "WithGraphics"
-    ]
-  }
+  "headers": [
+    "ApplicationContext.h",
+    "ApplicationLoop.h",
+    "Globals/Diagnostics/Diagnostics.h",
+    "Globals/Diagnostics/DiagnosticsContext.h",
+    "Globals/Graphics/VisualOutput.h",
+    "Globals/InvocationContext.h",
+    "Globals/Lifecycle/ApplicationHost.h",
+    "Globals/Lifecycle/Lifecycle.h",
+    "Globals/Lifecycle/LifecycleContext.h",
+    "Globals/Snapshots/SnapshotManager.h",
+    "Globals/Snapshots/SnapshotReads.h",
+    "Globals/Snapshots/SnapshotTypes.h",
+    "Globals/Snapshots/SnapshotView.h",
+    "Modes/Game/GameMode.h",
+    "Modes/Game/GameSnapshots.h",
+    "Modes/Game/Simulation/Observation/Observation.h",
+    "Modes/Game/Simulation/Observation/ObservationContext.h",
+    "Modes/Game/Simulation/Publication/Publication.h",
+    "Modes/Game/Simulation/Publication/PublicationContext.h",
+    "Modes/Game/Simulation/Publication/PublishedFrame.h",
+    "Modes/Game/Simulation/Simulation.h",
+    "Modes/Game/Simulation/SimulationContext.h",
+    "Modes/IMode.h",
+    "Modes/Loading/LoadingMode.h",
+    "Modes/Loading/LoadingSnapshots.h",
+    "Modes/LuaMenu/LuaMenuMode.h",
+    "Modes/LuaMenu/LuaMenuSnapshots.h",
+    "Modes/Mode.h",
+    "Modes/ModeBinding.h",
+    "Modes/PreGame/PreGameMode.h",
+    "Modes/PreGame/PreGameSnapshots.h",
+    "Modes/SelectMenu/SelectMenuMode.h",
+    "Modes/SelectMenu/SelectMenuSnapshots.h"
+  ]
 }

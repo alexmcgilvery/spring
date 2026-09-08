@@ -3,9 +3,14 @@
 #include "Observation.h"
 
 namespace runtime {
+
 void Observation::Observe(const SimulationObservationContext&)
 {
 	/*
+	 * Expected responsibility and why:
+	 * Copy event-time facts because final frame state cannot reconstruct transient or nested
+	 * notifications.
+	 *
 	 * Expected legacy sources (investigation starting points):
 	 * [EventHandler.cpp](../../../../../System/EventHandler.cpp) — CEventHandler event
 	 * dispatch
@@ -13,27 +18,24 @@ void Observation::Observe(const SimulationObservationContext&)
 	 * [NetCommands.cpp](../../../../../Net/NetCommands.cpp) — CGame::ClientReadNet()
 	 *
 	 * Context contract:
-	 * [ObservationContext.h](ObservationContext.h) — SimulationObservationContext explicitly lists the
-	 * expected dependencies. Mutable references are permitted outputs/live work;
-	 * const references are borrowed views, not frozen or deeply immutable state.
-	 * The caller resolves valid dependencies for this activation and invocation;
-	 * a retiring transition ends their use. No global lookup or private access is
-	 * supplied by this parameter. Owning publication leases are separately named.
-	 *
-	 * Expected responsibility:
-	 * Describe ordered, non-controlling observation of simulation changes and entity lifetime.
+	 * Explicit private ownership dependencies; these contexts are internal skeleton interfaces, not
+	 * the removed common mode contexts. Inputs identify the notification and its invocation; Game owns
+	 * the output journal. This narrow live observation dependency is not a mutable reference exposed
+	 * to snapshot consumers.
 	 *
 	 * Expected work, in conceptual order:
-	 * Identify relevant notifications; capture event-time values and identities; relate them
-	 * to authoritative completion and observation continuity.
+	 * Capture identity, event-time payload and ordering before later callbacks mutate state;
+	 * distinguish control callbacks and semantic death from physical retirement.
 	 *
-	 * Expected dependencies:
-	 * Event dispatch order, nested callbacks, entity lifecycle, per-ally-team context,
-	 * bootstrap state and session identity.
+	 * Expected dependencies and relationships:
+	 * Publication joins completed state with observation bounds. Historical snapshots do not deliver
+	 * or acknowledge ordered events. Nested notifications, continuity and overload need real adapters;
+	 * this function still records no events.
 	 *
-	 * Expected relationships:
-	 * Observation must not control simulation or change existing clients relative ordering.
-	 * Publication associates completed state with the observations that preceded it.
+	 * Scheduling and lifetime:
+	 * The application owns logical/visual admission and lifecycle commitment. Source links guide later
+	 * investigation; they do not define the target architecture. This concern remains an
+	 * implementation outline, while the generic manager and dispatcher are executable.
 	 */
 
 	/*

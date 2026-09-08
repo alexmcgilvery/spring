@@ -3,16 +3,21 @@
 #pragma once
 
 #include <memory>
+
 namespace runtime {
-struct PublishedSimFrame;
+
 /**
- * Owning handle contract for completed state; payload/schema and producer remain
- * unimplemented. The eventual producer must publish immutable owned contents,
- * without mutable aliases or embedded borrows into legacy world objects.
- *
- * Unlike an invocation context, a valid lease may survive the call and teardown.
- * shared_ptr<const T> alone does not guarantee deep immutability or visibility
- * projection. A null lease means no publication is available, never an empty world.
+ * Schema outline only: no producer constructs this as a usable world snapshot.
+ * Expected owned families: authoritative unit/feature/projectile state, articulated
+ * pose, visibility knowledge, catalog leases and observation bounds. Identity,
+ * revision and completed tick are carried by the manager's publication envelope.
+ * Extraction, coverage validation and production memory policy remain unimplemented.
  */
+struct PublishedSimFrame {
+public:
+	// Detailed data fields follow source annotation and non-mutating read validation.
+};
+
 using PublishedFrameLease = std::shared_ptr<const PublishedSimFrame>;
-}
+
+} // namespace runtime

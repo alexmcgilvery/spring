@@ -1,18 +1,24 @@
 /* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
 
 #pragma once
+
 #include "../Globals/InvocationContext.h"
+
+#include <memory>
+
 namespace runtime {
+
+// Forward declarations: owned runtime mode lifetime.
 class IMode;
-/**
- * Borrow a polymorphic mode. nullptr explicitly means inactive, not a sixth mode.
- * The host owns lifetime and must advance generation on every activation,
- * including reuse of the same object/address. Retire backing safely before a
- * replacement is observed; a pointer/generation pair is not a lifetime lease.
- */
+
+/** A copied binding leases the mode; activation identity, not address, defines continuity. */
 struct ActiveModeBinding {
-	IMode* mode = nullptr;
-	std::uint64_t generation = 0;
+public:
 	bool operator==(const ActiveModeBinding&) const = default;
+
+public:
+	std::shared_ptr<IMode> mode;
+	ModeIdentity identity;
 };
-}
+
+} // namespace runtime

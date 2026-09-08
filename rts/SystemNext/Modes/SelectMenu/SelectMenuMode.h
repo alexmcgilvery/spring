@@ -2,18 +2,23 @@
 
 #pragma once
 
-#include "../IMode.h"
+#include "SelectMenuSnapshots.h"
+#include "../Mode.h"
 
 namespace runtime {
-/*
- * Built-in menu concern outline. Session and recurring display maintenance are absent by
- * design; the legacy base update is a no-op. Menu-specific construction, actions and
- * retirement are described within input and render, not additional skeleton functions.
+
+/**
+ * SelectMenu behavior outline with executable typed dispatch.
+ * Display is absent by design; Render consumes Session directly.
+ * Bodies return no publication until their documented behavior is implemented.
  */
-class SelectMenuMode final : public IMode {
+class SelectMenuMode final : public Mode<SelectMenuMode, SelectMenuContracts> {
 public:
 	SelectMenuMode();
-	void Input(const ModeInputContext& context) override;
-	void Render(const ModeRenderContext& context) override;
+
+	InputPublication Input(const InputSnapshots& snapshots);
+	SessionPublication Session(const SessionSnapshots& snapshots);
+	RenderPublication Render(const RenderSnapshots& snapshots);
 };
-}
+
+} // namespace runtime

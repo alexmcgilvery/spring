@@ -5,6 +5,7 @@
 #include "PublicationContext.h"
 
 namespace runtime {
+
 /*
  * Game-local publication expectations only. No frame schema, storage pool, lease
  * implementation or extraction adapter exists in this skeleton.
@@ -13,4 +14,5 @@ class Publication {
 public:
 	void Publish(const PublicationContext& context);
 };
-}
+
+} // namespace runtime

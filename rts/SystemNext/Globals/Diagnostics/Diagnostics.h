@@ -5,6 +5,7 @@
 #include "DiagnosticsContext.h"
 
 namespace runtime {
+
 /*
  * Cross-mode runtime observation and diagnostic-output outline. It does not contain the
  * Game-local semantic event journal or executable logging infrastructure.
@@ -14,4 +15,5 @@ public:
 	void Observe(const DiagnosticObservationContext& context);
 	void Report(const DiagnosticReportContext& context);
 };
-}
+
+} // namespace runtime
