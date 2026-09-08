@@ -7,17 +7,18 @@ static void AssociationAndMissingCurrent()
 	SnapshotManager manager;
 	manager.Register<TestContracts>(ModeKind::Game);
 	manager.Activate(ModeKind::Game);
-	PublishLogical(manager, 96, 96);
+	PublishLogical(manager, 96);
 
-	auto visual = manager.BeginVisual(VisualIterationId {81});
+	auto visual = manager.BeginVisual({}, TestOutput());
 	Check(visual.has_value(), "visual association exists");
-	Check(manager.AssociatedLogical({81}) == LogicalIterationId {96}, "81 associates with 96");
+	const auto visualId = visual->VisualId();
+	Check(manager.AssociatedLogical(visualId) == LogicalIterationId {1}, "visual and logical IDs are independent");
 
-	auto display = manager.BeginStage(VisualIterationId {81}, Stage::Display);
+	auto display = manager.BeginStage(visualId, Stage::Display);
 	auto before = manager.Acquire<TestContracts, Stage::Display>(*display);
 	Check(before->Session().Current().value == 96, "selected logical value");
 
-	PublishLogical(manager, 97, 97);
+	PublishLogical(manager, 97);
 	auto after = manager.Acquire<TestContracts, Stage::Display>(*display);
 	Check(before->Session().Current().value == 96 && after->Session().Current().value == 96, "association and acquired view freeze");
 	Check(!before->Display().Previous(), "bootstrap history absent");
@@ -25,15 +26,17 @@ static void AssociationAndMissingCurrent()
 	display->Finish(StageStatus::Completed);
 	visual->Close();
 	Check(before->Session().Current().value == 96, "closed iteration leaves view readable");
-	Check(!manager.BeginStage(VisualIterationId {81}, Stage::Render), "closed ID cannot admit");
+	Check(!manager.BeginStage(visualId, Stage::Render), "closed ID cannot admit");
 
-	PublishLogical(manager, 98, 98, false);
-	auto missing = manager.BeginVisual(VisualIterationId {82});
-	auto missingDisplay = manager.BeginStage(VisualIterationId {82}, Stage::Display);
+	PublishLogical(manager, 98, false);
+	auto missing = manager.BeginVisual({}, TestOutput());
+	const auto missingId = missing->VisualId();
+	auto missingDisplay = manager.BeginStage(missingId, Stage::Display);
 	Check(!manager.Acquire<TestContracts, Stage::Display>(*missingDisplay), "absent current never promotes 97");
 	missingDisplay->Finish(StageStatus::Unavailable);
-	Check(!manager.BeginStage(VisualIterationId {82}, Stage::Render), "unavailable display stops rendering");
-	Throws([&] { manager.BeginLogical(LogicalIterationId {98}, {}); }, "closed logical ID cannot be reused");
+	Check(!manager.BeginStage(missingId, Stage::Render), "unavailable display stops rendering");
+	auto issued = manager.BeginLogical(TestInput(), TestWindow());
+	Check(issued.LogicalId() == LogicalIterationId {4}, "manager allocates monotonic logical IDs");
 }
 
 static void StageOrderingAndExceptions()
@@ -41,7 +44,7 @@ static void StageOrderingAndExceptions()
 	SnapshotManager manager;
 	manager.Register<TestContracts>(ModeKind::Game);
 	manager.Activate(ModeKind::Game);
-	auto iteration = manager.BeginLogical(LogicalIterationId {1}, {});
+	auto iteration = manager.BeginLogical(TestInput(), TestWindow());
 	Check(!manager.BeginStage(LogicalIterationId {1}, Stage::Session), "session cannot precede input");
 	Check(!manager.BeginSimulation({1}), "snapshot storage grants no independent tick authority");
 
@@ -63,7 +66,7 @@ static void StageOrderingAndExceptions()
 	}
 	Check(manager.Status(LogicalIterationId {1}, Stage::Session) == StageStatus::Failed, "unfinished scope failed");
 	iteration.Close();
-	Check(!manager.BeginVisual(VisualIterationId {1}), "failed logical iteration cannot supply visuals");
+	Check(!manager.BeginVisual({}, TestOutput()), "failed logical iteration cannot supply visuals");
 }
 
 static void SimulationCadenceAndHistory()
@@ -72,7 +75,7 @@ static void SimulationCadenceAndHistory()
 	manager.Register<TestContracts>(ModeKind::Game);
 	manager.Activate(ModeKind::Game);
 	{
-		auto iteration = manager.BeginLogical(LogicalIterationId {1}, {});
+		auto iteration = manager.BeginLogical(TestInput(), TestWindow());
 		auto input = manager.BeginStage(LogicalIterationId {1}, Stage::Input);
 		manager.Publish(*input, Value {1, {}});
 		input->Finish(StageStatus::Completed);
@@ -89,7 +92,7 @@ static void SimulationCadenceAndHistory()
 		manager.Publish(*session, Value {1, {}});
 		session->Finish(StageStatus::Completed);
 	}
-	auto visual = manager.BeginVisual(VisualIterationId {1});
+	auto visual = manager.BeginVisual({}, TestOutput());
 	auto display = manager.BeginStage(VisualIterationId {1}, Stage::Display);
 	auto view = manager.Acquire<TestContracts, Stage::Display>(*display);
 	Check(view->Simulation().Current()->value == 5000, "latest observation revision is independent of tick");
@@ -99,8 +102,8 @@ static void SimulationCadenceAndHistory()
 	display->Finish(StageStatus::NoPublication);
 	visual->Close();
 
-	PublishLogical(manager, 2, 2); // No tick.
-	auto next = manager.BeginVisual(VisualIterationId {2});
+	PublishLogical(manager, 2); // No tick.
+	auto next = manager.BeginVisual({}, TestOutput());
 	auto nextDisplay = manager.BeginStage(VisualIterationId {2}, Stage::Display);
 	auto nextView = manager.Acquire<TestContracts, Stage::Display>(*nextDisplay);
 	Check(nextView->Simulation().Current()->value == 5000, "no-tick visual association explicitly retains completed simulation");
@@ -117,7 +120,7 @@ static void RetentionAndRetirement()
 		manager.Register<TestContracts>(ModeKind::Game);
 		const auto original = manager.Activate(ModeKind::Game);
 		{
-			auto iteration = manager.BeginLogical(LogicalIterationId {1}, {});
+			auto iteration = manager.BeginLogical(TestInput(), TestWindow());
 			auto input = manager.BeginStage(LogicalIterationId {1}, Stage::Input);
 			manager.Publish(*input, Value {1, {}});
 			input->Finish(StageStatus::Completed);
@@ -127,7 +130,7 @@ static void RetentionAndRetirement()
 			manager.Publish(*session, Value {42, lifetime});
 			session->Finish(StageStatus::Completed);
 		}
-		auto visual = manager.BeginVisual(VisualIterationId {1});
+		auto visual = manager.BeginVisual({}, TestOutput());
 		auto display = manager.BeginStage(VisualIterationId {1}, Stage::Display);
 		retained = manager.Acquire<TestContracts, Stage::Display>(*display);
 		manager.Publish(*display, Value {1, {}});
@@ -137,30 +140,47 @@ static void RetentionAndRetirement()
 
 		const auto next = manager.Activate(ModeKind::Game, Handoff::Own(std::string("owned setup")));
 		Check(next.generation != original.generation, "same kind gets a distinct activation");
-		Check(!manager.Publish(*render, RenderedOutput {1, 1, std::make_shared<TestResource>()}), "late render cannot commit");
+			Check(!manager.Publish(*render, RenderedOutput {1, 9, 1, std::make_shared<TestResource>()}), "late render cannot commit");
 		render->Finish(StageStatus::NoPublication);
 		Check(!manager.BeginStage(VisualIterationId {1}, Stage::Present), "old activation cannot present");
-		Check(!manager.BeginVisual(VisualIterationId {2}), "new activation needs its own logical iteration");
+		Check(!manager.BeginVisual({}, TestOutput()), "new activation needs its own logical iteration");
 
 		{
-			auto logical = manager.BeginLogical(LogicalIterationId {2}, {});
-			auto input = manager.BeginStage(LogicalIterationId {2}, Stage::Input);
-			auto view = manager.Acquire<TestContracts, Stage::Input>(*input);
-			Check(!view->Session().Previous(), "mode history does not cross activation");
-			Check(view->Application().Previous() != nullptr, "application continuity survives activation");
-			Check(*view->Activation().Current().handoff.Get<std::string>() == "owned setup", "typed owning handoff");
-			Check(!view->Activation().Current().handoff.Get<int>(), "handoff rejects incorrect type");
-			input->Finish(StageStatus::NoPublication);
-		}
+			auto logical = manager.BeginLogical(TestInput(), TestWindow());
+				auto input = manager.BeginStage(LogicalIterationId {2}, Stage::Input);
+				auto view = manager.Acquire<TestContracts, Stage::Input>(*input);
+				Check(!view->Session().Previous(), "mode history does not cross activation");
+				Check(view->PlatformInput().Previous() != nullptr, "platform continuity survives activation");
+				Check(view->Window().Previous() != nullptr, "window continuity survives activation");
+				Check(view->Window().Identity<1>()->mode.kind == ModeKind::Inactive,
+					"application publications do not inherit mode identity");
+				Check(*view->Activation().Current().handoff.Get<std::string>() == "owned setup", "typed owning handoff");
+				Check(!view->Activation().Current().handoff.Get<int>(), "handoff rejects incorrect type");
+				manager.Publish(*input, Value {2, {}});
+				input->Finish(StageStatus::Completed);
+				auto session = manager.BeginStage(LogicalIterationId {2}, Stage::Session);
+				manager.Publish(*session, Value {2, {}});
+				session->Finish(StageStatus::Completed);
+			}
+			{
+				auto visual = manager.BeginVisual({}, TestOutput(2));
+				auto display = manager.BeginStage(visual->VisualId(), Stage::Display);
+				auto view = manager.Acquire<TestContracts, Stage::Display>(*display);
+				Check(view->GraphicsOutput().Current().generation == 2, "new target generation is current");
+				Check(view->GraphicsOutput().Previous()->generation == 1, "output history survives mode activation");
+				Check(view->GraphicsOutput().Identity<1>()->mode.kind == ModeKind::Inactive,
+					"graphics output does not inherit mode identity");
+				display->Finish(StageStatus::NoPublication);
+			}
 		for (std::uint64_t id = 3; id < 80; ++id)
-			PublishLogical(manager, id, static_cast<int>(id));
+			PublishLogical(manager, static_cast<int>(id));
 		Check(manager.RetainedHistory(Stage::Session) == 2, "history capacity comes from reads");
 		Check(manager.RetainedHistory(Stage::Input) == 1, "different producers have different capacities");
 		Check(!weak.expired(), "delayed reader pins old epoch data");
 
 		for (std::uint64_t id = 80; id < 100; ++id) {
 			manager.Activate(ModeKind::Game);
-			PublishLogical(manager, id, static_cast<int>(id));
+			PublishLogical(manager, static_cast<int>(id));
 			Check(manager.RetainedHistory(Stage::Session) == 1, "reload does not allocate an accumulating history pool");
 		}
 	}
@@ -174,17 +194,17 @@ static void FrozenVisualFeedbackAndLifecycle()
 	SnapshotManager manager;
 	manager.Register<TestContracts>(ModeKind::Game);
 	manager.Activate(ModeKind::Game);
-	PublishLogical(manager, 1, 1);
+	PublishLogical(manager, 1);
 	{
-		auto visual = manager.BeginVisual(VisualIterationId {1});
+		auto visual = manager.BeginVisual({}, TestOutput());
 		PublishDisplay(manager, {1}, 10);
 	}
-	auto logical = manager.BeginLogical(LogicalIterationId {2}, {});
+	auto logical = manager.BeginLogical(TestInput(), TestWindow());
 	auto input = manager.BeginStage(LogicalIterationId {2}, Stage::Input);
 	manager.Publish(*input, Value {2, {}});
 	input->Finish(StageStatus::Completed);
 	{
-		auto visual = manager.BeginVisual(VisualIterationId {2});
+		auto visual = manager.BeginVisual({}, TestOutput());
 		PublishDisplay(manager, {2}, 20);
 	}
 	auto session = manager.BeginStage(LogicalIterationId {2}, Stage::Session);
@@ -201,8 +221,8 @@ static void FrozenVisualFeedbackAndLifecycle()
 
 struct DeepContracts : TestContracts {
 	using InputReads = SnapshotReads<
-		Required<Stage::Application, Slot::Current>,
-		HistoryRead<Stage::Application, 4>,
+		Required<Stage::PlatformInput, Slot::Current>,
+		HistoryRead<Stage::PlatformInput, 4>,
 		HistoryRead<Stage::Session, 4>
 	>;
 };
@@ -214,14 +234,14 @@ static void DeclaredDepthAndSharedContinuity()
 	manager.Register<DeepContracts>(ModeKind::Loading);
 	manager.Activate(ModeKind::Game);
 	for (std::uint64_t id = 1; id < 7; ++id)
-		PublishLogical(manager, id, static_cast<int>(id));
-	Check(manager.RetainedHistory(Stage::Application) == 5, "shared retention combines all registered consumers");
+		PublishLogical(manager, static_cast<int>(id));
+	Check(manager.RetainedHistory(Stage::PlatformInput) == 5, "shared retention combines all registered consumers");
 	manager.Activate(ModeKind::Loading);
 	{
-		auto iteration = manager.BeginLogical(LogicalIterationId {7}, {});
+		auto iteration = manager.BeginLogical(TestInput(), TestWindow());
 		auto input = manager.BeginStage(LogicalIterationId {7}, Stage::Input);
 		auto view = manager.Acquire<DeepContracts, Stage::Input>(*input);
-		Check(view->Application().Identity<4>()->iteration == 3, "indexed history works beyond aliases");
+		Check(view->PlatformInput().Identity<4>()->iteration == 3, "indexed history works beyond aliases");
 		Check(!view->Session().History<4>(), "mode history still stops at activation");
 		manager.Publish(*input, Value {7, {}});
 		input->Finish(StageStatus::Completed);
@@ -231,7 +251,7 @@ static void DeclaredDepthAndSharedContinuity()
 		session->Finish(StageStatus::Completed);
 	}
 	for (std::uint64_t id = 8; id < 13; ++id)
-		PublishLogical(manager, id, static_cast<int>(id));
+		PublishLogical(manager, static_cast<int>(id));
 	Check(manager.RetainedHistory(Stage::Session) == 5, "mode-local depth derives from deeper declaration");
 }
 
@@ -240,35 +260,35 @@ static void PresentationReceiptsAndAdmittedLifetime()
 	SnapshotManager manager;
 	manager.Register<TestContracts>(ModeKind::Game);
 	manager.Activate(ModeKind::Game);
-	PublishLogical(manager, 1, 1);
+	PublishLogical(manager, 1);
 	{
-		auto visual = manager.BeginVisual(VisualIterationId {1});
+		auto visual = manager.BeginVisual({}, TestOutput());
 		PublishDisplay(manager, {1}, 1);
 		auto render = manager.BeginStage(VisualIterationId {1}, Stage::Render);
-		manager.Publish(*render, RenderedOutput {81, 9, std::make_shared<TestResource>()});
+		manager.Publish(*render, RenderedOutput {81, 9, 1, std::make_shared<TestResource>()});
 		render->Finish(StageStatus::Completed);
 		auto present = manager.BeginStage(VisualIterationId {1}, Stage::Present);
 		auto inputs = manager.Acquire<ModeContracts, Stage::Present>(*present);
 		Check(inputs->Render().Current().outputId == 81, "present gets exact registered render output");
-		manager.Publish(*present, PresentationReceipt {81, 9, PresentationOutcome::Presented, {}, {}});
+		manager.Publish(*present, PresentationReceipt {81, 9, 1, PresentationOutcome::Presented, {}, {}});
 		present->Finish(StageStatus::Completed);
 		Check(!manager.BeginStage(VisualIterationId {1}, Stage::Present), "one presentation per visual invocation");
 	}
-	PublishLogical(manager, 2, 2);
-	auto visual = manager.BeginVisual(VisualIterationId {2});
+	PublishLogical(manager, 2);
+	auto visual = manager.BeginVisual({}, TestOutput());
 	auto display = manager.BeginStage(VisualIterationId {2}, Stage::Display);
 	auto inputs = manager.Acquire<TestContracts, Stage::Display>(*display);
 	Check(inputs->Present().Previous()->outputId == 81, "receipt is readable as immutable history");
 	manager.Publish(*display, Value {2, {}});
 	display->Finish(StageStatus::Completed);
 	auto render = manager.BeginStage(VisualIterationId {2}, Stage::Render);
-	manager.Publish(*render, RenderedOutput {82, 9, std::make_shared<TestResource>()});
+	manager.Publish(*render, RenderedOutput {82, 9, 1, std::make_shared<TestResource>()});
 	render->Finish(StageStatus::Completed);
 	auto present = manager.BeginStage(VisualIterationId {2}, Stage::Present);
 	auto frame = manager.Acquire<ModeContracts, Stage::Present>(*present);
 	manager.Activate(ModeKind::Game);
 	Check(frame->Render().Current().resource != nullptr, "admitted presentation retains retired output resources");
-	Check(!manager.Publish(*present, PresentationReceipt {82, 9, PresentationOutcome::Presented, {}, {}}), "late receipt cannot enter new activation");
+	Check(!manager.Publish(*present, PresentationReceipt {82, 9, 1, PresentationOutcome::Presented, {}, {}}), "late receipt cannot enter new activation");
 	present->Finish(StageStatus::NoPublication);
 }
 

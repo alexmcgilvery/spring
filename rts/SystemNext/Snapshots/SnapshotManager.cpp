@@ -22,7 +22,7 @@ static std::size_t Index(Stage stage)
 
 struct IterationState {
 public:
-	InvocationContext context;
+	InvocationMetadata context;
 	std::optional<LogicalIterationId> logical;
 	std::array<PublicationLease, StageCount> current;
 	std::array<std::vector<PublicationLease>, StageCount> previous;
@@ -38,7 +38,7 @@ public:
 	{
 		std::size_t depth = 0;
 		for (const auto& [producer, requirement] : retention) {
-			if (producer.second == stage && (producer.first == active.kind || stage == Stage::Application))
+			if (producer.second == stage && (producer.first == active.kind || stage <= Stage::GraphicsOutput))
 				depth = std::max(depth, requirement);
 		}
 		return depth;
@@ -126,6 +126,20 @@ void IterationLease::Close() noexcept
 	state.reset();
 }
 
+LogicalIterationId IterationLease::LogicalId() const
+{
+	if (!iteration || iteration->context.flow != Flow::Logical)
+		throw std::logic_error("Lease is not a logical iteration");
+	return LogicalIterationId {iteration->context.iteration};
+}
+
+VisualIterationId IterationLease::VisualId() const
+{
+	if (!iteration || iteration->context.flow != Flow::Visual)
+		throw std::logic_error("Lease is not a visual iteration");
+	return VisualIterationId {iteration->context.iteration};
+}
+
 InvocationLease::InvocationLease(std::shared_ptr<detail::ManagerState> state, std::shared_ptr<detail::IterationState> iteration, Stage stage)
 	: state(std::move(state)), iteration(std::move(iteration)), stage(stage)
 {
@@ -164,7 +178,7 @@ void InvocationLease::Finish(StageStatus status) noexcept
 	}
 }
 
-const InvocationContext& InvocationLease::Context() const
+const InvocationMetadata& InvocationLease::Metadata() const
 {
 	return iteration->context;
 }
@@ -227,7 +241,7 @@ void SnapshotManager::Retire() noexcept
 	state->activation.reset();
 
 	// Application facts have separate continuity; mode-local history does not cross activation.
-	for (std::size_t i = 1; i < detail::StageCount; ++i)
+	for (std::size_t i = detail::Index(Stage::Activation); i < detail::StageCount; ++i)
 		state->history[i].clear();
 }
 
@@ -236,43 +250,48 @@ ModeIdentity SnapshotManager::Active() const
 	return state->active;
 }
 
-IterationLease SnapshotManager::BeginLogical(LogicalIterationId id, ApplicationSnapshot application)
+IterationLease SnapshotManager::BeginLogical(PlatformInputSnapshot input, WindowSnapshot window)
 {
-	if (id.value == 0 || id.value <= state->logicalHighWater || state->active.kind == ModeKind::Inactive)
-		throw std::invalid_argument("Logical ID must be new and have an active mode");
+	if (state->active.kind == ModeKind::Inactive)
+		throw std::invalid_argument("Logical iteration requires an active mode");
 
 	for (const auto& [key, iteration] : state->iterations) {
 		if (key.first == Flow::Logical && iteration->context.mode == state->active)
 			throw std::logic_error("A logical iteration is already open");
 	}
 
+	const LogicalIterationId id {++state->logicalHighWater};
 	auto iteration = std::make_shared<detail::IterationState>();
-	iteration->context = {state->active, Flow::Logical, id.value, application.sampledAt, application.realDelta};
+	iteration->context = {state->active, Flow::Logical, id.value, input.sampledAt, input.realDelta};
 	iteration->logical = id;
 	iteration->previous = state->history;
 	iteration->current[detail::Index(Stage::Activation)] = state->activation;
 
-	auto publication = std::make_shared<const detail::StoredPublication>(detail::StoredPublication {
-		{{}, Stage::Application, Flow::Logical, id.value, ++state->revision, {}},
-		typeid(ApplicationSnapshot), std::make_shared<const ApplicationSnapshot>(std::move(application))
+	auto inputPublication = std::make_shared<const detail::StoredPublication>(detail::StoredPublication {
+		{{}, Stage::PlatformInput, Flow::Logical, id.value, ++state->revision, {}},
+		typeid(PlatformInputSnapshot), std::make_shared<const PlatformInputSnapshot>(std::move(input))
 	});
-	iteration->current[detail::Index(Stage::Application)] = publication;
-	state->history[detail::Index(Stage::Application)].insert(state->history[detail::Index(Stage::Application)].begin(), publication);
-	state->Trim(Stage::Application);
+	auto windowPublication = std::make_shared<const detail::StoredPublication>(detail::StoredPublication {
+		{{}, Stage::Window, Flow::Logical, id.value, ++state->revision, {}},
+		typeid(WindowSnapshot), std::make_shared<const WindowSnapshot>(std::move(window))
+	});
+	iteration->current[detail::Index(Stage::PlatformInput)] = inputPublication;
+	iteration->current[detail::Index(Stage::Window)] = windowPublication;
+	state->history[detail::Index(Stage::PlatformInput)].insert(state->history[detail::Index(Stage::PlatformInput)].begin(), inputPublication);
+	state->history[detail::Index(Stage::Window)].insert(state->history[detail::Index(Stage::Window)].begin(), windowPublication);
+	state->Trim(Stage::PlatformInput);
+	state->Trim(Stage::Window);
 	state->iterations.emplace(detail::Key {Flow::Logical, id.value}, iteration);
-	state->logicalHighWater = id.value;
 	return IterationLease(state, std::move(iteration));
 }
 
-std::optional<IterationLease> SnapshotManager::BeginVisual(VisualIterationId id, IterationTiming timing)
+std::optional<IterationLease> SnapshotManager::BeginVisual(IterationTiming timing, GraphicsOutputSnapshot output)
 {
-	if (id.value == 0 || id.value <= state->visualHighWater)
-		throw std::invalid_argument("Visual ID must be new");
-
 	const auto logical = state->latestLogical;
 	if (!logical || logical->context.mode != state->active)
 		return std::nullopt;
 
+	const VisualIterationId id {++state->visualHighWater};
 	auto iteration = std::make_shared<detail::IterationState>();
 	iteration->context = logical->context;
 	iteration->context.flow = Flow::Visual;
@@ -288,6 +307,14 @@ std::optional<IterationLease> SnapshotManager::BeginVisual(VisualIterationId id,
 		iteration->previous[i] = logical->previous[i];
 	}
 
+	auto outputPublication = std::make_shared<const detail::StoredPublication>(detail::StoredPublication {
+		{{}, Stage::GraphicsOutput, Flow::Visual, id.value, ++state->revision, {}},
+		typeid(GraphicsOutputSnapshot), std::make_shared<const GraphicsOutputSnapshot>(std::move(output))
+	});
+	iteration->current[detail::Index(Stage::GraphicsOutput)] = outputPublication;
+	state->history[detail::Index(Stage::GraphicsOutput)].insert(state->history[detail::Index(Stage::GraphicsOutput)].begin(), outputPublication);
+	state->Trim(Stage::GraphicsOutput);
+
 	// Simulation has its own cadence. An association names the last completed tick,
 	// even when the selected logical iteration did not advance simulation.
 	const auto simulation = detail::Index(Stage::Simulation);
@@ -297,7 +324,6 @@ std::optional<IterationLease> SnapshotManager::BeginVisual(VisualIterationId id,
 	}
 
 	state->iterations.emplace(detail::Key {Flow::Visual, id.value}, iteration);
-	state->visualHighWater = id.value;
 	return IterationLease(state, std::move(iteration));
 }
 

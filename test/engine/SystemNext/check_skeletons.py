@@ -16,7 +16,8 @@ def without_comments(source):
 def verify(root):
     module = root / 'rts/SystemNext'
     manifest = json.loads((module / 'skeleton-manifest.json').read_text())
-    assert manifest['version'] == 2
+    assert manifest['version'] == 3
+    assert not (module / 'Globals').exists(), 'Globals must not survive as an ownership category'
     actual = {str(p.relative_to(module)) for p in module.rglob('*.cpp')}
     outlined_files = {entry['file'] for entry in manifest['outlines']}
     assert actual == outlined_files | set(manifest['architecture_sources']), 'Missing or unclassified runtime source'
@@ -34,6 +35,17 @@ def verify(root):
             assert target.is_relative_to(module.resolve()) and target.is_file(), name + ': engine dependency in isolated infrastructure'
         assert not re.search(r'\bextern\b|\bglobalRendering\b|\bactiveController\b', code), name + ': global/legacy execution dependency'
         assert '#if 0' not in source and 'FIXME' not in source, name + ': obsolete conflict scaffolding'
+
+    loop_header = (module / 'ApplicationLoop.h').read_text()
+    assert 'ApplicationContext' not in loop_header and 'ApplicationHost' not in loop_header
+    assert all(owner + '&' in loop_header for owner in ['Platform', 'ApplicationLifecycle', 'SnapshotManager', 'Diagnostics'])
+    loop_source = (module / 'ApplicationLoop.cpp').read_text()
+    for label in ['[ input', '[ session', '[ display', '[ render', '[ present', '[ application lifecycle', '[ diagnostics']:
+        assert label in loop_source, 'Application loop missing readable concern label: ' + label
+    assert 'BeginLogical(LogicalIterationId' not in (module / 'Snapshots/SnapshotManager.h').read_text(), 'caller allocates logical IDs'
+
+    mode_code = '\n'.join(path.read_text() for path in (module / 'Modes').rglob('*') if path.suffix in {'.h', '.cpp'})
+    assert not re.search(r'\b(?:Platform|ApplicationLifecycle|Diagnostics)\s*[*&]', without_comments(mode_code)), 'mode can access an application executor'
 
     groups = {}
     for entry in manifest['outlines']:

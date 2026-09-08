@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "../../../Globals/InvocationContext.h"
+#include "../../../Snapshots/InvocationMetadata.h"
 
 namespace runtime {
 
@@ -13,7 +13,7 @@ struct SimulationEvents;
 /** Authority supplied only by accepted GameMode session work. */
 struct SimulationStepContext {
 public:
-	const InvocationContext& invocation;
+	const InvocationMetadata& invocation;
 	GameSimulationState& simulation;
 	SimulationEvents& events;
 	int acceptedTick;

@@ -72,7 +72,9 @@ class SnapshotView {
 public:
 	using Reads = ReadsFor<Contracts, Consumer>;
 	using Windows = std::tuple<
-		SnapshotWindow<PayloadFor<Contracts, Stage::Application>, Stage::Application, Reads>,
+		SnapshotWindow<PayloadFor<Contracts, Stage::PlatformInput>, Stage::PlatformInput, Reads>,
+		SnapshotWindow<PayloadFor<Contracts, Stage::Window>, Stage::Window, Reads>,
+		SnapshotWindow<PayloadFor<Contracts, Stage::GraphicsOutput>, Stage::GraphicsOutput, Reads>,
 		SnapshotWindow<PayloadFor<Contracts, Stage::Activation>, Stage::Activation, Reads>,
 		SnapshotWindow<PayloadFor<Contracts, Stage::Input>, Stage::Input, Reads>,
 		SnapshotWindow<PayloadFor<Contracts, Stage::Session>, Stage::Session, Reads>,
@@ -82,49 +84,59 @@ public:
 		SnapshotWindow<PayloadFor<Contracts, Stage::Present>, Stage::Present, Reads>
 	>;
 
-	const InvocationContext& Invocation() const
+	const InvocationMetadata& Invocation() const
 	{
 		return selections->invocation;
 	}
 
-	const auto& Application() const requires Reads::template hasSource<Stage::Application>
+	const auto& PlatformInput() const requires Reads::template hasSource<Stage::PlatformInput>
 	{
-		return Window<Stage::Application>();
+		return SelectSource<Stage::PlatformInput>();
+	}
+
+	const auto& Window() const requires Reads::template hasSource<Stage::Window>
+	{
+		return SelectSource<Stage::Window>();
+	}
+
+	const auto& GraphicsOutput() const requires Reads::template hasSource<Stage::GraphicsOutput>
+	{
+		return SelectSource<Stage::GraphicsOutput>();
 	}
 
 	const auto& Activation() const requires Reads::template hasSource<Stage::Activation>
 	{
-		return Window<Stage::Activation>();
+		return SelectSource<Stage::Activation>();
 	}
 
 	const auto& Input() const requires Reads::template hasSource<Stage::Input>
 	{
-		return Window<Stage::Input>();
+		return SelectSource<Stage::Input>();
 	}
 
 	const auto& Session() const requires Reads::template hasSource<Stage::Session>
 	{
-		return Window<Stage::Session>();
+		return SelectSource<Stage::Session>();
 	}
 
 	const auto& Simulation() const requires Reads::template hasSource<Stage::Simulation>
 	{
-		return Window<Stage::Simulation>();
+		return SelectSource<Stage::Simulation>();
 	}
 
 	const auto& Display() const requires Reads::template hasSource<Stage::Display>
 	{
-		return Window<Stage::Display>();
+		return SelectSource<Stage::Display>();
 	}
 
 	const auto& Render() const requires Reads::template hasSource<Stage::Render>
 	{
-		return Window<Stage::Render>();
+		return SelectSource<Stage::Render>();
 	}
 
 	const auto& Present() const requires Reads::template hasSource<Stage::Present>
 	{
-		return Window<Stage::Present>();
+		return SelectSource<Stage::Present>();
 	}
 
 private:
@@ -132,12 +144,12 @@ private:
 
 	explicit SnapshotView(detail::ResolvedSnapshots selections)
 		: selections(std::make_shared<const detail::ResolvedSnapshots>(std::move(selections)))
-		, windows(MakeWindows(this->selections, std::make_index_sequence<8> {}))
+		, windows(MakeWindows(this->selections, std::make_index_sequence<10> {}))
 	{
 	}
 
 	template<Stage Source>
-	const auto& Window() const
+	const auto& SelectSource() const
 	{
 		return std::get<static_cast<std::size_t>(Source)>(windows);
 	}

@@ -41,9 +41,11 @@ struct TestContracts : ModeContracts {
 	using DisplayData = Value;
 
 	using InputReads = SnapshotReads<
-		Required<Stage::Application, Slot::Current>,
+		Required<Stage::PlatformInput, Slot::Current>,
+		Required<Stage::Window, Slot::Current>,
 		Required<Stage::Activation, Slot::Current>,
-		Optional<Stage::Application, Slot::Previous>,
+		Optional<Stage::PlatformInput, Slot::Previous>,
+		Optional<Stage::Window, Slot::Previous>,
 		Optional<Stage::Session, Slot::Previous>
 	>;
 	using SessionReads = SnapshotReads<
@@ -51,24 +53,48 @@ struct TestContracts : ModeContracts {
 		Optional<Stage::Display, Slot::Previous>
 	>;
 	using DisplayReads = SnapshotReads<
+		Required<Stage::Window, Slot::Current>,
+		Required<Stage::GraphicsOutput, Slot::Current>,
+		Optional<Stage::GraphicsOutput, Slot::Previous>,
 		Required<Stage::Session, Slot::Current>,
 		Optional<Stage::Display, Slot::Previous>,
 		Optional<Stage::Simulation, Slot::Current>,
 		Optional<Stage::Simulation, Slot::Previous>,
 		Optional<Stage::Present, Slot::Previous>
 	>;
-	using RenderReads = SnapshotReads<Required<Stage::Display, Slot::Current>>;
+	using RenderReads = SnapshotReads<
+		Required<Stage::GraphicsOutput, Slot::Current>,
+		Required<Stage::Display, Slot::Current>
+	>;
 };
 
-inline void PublishLogical(SnapshotManager& manager, std::uint64_t id, int value, bool publishSession = true)
+inline PlatformInputSnapshot TestInput(std::uint64_t sequence = 1)
 {
-	auto iteration = manager.BeginLogical(LogicalIterationId {id}, {});
-	auto input = manager.BeginStage(LogicalIterationId {id}, Stage::Input);
+	PlatformInputSnapshot input;
+	input.events.push_back({sequence, "test", {}, {}});
+	return input;
+}
+
+inline WindowSnapshot TestWindow(std::uint64_t generation = 1)
+{
+	return WindowSnapshot {7, generation, 1280, 720, true, true};
+}
+
+inline GraphicsOutputSnapshot TestOutput(std::uint64_t generation = 1)
+{
+	return GraphicsOutputSnapshot {9, generation, 1280, 720, true};
+}
+
+inline LogicalIterationId PublishLogical(SnapshotManager& manager, int value, bool publishSession = true)
+{
+	auto iteration = manager.BeginLogical(TestInput(), TestWindow());
+	const auto id = iteration.LogicalId();
+	auto input = manager.BeginStage(id, Stage::Input);
 	Check(input.has_value(), "input admitted");
 	Check(manager.Publish(*input, Value {value, {}}), "input committed");
 	input->Finish(StageStatus::Completed);
 
-	auto session = manager.BeginStage(LogicalIterationId {id}, Stage::Session);
+	auto session = manager.BeginStage(id, Stage::Session);
 	Check(session.has_value(), "session admitted");
 	if (publishSession) {
 		Check(manager.Publish(*session, Value {value, {}}), "session committed");
@@ -76,6 +102,7 @@ inline void PublishLogical(SnapshotManager& manager, std::uint64_t id, int value
 	} else {
 		session->Finish(StageStatus::NoPublication);
 	}
+	return id;
 }
 
 struct TestCommands : RenderCommands {

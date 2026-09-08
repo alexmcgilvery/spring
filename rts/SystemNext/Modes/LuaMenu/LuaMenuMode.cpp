@@ -21,8 +21,8 @@ LuaMenuMode::InputPublication LuaMenuMode::Input(const InputSnapshots&)
 	 *
 	 * Snapshot contract:
 	 * [LuaMenuSnapshots.h](LuaMenuSnapshots.h) — LuaMenuContracts::InputReads.
-	 * Application.Current (required); Activation.Current (required); Session.Previous (optional).
-	 * Application.Current supplies the collected event batch. Activation.Current supplies owned
+	 * PlatformInput.Current (required); Window.Current (required); Activation.Current (required); Session.Previous (optional).
+	 * PlatformInput.Current supplies the ordered event batch. Window.Current supplies the associated native window facts. Activation.Current supplies owned
 	 * startup context. Session.Previous supplies prior logical interpretation state; its absence is
 	 * normal on entry.
 	 * Inputs are immutable owning selections. Retained views keep their values alive;
@@ -123,8 +123,8 @@ LuaMenuMode::DisplayPublication LuaMenuMode::Display(const DisplaySnapshots&)
 	 *
 	 * Snapshot contract:
 	 * [LuaMenuSnapshots.h](LuaMenuSnapshots.h) — LuaMenuContracts::DisplayReads.
-	 * Application.Current (required); Session.Current (required); Display.Previous (optional).
-	 * Session.Current names the selected logical publication. Application.Current provides associated
+	 * Window.Current (required); GraphicsOutput.Current (required); Session.Current (required); Display.Previous (optional).
+	 * Session.Current names the selected logical publication. Window.Current supplies layout and visibility facts; GraphicsOutput.Current supplies associated
 	 * platform facts. Display.Previous supports visual continuity without mutable cross-iteration
 	 * borrows. Declared Simulation reads select completed authoritative states at their own cadence;
 	 * bootstrap may provide neither.
@@ -175,8 +175,8 @@ LuaMenuMode::RenderPublication LuaMenuMode::Render(const RenderSnapshots&)
 	 *
 	 * Snapshot contract:
 	 * [LuaMenuSnapshots.h](LuaMenuSnapshots.h) — LuaMenuContracts::RenderReads.
-	 * Application.Current (required); Display.Current (required).
-	 * Display.Current supplies owned frame content. Application.Current supplies associated target
+	 * GraphicsOutput.Current (required); Display.Current (required).
+	 * Display.Current supplies owned frame content. GraphicsOutput.Current supplies the immutable target
 	 * facts. No fallback may relabel another invocation's data as Current.
 	 * Inputs are immutable owning selections. Retained views keep their values alive;
 	 * publications carry activation and invocation identity rather than live globals.

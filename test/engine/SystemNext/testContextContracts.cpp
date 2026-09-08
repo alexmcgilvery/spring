@@ -14,6 +14,10 @@ using InputView = SnapshotView<TestContracts, Stage::Input>;
 
 static_assert(std::is_same_v<decltype(std::declval<const SessionView&>().Input().Current()), const Value&>);
 static_assert(std::is_same_v<decltype(std::declval<const SessionView&>().Display().Previous()), const Value*>);
+static_assert(std::is_same_v<
+	decltype(std::declval<const InputView&>().PlatformInput().Current()),
+	const PlatformInputSnapshot&
+>);
 static_assert(!std::is_convertible_v<LogicalIterationId, VisualIterationId>);
 static_assert(std::is_same_v<SnapshotsFor<GameMode, Stage::Session>, GameMode::SessionSnapshots>);
 static_assert(std::is_base_of_v<IMode, SelectMenuMode>);
@@ -30,5 +34,9 @@ concept HasDisplayCurrent = requires(const View& view) { view.Display().Current(
 template<class View>
 concept HasUndeclaredRender = requires(const View& view) { view.Render(); };
 
+template<class View>
+concept HasGraphicsOutput = requires(const View& view) { view.GraphicsOutput(); };
+
 static_assert(!HasDisplayCurrent<SessionView>);
 static_assert(!HasUndeclaredRender<SessionView>);
+static_assert(!HasGraphicsOutput<SessionView>);

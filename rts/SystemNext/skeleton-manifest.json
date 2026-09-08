@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "outlines": [
     {
       "file": "Modes/SelectMenu/SelectMenuMode.cpp",
@@ -144,59 +144,30 @@
       "class": "Observation",
       "function": "Observe",
       "signature": "void Observation::Observe(const SimulationObservationContext&)"
-    },
-    {
-      "file": "Globals/Lifecycle/Lifecycle.cpp",
-      "class": "Lifecycle",
-      "function": "Initialize",
-      "signature": "void Lifecycle::Initialize(const InitializationContext&)"
-    },
-    {
-      "file": "Globals/Lifecycle/Lifecycle.cpp",
-      "class": "Lifecycle",
-      "function": "Reload",
-      "signature": "void Lifecycle::Reload(const ReloadContext&)"
-    },
-    {
-      "file": "Globals/Lifecycle/Lifecycle.cpp",
-      "class": "Lifecycle",
-      "function": "Shutdown",
-      "signature": "void Lifecycle::Shutdown(const ShutdownContext&)"
-    },
-    {
-      "file": "Globals/Diagnostics/Diagnostics.cpp",
-      "class": "Diagnostics",
-      "function": "Observe",
-      "signature": "void Diagnostics::Observe(const DiagnosticObservationContext&)"
-    },
-    {
-      "file": "Globals/Diagnostics/Diagnostics.cpp",
-      "class": "Diagnostics",
-      "function": "Report",
-      "signature": "void Diagnostics::Report(const DiagnosticReportContext&)"
     }
   ],
   "architecture_sources": [
     "ApplicationLoop.cpp",
+    "Application/Diagnostics/Diagnostics.cpp",
+    "Application/Graphics/Graphics.cpp",
+    "Application/Lifecycle/ApplicationLifecycle.cpp",
+    "Application/Platform/Platform.cpp",
     "Modes/IMode.cpp",
-    "Globals/Graphics/VisualOutput.cpp",
-    "Globals/Lifecycle/ApplicationHost.cpp",
-    "Globals/Snapshots/SnapshotManager.cpp"
+    "Snapshots/SnapshotManager.cpp"
   ],
   "headers": [
-    "ApplicationContext.h",
     "ApplicationLoop.h",
-    "Globals/Diagnostics/Diagnostics.h",
-    "Globals/Diagnostics/DiagnosticsContext.h",
-    "Globals/Graphics/VisualOutput.h",
-    "Globals/InvocationContext.h",
-    "Globals/Lifecycle/ApplicationHost.h",
-    "Globals/Lifecycle/Lifecycle.h",
-    "Globals/Lifecycle/LifecycleContext.h",
-    "Globals/Snapshots/SnapshotManager.h",
-    "Globals/Snapshots/SnapshotReads.h",
-    "Globals/Snapshots/SnapshotTypes.h",
-    "Globals/Snapshots/SnapshotView.h",
+    "Application/Diagnostics/Diagnostics.h",
+    "Application/Graphics/Graphics.h",
+    "Application/Lifecycle/ApplicationLifecycle.h",
+    "Application/Lifecycle/LifecycleRequest.h",
+    "Application/Platform/Platform.h",
+    "Application/Platform/PlatformSnapshots.h",
+    "Snapshots/InvocationMetadata.h",
+    "Snapshots/SnapshotManager.h",
+    "Snapshots/SnapshotReads.h",
+    "Snapshots/SnapshotTypes.h",
+    "Snapshots/SnapshotView.h",
     "Modes/Game/GameMode.h",
     "Modes/Game/GameSnapshots.h",
     "Modes/Game/Simulation/Observation/Observation.h",
@@ -213,6 +184,7 @@
     "Modes/LuaMenu/LuaMenuSnapshots.h",
     "Modes/Mode.h",
     "Modes/ModeBinding.h",
+    "Modes/ModeIdentity.h",
     "Modes/PreGame/PreGameMode.h",
     "Modes/PreGame/PreGameSnapshots.h",
     "Modes/SelectMenu/SelectMenuMode.h",

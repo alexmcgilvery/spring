@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "../../Globals/Snapshots/SnapshotReads.h"
+#include "../../Snapshots/SnapshotReads.h"
 
 namespace runtime {
 
@@ -24,7 +24,8 @@ public:
 	using SessionData = SelectMenuSessionSnapshot;
 
 	using InputReads = SnapshotReads<
-		Required<Stage::Application, Slot::Current>,
+		Required<Stage::PlatformInput, Slot::Current>,
+		Required<Stage::Window, Slot::Current>,
 		Required<Stage::Activation, Slot::Current>,
 		Optional<Stage::Session, Slot::Previous>
 	>;
@@ -35,7 +36,8 @@ public:
 	>;
 
 	using RenderReads = SnapshotReads<
-		Required<Stage::Application, Slot::Current>,
+		Required<Stage::Window, Slot::Current>,
+		Required<Stage::GraphicsOutput, Slot::Current>,
 		Required<Stage::Session, Slot::Current>
 	>;
 };

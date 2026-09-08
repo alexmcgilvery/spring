@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "../../Globals/Snapshots/SnapshotReads.h"
+#include "../../Snapshots/SnapshotReads.h"
 #include "Simulation/Publication/PublishedFrame.h"
 
 namespace runtime {
@@ -32,7 +32,8 @@ public:
 	using SimulationData = PublishedSimFrame;
 
 	using InputReads = SnapshotReads<
-		Required<Stage::Application, Slot::Current>,
+		Required<Stage::PlatformInput, Slot::Current>,
+		Required<Stage::Window, Slot::Current>,
 		Required<Stage::Activation, Slot::Current>,
 		Optional<Stage::Session, Slot::Previous>
 	>;
@@ -44,7 +45,8 @@ public:
 	>;
 
 	using DisplayReads = SnapshotReads<
-		Required<Stage::Application, Slot::Current>,
+		Required<Stage::Window, Slot::Current>,
+		Required<Stage::GraphicsOutput, Slot::Current>,
 		Required<Stage::Session, Slot::Current>,
 		Optional<Stage::Display, Slot::Previous>,
 		Optional<Stage::Simulation, Slot::Current>,
@@ -52,7 +54,7 @@ public:
 	>;
 
 	using RenderReads = SnapshotReads<
-		Required<Stage::Application, Slot::Current>,
+		Required<Stage::GraphicsOutput, Slot::Current>,
 		Required<Stage::Display, Slot::Current>
 	>;
 };

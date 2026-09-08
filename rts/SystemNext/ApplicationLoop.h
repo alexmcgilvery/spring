@@ -2,27 +2,42 @@
 
 #pragma once
 
-#include "ApplicationContext.h"
-#include "Globals/InvocationContext.h"
+#include "Modes/ModeBinding.h"
+#include "Snapshots/InvocationMetadata.h"
+
+#include <memory>
+#include <optional>
 
 namespace runtime {
 
-// Forward declarations: requests cross the Session/lifecycle boundary by value.
-struct LifecycleRequest;
+// Forward declarations: application-owned executors are never exposed to modes.
+class ApplicationLifecycle;
+class Diagnostics;
+class Graphics;
+class IMode;
+class Platform;
+class SnapshotManager;
 
-/**
- * Serial execution of independently identified logical and visual iterations.
- * Stage methods take IDs; the manager owns immutable input association.
- */
+// Forward declarations: values cross named application boundaries by ownership.
+struct LifecycleRequest;
+struct PlatformPublications;
+
+/** Serial scheduling of independently identified logical and visual iterations. */
 class ApplicationLoop {
 public:
-	explicit ApplicationLoop(ApplicationContext context);
+	ApplicationLoop(
+		Platform& platform,
+		ApplicationLifecycle& lifecycle,
+		SnapshotManager& snapshots,
+		Diagnostics& diagnostics,
+		Graphics* graphics
+	);
 
 	void Run();
 
 private:
-	bool UpdateLogic(LogicalIterationId iteration);
-	void UpdateVisuals(VisualIterationId iteration);
+	bool UpdateLogic(PlatformPublications publications);
+	void UpdateVisuals();
 
 	void Input(LogicalIterationId iteration);
 	void Session(LogicalIterationId iteration);
@@ -30,11 +45,18 @@ private:
 	void Render(VisualIterationId iteration);
 	void Present(VisualIterationId iteration);
 
+	std::optional<LifecycleRequest> PlatformLifecycleRequest() const;
 	void CommitLifecycle(const LifecycleRequest& request);
+	void Activate(std::shared_ptr<IMode> mode, const LifecycleRequest* request = nullptr);
 	void Shutdown();
 
 private:
-	ApplicationContext context;
+	Platform& platform;
+	ApplicationLifecycle& lifecycle;
+	SnapshotManager& snapshots;
+	Diagnostics& diagnostics;
+	Graphics* graphics = nullptr;
+	ActiveModeBinding activeMode;
 	bool exitRequested = false;
 };
 

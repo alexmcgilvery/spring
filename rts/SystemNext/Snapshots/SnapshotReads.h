@@ -2,8 +2,9 @@
 
 #pragma once
 
+#include "../Application/Graphics/Graphics.h"
+#include "../Application/Platform/PlatformSnapshots.h"
 #include "SnapshotTypes.h"
-#include "../Graphics/VisualOutput.h"
 
 #include <array>
 #include <tuple>
@@ -75,7 +76,7 @@ public:
 
 template<class Contracts, Stage Source>
 using PayloadFor = std::tuple_element_t<static_cast<std::size_t>(Source), std::tuple<
-	ApplicationSnapshot, ActivationSnapshot,
+	PlatformInputSnapshot, WindowSnapshot, GraphicsOutputSnapshot, ActivationSnapshot,
 	typename Contracts::InputData, typename Contracts::SessionData,
 	typename Contracts::SimulationData, typename Contracts::DisplayData,
 	RenderedOutput, PresentationReceipt
@@ -83,8 +84,9 @@ using PayloadFor = std::tuple_element_t<static_cast<std::size_t>(Source), std::t
 
 template<class Contracts, Stage Consumer>
 using ReadsFor = std::tuple_element_t<static_cast<std::size_t>(Consumer), std::tuple<
-	SnapshotReads<>, SnapshotReads<>, typename Contracts::InputReads,
-	typename Contracts::SessionReads, SnapshotReads<>, typename Contracts::DisplayReads,
+	SnapshotReads<>, SnapshotReads<>, SnapshotReads<>, SnapshotReads<>,
+	typename Contracts::InputReads, typename Contracts::SessionReads,
+	SnapshotReads<>, typename Contracts::DisplayReads,
 	typename Contracts::RenderReads, typename Contracts::PresentReads
 >>;
 

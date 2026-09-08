@@ -1,27 +1,34 @@
 /* This file is part of the Spring engine (GPL v2 or later), see LICENSE.html */
 
 #include "TestSupport.h"
+
+#include "Application/Diagnostics/Diagnostics.h"
+#include "Application/Graphics/Graphics.h"
+#include "Application/Lifecycle/ApplicationLifecycle.h"
+#include "Application/Platform/Platform.h"
 #include "ApplicationLoop.h"
-#include "Globals/Lifecycle/ApplicationHost.h"
-#include "Modes/ModeBinding.h"
-#include "Modes/SelectMenu/SelectMenuMode.h"
+#include "Modes/Game/GameMode.h"
+#include "Modes/Loading/LoadingMode.h"
 #include "Modes/LuaMenu/LuaMenuMode.h"
 #include "Modes/PreGame/PreGameMode.h"
-#include "Modes/Loading/LoadingMode.h"
-#include "Modes/Game/GameMode.h"
+#include "Modes/SelectMenu/SelectMenuMode.h"
 
+#include <algorithm>
 #include <functional>
 
 struct FakeMode : Mode<FakeMode, TestContracts> {
 	FakeMode(ModeKind kind, std::string label, std::vector<std::string>& trace)
-		: Mode(kind), label(std::move(label)), trace(trace)
+		: Mode(kind)
+		, label(std::move(label))
+		, trace(trace)
 	{
 	}
 
 	InputPublication Input(const InputSnapshots& inputs)
 	{
 		trace.push_back(label + ".input");
-		Check(inputs.Application().Current().events.size() == 1, "collected exactly one input batch");
+		Check(inputs.PlatformInput().Current().events.size() == 1, "one immutable event batch");
+		Check(inputs.Window().Current().windowId == 7, "input receives associated window facts");
 		if (onInput)
 			onInput();
 		return Value {value, {}};
@@ -30,7 +37,7 @@ struct FakeMode : Mode<FakeMode, TestContracts> {
 	SessionPublication Session(const SessionSnapshots& inputs)
 	{
 		trace.push_back(label + ".session");
-		Check(inputs.Input().Current().value == value, "session uses own activation input");
+		Check(inputs.Input().Current().value == value, "session uses activation input");
 		if (onSession)
 			onSession();
 		return {Value {value, {}}, request};
@@ -40,6 +47,7 @@ struct FakeMode : Mode<FakeMode, TestContracts> {
 	{
 		trace.push_back(label + ".display");
 		Check(inputs.Session().Current().value == value, "display uses selected logical state");
+		Check(inputs.GraphicsOutput().Current().generation == 1, "display receives frozen output facts");
 		if (onDisplay)
 			onDisplay();
 		if (skipDisplay)
@@ -50,7 +58,8 @@ struct FakeMode : Mode<FakeMode, TestContracts> {
 	RenderPublication Render(const RenderSnapshots& inputs)
 	{
 		trace.push_back(label + ".render");
-		Check(inputs.Display().Current().value == value, "render uses prepared frame");
+		Check(inputs.Display().Current().value == value, "render uses prepared display state");
+		Check(inputs.GraphicsOutput().Current().generation == 1, "render uses selected output generation");
 		if (onRender)
 			onRender();
 		if (skipRender)
@@ -70,14 +79,10 @@ struct FakeMode : Mode<FakeMode, TestContracts> {
 	std::function<void()> onRender;
 };
 
-struct FakeHost : ApplicationHost {
-	explicit FakeHost(std::vector<std::string>& trace) : trace(trace) {}
-
-	void Initialize() override
+struct FakePlatform : Platform {
+	explicit FakePlatform(std::vector<std::string>& trace)
+		: trace(trace)
 	{
-		trace.push_back("initialize");
-		if (failInitialization)
-			throw std::runtime_error("initialization");
 	}
 
 	bool BeginIteration() override
@@ -88,71 +93,111 @@ struct FakeHost : ApplicationHost {
 		return true;
 	}
 
-	ApplicationSnapshot CollectInput() override
+	PlatformPublications CollectPublications() override
 	{
 		trace.push_back("collect");
-		ApplicationSnapshot snapshot;
-		snapshot.events.push_back({++eventSequence, "test", {}, {}});
-		return snapshot;
+		return {TestInput(++eventSequence), TestWindow(windowGeneration)};
 	}
 
 	bool ExitRequested() const override { return exit; }
 	bool ReloadRequested() const override { return reload; }
-	IterationTiming CaptureVisualTiming() override
+
+	std::vector<std::string>& trace;
+	int iterations = 1;
+	std::uint64_t eventSequence = 0;
+	std::uint64_t windowGeneration = 1;
+	bool exit = false;
+	bool reload = false;
+};
+
+struct FakeLifecycle : ApplicationLifecycle {
+	explicit FakeLifecycle(std::vector<std::string>& trace)
+		: trace(trace)
 	{
-		++visualSamples;
-		return {std::chrono::nanoseconds(81), std::chrono::nanoseconds(16)};
+	}
+
+	void Initialize() override
+	{
+		trace.push_back("initialize");
+		if (failInitialization)
+			throw std::runtime_error("initialization");
+	}
+
+	std::shared_ptr<IMode> CreateInitialMode() override
+	{
+		return initial;
 	}
 
 	std::shared_ptr<IMode> CreateMode(const LifecycleRequest& request) override
 	{
 		trace.push_back("activate");
-		reload = false;
+		if (clearReload)
+			clearReload();
 		return create ? create(request) : nullptr;
 	}
 
-	void FlushDiagnostics() override { trace.push_back("report"); }
 	void Shutdown() override { trace.push_back("shutdown"); }
 
 	std::vector<std::string>& trace;
-	int iterations = 1;
-	std::uint64_t eventSequence = 0;
-	unsigned visualSamples = 0;
-	bool exit = false;
-	bool reload = false;
+	std::shared_ptr<IMode> initial;
 	bool failInitialization = false;
+	std::function<void()> clearReload;
 	std::function<std::shared_ptr<IMode>(const LifecycleRequest&)> create;
 };
 
-struct FakeOutput : VisualOutput {
-	explicit FakeOutput(std::vector<std::string>& trace) : trace(trace) {}
-
-	VisualSchedule PlanIteration(const InvocationContext& invocation) override
+struct FakeDiagnostics : Diagnostics {
+	explicit FakeDiagnostics(std::vector<std::string>& trace)
+		: trace(trace)
 	{
-		trace.push_back("plan");
-		Check(invocation.flow == Flow::Visual, "visual identity is explicit");
-		Check(invocation.sampledAt == std::chrono::nanoseconds(81), "visual timing has its own sampled facts");
-		return schedule;
 	}
 
-	std::optional<RenderedOutput> Render(std::unique_ptr<const RenderCommands> commands) override
+	void Report() override { trace.push_back("report"); }
+
+	std::vector<std::string>& trace;
+};
+
+struct FakeGraphics : Graphics {
+	explicit FakeGraphics(std::vector<std::string>& trace)
+		: trace(trace)
+	{
+	}
+
+	VisualPlan PlanVisuals(const ModeIdentity& mode) override
+	{
+		trace.push_back("plan");
+		Check(mode.kind != ModeKind::Inactive, "visual planning names an activation");
+		return {schedule, {std::chrono::nanoseconds(81), std::chrono::nanoseconds(16)}, TestOutput(liveGeneration)};
+	}
+
+	std::optional<RenderedOutput> Render(
+		const GraphicsOutputSnapshot& target,
+		std::unique_ptr<const RenderCommands> commands
+	) override
 	{
 		trace.push_back("execute");
-		Check(dynamic_cast<const TestCommands*>(commands.get()) != nullptr, "owning mode commands reach backend");
+		Check(dynamic_cast<const TestCommands*>(commands.get()) != nullptr, "owning commands reach graphics");
+		Check(target.targetId == 9 && target.generation == 1, "graphics receives frozen target");
 		if (onRender)
 			onRender();
 		if (skipOutput)
 			return {};
-		return RenderedOutput {++outputId, 3, std::make_shared<TestResource>()};
+		return RenderedOutput {++outputId, target.targetId, target.generation, std::make_shared<TestResource>()};
 	}
 
 	PresentationReceipt Present(const RenderedOutput& output) override
 	{
 		trace.push_back("present");
-		Check(output.outputId == outputId && output.targetId == 3 && output.resource, "present consumes exact output");
+		Check(output.outputId == outputId && output.resource, "present consumes exact owning output");
 		if (onPresent)
 			onPresent();
-		return {badReceipt ? 999 : output.outputId, output.targetId, PresentationOutcome::Presented, {}, {}};
+		return {
+			badReceipt ? 999u : output.outputId,
+			output.targetId,
+			output.targetGeneration,
+			liveGeneration == output.targetGeneration ? PresentationOutcome::Presented : PresentationOutcome::Skipped,
+			{},
+			{},
+		};
 	}
 
 	std::vector<std::string>& trace;
@@ -160,284 +205,195 @@ struct FakeOutput : VisualOutput {
 	std::uint64_t outputId = 0;
 	bool skipOutput = false;
 	bool badReceipt = false;
+	std::uint64_t liveGeneration = 1;
 	std::function<void()> onRender;
 	std::function<void()> onPresent;
 };
 
-static void Schedules()
+static void RunLoop(
+	FakePlatform& platform,
+	FakeLifecycle& lifecycle,
+	SnapshotManager& snapshots,
+	FakeDiagnostics& diagnostics,
+	Graphics* graphics
+)
+{
+	ApplicationLoop loop(platform, lifecycle, snapshots, diagnostics, graphics);
+	loop.Run();
+}
+
+static void SchedulesAndHeadless()
 {
 	for (const auto schedule : {VisualSchedule::None, VisualSchedule::Display, VisualSchedule::Offscreen, VisualSchedule::Present}) {
 		std::vector<std::string> trace;
-		FakeHost host(trace);
-		FakeOutput output(trace);
-		output.schedule = schedule;
-		SnapshotManager manager;
-		auto mode = std::make_shared<FakeMode>(ModeKind::Game, "game", trace);
-		ActiveModeBinding binding {mode, {}};
-		ApplicationLoop loop({host, manager, binding, &output});
-		loop.Run();
+		FakePlatform platform(trace);
+		FakeLifecycle lifecycle(trace);
+		FakeDiagnostics diagnostics(trace);
+		FakeGraphics graphics(trace);
+		SnapshotManager snapshots;
+		lifecycle.initial = std::make_shared<FakeMode>(ModeKind::Game, "game", trace);
+		graphics.schedule = schedule;
+
+		RunLoop(platform, lifecycle, snapshots, diagnostics, &graphics);
 
 		std::vector<std::string> expected {"initialize", "begin", "collect", "game.input", "game.session", "plan"};
 		if (schedule != VisualSchedule::None)
 			expected.push_back("game.display");
-		if (schedule == VisualSchedule::Offscreen || schedule == VisualSchedule::Present) {
-			expected.push_back("game.render");
-			expected.push_back("execute");
-		}
+		if (schedule == VisualSchedule::Offscreen || schedule == VisualSchedule::Present)
+			expected.insert(expected.end(), {"game.render", "execute"});
 		if (schedule == VisualSchedule::Present)
 			expected.push_back("present");
 		expected.insert(expected.end(), {"report", "shutdown"});
-		Check(trace == expected, "exact cumulative stage ordering");
+		Check(trace == expected, "exact cumulative concern order");
 	}
 
-	// No visual subsystem is constructed for headless execution.
 	std::vector<std::string> trace;
-	FakeHost host(trace);
-	SnapshotManager manager;
-	ActiveModeBinding binding {std::make_shared<FakeMode>(ModeKind::Game, "game", trace), {}};
-	ApplicationLoop loop({host, manager, binding, nullptr});
-	loop.Run();
-	Check(trace == std::vector<std::string> {"initialize", "begin", "collect", "game.input", "game.session", "report", "shutdown"}, "headless logical flow without visual calls");
-	Check(host.visualSamples == 0, "headless does not acquire visual invocation facts");
+	FakePlatform platform(trace);
+	FakeLifecycle lifecycle(trace);
+	FakeDiagnostics diagnostics(trace);
+	SnapshotManager snapshots;
+	lifecycle.initial = std::make_shared<FakeMode>(ModeKind::Game, "game", trace);
+	RunLoop(platform, lifecycle, snapshots, diagnostics, nullptr);
+	Check(trace == std::vector<std::string> {
+		"initialize", "begin", "collect", "game.input", "game.session", "report", "shutdown"
+	}, "headless constructs no graphics path");
 }
 
-struct DirectContracts : ModeContracts {
-	using InputData = Value;
-	using SessionData = Value;
-	using InputReads = SnapshotReads<Required<Stage::Application, Slot::Current>>;
-	using SessionReads = SnapshotReads<Required<Stage::Input, Slot::Current>>;
-	using RenderReads = SnapshotReads<Required<Stage::Session, Slot::Current>>;
-};
-
-struct DirectMode : Mode<DirectMode, DirectContracts> {
-	DirectMode() : Mode(ModeKind::SelectMenu) {}
-	InputPublication Input(const InputSnapshots&) { return Value {5, {}}; }
-	SessionPublication Session(const SessionSnapshots&) { return {Value {5, {}}, {}}; }
-	RenderPublication Render(const RenderSnapshots& input) { return std::make_unique<TestCommands>(input.Session().Current().value); }
-};
-
-struct EmptyMode : Mode<EmptyMode, ModeContracts> {
-	EmptyMode() : Mode(ModeKind::SelectMenu) {}
-};
-
-static void AbsentAndSkipped()
-{
-	{
-		std::vector<std::string> trace;
-		FakeHost host(trace);
-		FakeOutput output(trace);
-		SnapshotManager manager;
-		ActiveModeBinding binding {std::make_shared<DirectMode>(), {}};
-		ApplicationLoop loop({host, manager, binding, &output});
-		loop.Run();
-		Check(trace == std::vector<std::string> {"initialize", "begin", "collect", "plan", "execute", "present", "report", "shutdown"}, "absent Display requires no dummy output");
-	}
-	{
-		std::vector<std::string> trace;
-		FakeHost host(trace);
-		FakeOutput output(trace);
-		SnapshotManager manager;
-		ActiveModeBinding binding {std::make_shared<EmptyMode>(), {}};
-		ApplicationLoop loop({host, manager, binding, &output});
-		loop.Run();
-		Check(output.outputId == 0, "all omitted concerns produce no visual output");
-	}
-	for (int skipped = 0; skipped < 3; ++skipped) {
-		std::vector<std::string> trace;
-		FakeHost host(trace);
-		FakeOutput output(trace);
-		SnapshotManager manager;
-		auto mode = std::make_shared<FakeMode>(ModeKind::Game, "game", trace);
-		mode->skipDisplay = skipped == 0;
-		mode->skipRender = skipped == 1;
-		output.skipOutput = skipped == 2;
-		ActiveModeBinding binding {mode, {}};
-		ApplicationLoop loop({host, manager, binding, &output});
-		loop.Run();
-		Check(std::find(trace.begin(), trace.end(), "present") == trace.end(), "no partial/unprepared output is presented");
-	}
-}
-
-static void TransitionAndHandoff()
+static void TransitionsAndApplicationRequests()
 {
 	std::vector<std::string> trace;
-	FakeHost host(trace);
-	host.iterations = 2;
-	FakeOutput output(trace);
-	SnapshotManager manager;
+	FakePlatform platform(trace);
+	platform.iterations = 2;
+	FakeLifecycle lifecycle(trace);
+	FakeDiagnostics diagnostics(trace);
+	FakeGraphics graphics(trace);
+	SnapshotManager snapshots;
 	auto menu = std::make_shared<FakeMode>(ModeKind::SelectMenu, "menu", trace);
 	auto loading = std::make_shared<FakeMode>(ModeKind::Loading, "loading", trace);
-	menu->request = LifecycleRequest {LifecycleAction::SwitchMode, ModeKind::Loading, Handoff::Own(std::string("selected content"))};
-	host.create = [&](const LifecycleRequest& request) {
-		Check(*request.handoff.Get<std::string>() == "selected content", "factory receives owning handoff");
+	menu->request = LifecycleRequest {
+		LifecycleAction::SwitchMode,
+		ModeKind::Loading,
+		Handoff::Own(std::string("selected content")),
+	};
+	lifecycle.initial = menu;
+	lifecycle.create = [&](const LifecycleRequest& request) {
+		Check(*request.handoff.Get<std::string>() == "selected content", "lifecycle receives owning handoff");
 		return loading;
 	};
-	ActiveModeBinding binding {menu, {}};
-	ApplicationLoop loop({host, manager, binding, &output});
-	loop.Run();
+
+	RunLoop(platform, lifecycle, snapshots, diagnostics, &graphics);
 	Check(trace == std::vector<std::string> {
 		"initialize", "begin", "collect", "menu.input", "menu.session", "activate", "report",
 		"begin", "collect", "loading.input", "loading.session", "plan", "loading.display",
 		"loading.render", "execute", "present", "report", "shutdown"
-	}, "switch follows Session; replacement starts fresh input before its own visual work");
+	}, "switch closes old logic and replacement starts with fresh input");
 
-	// Reactivating the same object still changes activation identity.
 	trace.clear();
-	FakeHost reuseHost(trace);
-	reuseHost.iterations = 2;
-	SnapshotManager reuseManager;
-	auto same = std::make_shared<FakeMode>(ModeKind::Game, "same", trace);
-	same->request = LifecycleRequest {LifecycleAction::SwitchMode, ModeKind::Game, {}};
-	std::vector<std::uint64_t> generations;
-	same->onInput = [&] { generations.push_back(reuseManager.Active().generation); };
-	reuseHost.create = [&](const LifecycleRequest&) {
-		same->request.reset();
-		return same;
+	FakePlatform reloadPlatform(trace);
+	reloadPlatform.iterations = 2;
+	reloadPlatform.reload = true;
+	FakeLifecycle reloadLifecycle(trace);
+	FakeDiagnostics reloadDiagnostics(trace);
+	SnapshotManager reloadSnapshots;
+	auto replacement = std::make_shared<FakeMode>(ModeKind::Game, "game", trace);
+	reloadLifecycle.clearReload = [&] { reloadPlatform.reload = false; };
+	reloadLifecycle.create = [&](const LifecycleRequest& request) {
+		Check(request.action == LifecycleAction::Reload, "reload is application lifecycle work");
+		return replacement;
 	};
-	ActiveModeBinding reuseBinding {same, {}};
-	ApplicationLoop reuse({reuseHost, reuseManager, reuseBinding, nullptr});
-	reuse.Run();
-	Check(generations.size() == 2 && generations[0] != generations[1], "address reuse cannot masquerade as continuity");
+	RunLoop(reloadPlatform, reloadLifecycle, reloadSnapshots, reloadDiagnostics, nullptr);
+	Check(std::count(trace.begin(), trace.end(), "game.input") == 1, "reload replacement gets a fresh iteration");
 }
 
-static void RetirementAndFailures()
+static void TargetIdentityAndFailures()
 {
+	{
+		std::vector<std::string> trace;
+		FakePlatform platform(trace);
+		FakeLifecycle lifecycle(trace);
+		FakeDiagnostics diagnostics(trace);
+		FakeGraphics graphics(trace);
+		SnapshotManager snapshots;
+		auto mode = std::make_shared<FakeMode>(ModeKind::Game, "game", trace);
+		lifecycle.initial = mode;
+		mode->onDisplay = [&] { graphics.liveGeneration = 2; };
+		RunLoop(platform, lifecycle, snapshots, diagnostics, &graphics);
+		Check(trace == std::vector<std::string> {
+			"initialize", "begin", "collect", "game.input", "game.session", "plan",
+			"game.display", "game.render", "execute", "present", "report", "shutdown"
+		}, "retired target records an explicit skip without retargeting");
+	}
+
 	for (const auto stage : {"input", "session", "display", "render", "execute", "present", "initialize", "activation"}) {
 		std::vector<std::string> trace;
-		FakeHost host(trace);
-		FakeOutput output(trace);
-		SnapshotManager manager;
+		FakePlatform platform(trace);
+		FakeLifecycle lifecycle(trace);
+		FakeDiagnostics diagnostics(trace);
+		FakeGraphics graphics(trace);
+		SnapshotManager snapshots;
 		auto mode = std::make_shared<FakeMode>(ModeKind::Game, "game", trace);
-		const auto fail = [] { throw std::runtime_error("injected stage failure"); };
+		lifecycle.initial = mode;
+		const auto fail = [] { throw std::runtime_error("injected failure"); };
 		const std::string selected = stage;
 		if (selected == "input") mode->onInput = fail;
 		if (selected == "session") mode->onSession = fail;
 		if (selected == "display") mode->onDisplay = fail;
 		if (selected == "render") mode->onRender = fail;
-		if (selected == "execute") output.onRender = fail;
-		if (selected == "present") output.onPresent = fail;
-		if (selected == "initialize") host.failInitialization = true;
-		if (selected == "activation") mode->request = LifecycleRequest {LifecycleAction::SwitchMode, ModeKind::Loading, {}};
-		ActiveModeBinding binding {mode, {}};
-		ApplicationLoop loop({host, manager, binding, &output});
-		Throws([&] { loop.Run(); }, "stage/factory failure propagates");
-		Check(trace.back() == "shutdown", "exception cleanup reaches lifecycle");
-		Check(manager.Active().kind == ModeKind::Inactive && !binding.mode, "exception retires activation");
+		if (selected == "execute") graphics.onRender = fail;
+		if (selected == "present") graphics.onPresent = fail;
+		if (selected == "initialize") lifecycle.failInitialization = true;
+		if (selected == "activation") {
+			mode->request = LifecycleRequest {LifecycleAction::SwitchMode, ModeKind::Loading, {}};
+			lifecycle.create = [](const LifecycleRequest&) -> std::shared_ptr<IMode> { return {}; };
+		}
+
+		ApplicationLoop loop(platform, lifecycle, snapshots, diagnostics, &graphics);
+		Throws([&] { loop.Run(); }, "failure propagates through application boundary");
+		Check(trace.back() == "shutdown", "failure closes lifecycle");
+		Check(snapshots.Active().kind == ModeKind::Inactive, "failure retires activation");
 	}
-	for (bool duringDisplay : {false, true}) {
-		std::vector<std::string> trace;
-		FakeHost host(trace);
-		FakeOutput output(trace);
-		SnapshotManager manager;
-		auto mode = std::make_shared<FakeMode>(ModeKind::Game, "game", trace);
-		const auto retire = [&] { manager.Activate(ModeKind::Game); };
-		if (duringDisplay) mode->onDisplay = retire;
-		else output.onRender = retire;
-		ActiveModeBinding binding {mode, {}};
-		ApplicationLoop loop({host, manager, binding, &output});
-		loop.Run();
-		Check(std::find(trace.begin(), trace.end(), "present") == trace.end(), "retired work cannot begin presentation");
-		if (duringDisplay)
-			Check(output.outputId == 0, "retired display does not begin rendering");
-	}
+
+	std::vector<std::string> trace;
+	FakePlatform platform(trace);
+	platform.exit = true;
+	FakeLifecycle lifecycle(trace);
+	FakeDiagnostics diagnostics(trace);
+	SnapshotManager snapshots;
+	RunLoop(platform, lifecycle, snapshots, diagnostics, nullptr);
+	Check(trace == std::vector<std::string> {"initialize", "begin", "report", "shutdown"},
+		"platform exit is monotonic and requires no active mode");
 }
 
-static void LifecycleAndActualOutlines()
+static void ActualModeOutlines()
 {
-	{
-		std::vector<std::string> trace;
-		FakeHost host(trace);
-		host.exit = true;
-		SnapshotManager manager;
-		ActiveModeBinding binding;
-		ApplicationLoop loop({host, manager, binding, nullptr});
-		loop.Run();
-		Check(trace == std::vector<std::string> {"initialize", "begin", "collect", "report", "shutdown"}, "OS exit works without a mode");
-	}
-	{
-		std::vector<std::string> trace;
-		FakeHost host(trace);
-		host.iterations = 3;
-		SnapshotManager manager;
-		auto mode = std::make_shared<FakeMode>(ModeKind::Game, "game", trace);
-		mode->request = LifecycleRequest {LifecycleAction::Exit, ModeKind::Inactive, {}};
-		ActiveModeBinding binding {mode, {}};
-		ApplicationLoop loop({host, manager, binding, nullptr});
-		loop.Run();
-		Check(std::count(trace.begin(), trace.end(), "begin") == 1, "Session exit is monotonic");
-	}
-	{
-		std::vector<std::string> trace;
-		FakeHost host(trace);
-		host.iterations = 2;
-		host.reload = true;
-		SnapshotManager manager;
-		auto replacement = std::make_shared<FakeMode>(ModeKind::Game, "game", trace);
-		host.create = [&](const LifecycleRequest& request) {
-			Check(request.action == LifecycleAction::Reload, "reload remains lifecycle-owned");
-			return replacement;
-		};
-		ActiveModeBinding binding;
-		ApplicationLoop loop({host, manager, binding, nullptr});
-		loop.Run();
-		Check(std::count(trace.begin(), trace.end(), "game.input") == 1, "reload replacement begins next logical iteration");
-	}
 	std::vector<std::shared_ptr<IMode>> modes {
-		std::make_shared<SelectMenuMode>(), std::make_shared<LuaMenuMode>(),
-		std::make_shared<PreGameMode>(), std::make_shared<LoadingMode>(), std::make_shared<GameMode>()
+		std::make_shared<SelectMenuMode>(),
+		std::make_shared<LuaMenuMode>(),
+		std::make_shared<PreGameMode>(),
+		std::make_shared<LoadingMode>(),
+		std::make_shared<GameMode>(),
 	};
-	for (const auto& mode : modes) {
-		SnapshotManager manager;
-		mode->RegisterSnapshots(manager);
-		manager.Activate(mode->kind);
-		auto iteration = manager.BeginLogical(LogicalIterationId {1}, {});
-		mode->ExecuteInput(manager, {1});
-		mode->ExecuteSession(manager, {1});
-		Check(manager.Status(LogicalIterationId {1}, Stage::Input) == StageStatus::NoPublication, "actual Input remains an explicit outline");
-		Check(manager.Status(LogicalIterationId {1}, Stage::Session) == StageStatus::Unavailable, "outline never fakes prerequisite state");
-	}
-}
 
-static void ReceiptValidationAndImmediateLifecycle()
-{
-	{
-		std::vector<std::string> trace;
-		FakeHost host(trace);
-		FakeOutput output(trace);
-		output.badReceipt = true;
-		SnapshotManager manager;
-		ActiveModeBinding binding {std::make_shared<FakeMode>(ModeKind::Game, "game", trace), {}};
-		ApplicationLoop loop({host, manager, binding, &output});
-		Throws([&] { loop.Run(); }, "incorrect receipt cannot claim delivered output");
-		Check(trace.back() == "shutdown", "receipt failure cleans up");
-	}
-	for (const auto concern : {"input", "session", "display"}) {
-		std::vector<std::string> trace;
-		FakeHost host(trace);
-		FakeOutput output(trace);
-		SnapshotManager manager;
-		auto mode = std::make_shared<FakeMode>(ModeKind::Game, "game", trace);
-		const auto exit = [&] { host.exit = true; };
-		const std::string stage = concern;
-		if (stage == "input") mode->onInput = exit;
-		if (stage == "session") mode->onSession = exit;
-		if (stage == "display") mode->onDisplay = exit;
-		ActiveModeBinding binding {mode, {}};
-		ApplicationLoop loop({host, manager, binding, &output});
-		loop.Run();
-		Check(output.outputId == 0, "OS exit prevents later visual work");
-		if (stage == "input")
-			Check(std::count(trace.begin(), trace.end(), "game.session") == 0, "OS exit can stop before Session");
+	for (const auto& mode : modes) {
+		SnapshotManager snapshots;
+		mode->RegisterSnapshots(snapshots);
+		snapshots.Activate(mode->kind);
+		auto iteration = snapshots.BeginLogical(TestInput(), TestWindow());
+		const auto id = iteration.LogicalId();
+		mode->ExecuteInput(snapshots, id);
+		mode->ExecuteSession(snapshots, id);
+		Check(snapshots.Status(id, Stage::Input) == StageStatus::NoPublication,
+			"actual Input remains an explicit outline");
+		Check(snapshots.Status(id, Stage::Session) == StageStatus::Unavailable,
+			"outline never fabricates prerequisite state");
 	}
 }
 
 int main()
 {
-	Schedules();
-	AbsentAndSkipped();
-	TransitionAndHandoff();
-	RetirementAndFailures();
-	LifecycleAndActualOutlines();
-	ReceiptValidationAndImmediateLifecycle();
-	std::cout << "PASS connected loop, transitions, headless, output ownership and failure scopes\n";
+	SchedulesAndHeadless();
+	TransitionsAndApplicationRequests();
+	TargetIdentityAndFailures();
+	ActualModeOutlines();
+	std::cout << "PASS explicit ownership, concern order, transitions, headless and target identity\n";
 }

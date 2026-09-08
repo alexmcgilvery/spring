@@ -3,7 +3,7 @@
 #pragma once
 
 #include "PublishedFrame.h"
-#include "../../../../Globals/InvocationContext.h"
+#include "../../../../Snapshots/InvocationMetadata.h"
 
 #include <cstdint>
 #include <optional>
@@ -16,7 +16,7 @@ struct SimulationObservations;
 
 struct PublicationContext {
 public:
-	const InvocationContext& invocation;
+	const InvocationMetadata& invocation;
 	const GameSimulationState& simulation;
 	const SimulationObservations& observations;
 	PublishedFrameLease& output;

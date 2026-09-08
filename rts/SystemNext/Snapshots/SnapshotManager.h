@@ -26,6 +26,8 @@ public:
 	~IterationLease();
 
 	void Close() noexcept;
+	LogicalIterationId LogicalId() const;
+	VisualIterationId VisualId() const;
 
 private:
 	friend class SnapshotManager;
@@ -45,7 +47,7 @@ public:
 	~InvocationLease();
 
 	void Finish(StageStatus status) noexcept;
-	const InvocationContext& Context() const;
+	const InvocationMetadata& Metadata() const;
 
 private:
 	friend class SnapshotManager;
@@ -100,8 +102,8 @@ public:
 	void Retire() noexcept;
 	ModeIdentity Active() const;
 
-	IterationLease BeginLogical(LogicalIterationId id, ApplicationSnapshot application);
-	std::optional<IterationLease> BeginVisual(VisualIterationId id, IterationTiming timing = {});
+	IterationLease BeginLogical(PlatformInputSnapshot input, WindowSnapshot window);
+	std::optional<IterationLease> BeginVisual(IterationTiming timing, GraphicsOutputSnapshot output);
 	std::optional<LogicalIterationId> AssociatedLogical(VisualIterationId id) const;
 
 	std::optional<InvocationLease> BeginStage(LogicalIterationId id, Stage stage);

@@ -2,9 +2,8 @@
 
 #pragma once
 
-#include "../Globals/InvocationContext.h"
-#include "../Globals/Graphics/VisualOutput.h"
-#include "../Globals/Snapshots/SnapshotManager.h"
+#include "../Application/Graphics/Graphics.h"
+#include "../Snapshots/SnapshotManager.h"
 
 #include <memory>
 
@@ -14,6 +13,7 @@ namespace runtime {
 struct RenderWork {
 public:
 	InvocationLease invocation;
+	GraphicsOutputSnapshot target;
 	std::unique_ptr<const RenderCommands> commands;
 };
 

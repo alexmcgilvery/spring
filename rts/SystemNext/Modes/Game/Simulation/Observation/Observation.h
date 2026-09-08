@@ -7,7 +7,7 @@
 namespace runtime {
 
 /*
- * Game-local simulation notification outline. This describes semantic observation; Globals
+ * Game-local simulation notification outline. This describes semantic observation; application
  * diagnostics later records cross-mode runtime measurements and failures.
  */
 class Observation {

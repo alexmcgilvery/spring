@@ -1,40 +1,46 @@
-# Application runtime contracts
+# Snapshot-driven application runtime
 
-The application loop executes logical and visual work serially, with independent
+The application loop executes logical and visual work serially with independent
 iteration identities:
 
 ```text
-input → session → authoritative Game steps and publications
-       ↓ accepted lifecycle decision
-display → render → present, when the application schedules visual output
+application lifecycle
+    input → session → authoritative Game steps and publications
+    display → render → present, when Graphics schedules visual output
+application lifecycle and diagnostics
 ```
 
-[ApplicationLoop.cpp](ApplicationLoop.cpp) owns scheduling. Its stage methods take
-logical or visual iteration IDs. The [snapshot manager](Globals/Snapshots/SnapshotManager.h)
-selects immutable inputs; [typed mode dispatch](Modes/Mode.h) exposes only each
-concern's declared reads. [Mode contracts](Modes/README.md) describe the expected
-behavior and why it belongs in each stage.
+[ApplicationLoop.cpp](ApplicationLoop.cpp) owns scheduling and the active mode
+binding. It has explicit private dependencies on Platform, ApplicationLifecycle,
+SnapshotManager, Diagnostics and optional Graphics. Modes cannot access those
+application executors. They receive only their compile-time declared immutable
+snapshot views.
 
-Input publishes interpreted actions. Only Session output can carry a normal mode
-switch, reload or exit request. Lifecycle constructs a replacement and commits
-activation after Session returns. The replacement begins its own logical iteration
-and input batch. Startup, OS exit and fatal failure remain application responsibilities.
+Application ownership is organized by responsibility:
 
-Visual work consumes one frozen logical association. The application owns the
-backend, synchronization, rendered-output lifetime and presentation. A headless
-application has no visual subsystem and does not acquire visual contexts or invoke
-Display, Render or Present. The current scheduler remains serial and blocking.
+- [Platform](Application/Platform/Platform.h) owns native event collection and
+  window lifetime and publishes separate input and window facts.
+- [Graphics](Application/Graphics/Graphics.h) owns visual selection, render
+  execution, target synchronization, output lifetime and presentation.
+- [Lifecycle](Application/Lifecycle/ApplicationLifecycle.h) initializes the
+  application and constructs or retires modes.
+- [Diagnostics](Application/Diagnostics/Diagnostics.h) owns buffering and reports
+  at outer-loop boundaries.
+- [Snapshots](Snapshots/README.md) owns cross-concern state, association and history.
 
-Implemented infrastructure includes typed read declarations, generated views,
-consumer-derived history, owning leases, activation admission, lifecycle commitment,
-and exact-output presentation receipts. These mechanisms are validated with fake
-modes and adjacent services.
+Input publishes interpreted intent. Session alone accepts normal mode switches,
+reloads and exit decisions. The loop closes the old logical iteration before it
+commits a replacement. Every activation receives a new generation and begins with
+its own input publication.
 
-Concrete mode bodies, input adapters, simulation execution/extraction, detailed
-payload schemas and diagnostic recording remain documented outlines. Their explicit
-no-publication results must not be mistaken for working mode behavior. The production
-engine does not call this loop yet.
+One visual iteration consumes a frozen logical association plus immutable window
+and graphics-output facts. Display prepares client-visible state. A mode describes
+render content, Graphics executes it against the selected target, and Present
+consumes that exact owning result. Resize or target replacement never retargets an
+already rendered frame. Headless applications construct no Graphics instance and
+skip Display, Render and Present.
 
-Shared state belongs in [Globals](Globals/README.md) only when it is application-wide.
-Game simulation, observation and publication schemas stay beneath Game. Source
-briefs define contracts; legacy links identify later investigation sources.
+The scheduler remains serial and blocking. Its contracts prepare independent
+logical and visual scheduling but do not introduce threads, pacing or a backend.
+Concrete mode bodies, adapters, simulation execution/extraction and diagnostic
+recording remain documented outlines. Production execution is not redirected yet.

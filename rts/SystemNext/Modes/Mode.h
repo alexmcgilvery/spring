@@ -3,7 +3,7 @@
 #pragma once
 
 #include "IMode.h"
-#include "../Globals/Snapshots/SnapshotManager.h"
+#include "../Snapshots/SnapshotManager.h"
 
 #include <concepts>
 #include <stdexcept>
@@ -149,7 +149,13 @@ public:
 				invocation->Finish(StageStatus::NoPublication);
 				return {};
 			}
-			return RenderWork {std::move(*invocation), std::move(output)};
+			static_assert(Contracts::RenderReads::template contains<Stage::GraphicsOutput, 0>,
+				"Render must declare GraphicsOutput.Current");
+			return RenderWork {
+				std::move(*invocation),
+				inputs->GraphicsOutput().Current(),
+				std::move(output),
+			};
 		} else {
 			static_assert(Contracts::RenderReads::size == 0, "Absent Render cannot consume snapshots");
 			invocation->Finish(StageStatus::Omitted);

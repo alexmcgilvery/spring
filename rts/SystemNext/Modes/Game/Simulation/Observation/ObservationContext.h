@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "../../../../Globals/InvocationContext.h"
+#include "../../../../Snapshots/InvocationMetadata.h"
 
 #include <cstdint>
 
@@ -14,7 +14,7 @@ struct SimulationObservations;
 
 struct SimulationObservationContext {
 public:
-	const InvocationContext& invocation;
+	const InvocationMetadata& invocation;
 	const SimulationNotification& notification;
 	SimulationObservations& output;
 	std::uint64_t sequence;
