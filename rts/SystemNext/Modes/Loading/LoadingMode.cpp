@@ -57,6 +57,11 @@ LoadingMode::InputPublication LoadingMode::Input(const InputSnapshots&)
 	 * output connections remain unimplemented. Returning no publication reports that
 	 * absence explicitly; it is not evidence of completed input behavior.
 	 */
+	// TODO(SystemNext): Port the concern described above into this owned mode.
+	// Define its concrete publication schema, preserve the documented ordering and
+	// retirement constraints, and publish only fully owned state. Returning no
+	// publication deliberately prevents downstream work from treating this outline
+	// as an implemented concern.
 	return {};
 }
 
@@ -110,6 +115,12 @@ LoadingMode::SessionPublication LoadingMode::Session(const SessionSnapshots&)
 	 * output connections remain unimplemented. Returning no publication reports that
 	 * absence explicitly; it is not evidence of completed session behavior.
 	 */
+
+	// TODO(SystemNext): Port the concern described above into this owned mode.
+	// Define its concrete publication schema, preserve the documented ordering and
+	// retirement constraints, and publish only fully owned state. Returning no
+	// publication deliberately prevents downstream work from treating this outline
+	// as an implemented concern.
 	return {};
 }
 
@@ -163,6 +174,12 @@ LoadingMode::DisplayPublication LoadingMode::Display(const DisplaySnapshots&)
 	 * output connections remain unimplemented. Returning no publication reports that
 	 * absence explicitly; it is not evidence of completed display behavior.
 	 */
+
+	// TODO(SystemNext): Port the concern described above into this owned mode.
+	// Define its concrete publication schema, preserve the documented ordering and
+	// retirement constraints, and publish only fully owned state. Returning no
+	// publication deliberately prevents downstream work from treating this outline
+	// as an implemented concern.
 	return {};
 }
 
@@ -213,6 +230,12 @@ LoadingMode::RenderPublication LoadingMode::Render(const RenderSnapshots&)
 	 * output connections remain unimplemented. Returning no publication reports that
 	 * absence explicitly; it is not evidence of completed render behavior.
 	 */
+
+	// TODO(SystemNext): Port the concern described above into this owned mode.
+	// Define its concrete publication schema, preserve the documented ordering and
+	// retirement constraints, and publish only fully owned state. Returning no
+	// publication deliberately prevents downstream work from treating this outline
+	// as an implemented concern.
 	return {};
 }
 

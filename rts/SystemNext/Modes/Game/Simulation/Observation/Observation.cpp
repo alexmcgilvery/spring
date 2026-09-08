@@ -58,6 +58,11 @@ void Observation::Observe(const SimulationObservationContext&)
 	 * described explicitly before implementation. Observation failures must not be mistaken
 	 * for simulation failures or complete coverage.
 	 */
+
+	// TODO(SystemNext): Implement event-time copying at the classified callback sites.
+	// Preserve nested ordering and entity generations, separate controlling callbacks
+	// from observations, and invalidate coverage on journal overflow without changing
+	// engine behavior. This outline records no notifications.
 }
 
 }

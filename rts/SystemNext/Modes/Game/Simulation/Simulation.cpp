@@ -56,6 +56,12 @@ void Simulation::Step(const SimulationStepContext&)
 	 * existing callback inside the tick from the caller completing checksum and traffic
 	 * bookkeeping.
 	 */
+
+	// TODO(SystemNext): Port the authoritative frame body into this concern after
+	// annotating its actual ordering and synchronous effects. Preserve one executable
+	// simulation implementation and invocation by accepted Session messages; do not
+	// add a local accumulator or claim completion until checksum/bookkeeping boundaries
+	// are connected. This outline currently advances no simulation state.
 }
 
 }

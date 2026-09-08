@@ -21,6 +21,13 @@ def verify(root):
     actual = {str(p.relative_to(module)) for p in module.rglob('*.cpp')}
     outlined_files = {entry['file'] for entry in manifest['outlines']}
     assert actual == outlined_files | set(manifest['architecture_sources']), 'Missing or unclassified runtime source'
+    incomplete = set(manifest['incomplete_sources'])
+    todo_files = {
+        name for name in actual
+        if 'TODO(SystemNext):' in (module / name).read_text()
+    }
+    assert todo_files == incomplete, 'Missing or unclassified implementation TODO'
+    assert outlined_files <= incomplete, 'Documented outline is not classified incomplete'
     headers = {str(p.relative_to(module)) for p in module.rglob('*.h')}
     assert headers == set(manifest['headers']), 'Missing or unclassified runtime header'
 
@@ -76,6 +83,7 @@ def verify(root):
                 assert reads, name + ': missing consumption declaration'
                 for required, stage, slot in re.findall(r'(Required|Optional)<Stage::(\w+), Slot::(\w+)>', reads.group(1)):
                     assert stage + '.' + slot in body, name + ': read missing from explanation'
+            assert 'TODO(SystemNext):' in body, name + ': incomplete concern has no local TODO'
         expected += '}\n'
         assert re.sub(r'\s+', '', without_comments(source)) == re.sub(r'\s+', '', expected), name + ': hidden/duplicate behavior in outline'
 

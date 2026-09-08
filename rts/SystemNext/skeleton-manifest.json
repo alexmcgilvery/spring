@@ -155,6 +155,20 @@
     "Modes/IMode.cpp",
     "Snapshots/SnapshotManager.cpp"
   ],
+  "incomplete_sources": [
+    "Application/Diagnostics/Diagnostics.cpp",
+    "Application/Graphics/Graphics.cpp",
+    "Application/Lifecycle/ApplicationLifecycle.cpp",
+    "Application/Platform/Platform.cpp",
+    "Modes/SelectMenu/SelectMenuMode.cpp",
+    "Modes/LuaMenu/LuaMenuMode.cpp",
+    "Modes/PreGame/PreGameMode.cpp",
+    "Modes/Loading/LoadingMode.cpp",
+    "Modes/Game/GameMode.cpp",
+    "Modes/Game/Simulation/Simulation.cpp",
+    "Modes/Game/Simulation/Publication/Publication.cpp",
+    "Modes/Game/Simulation/Observation/Observation.cpp"
+  ],
   "headers": [
     "ApplicationLoop.h",
     "Application/Diagnostics/Diagnostics.h",

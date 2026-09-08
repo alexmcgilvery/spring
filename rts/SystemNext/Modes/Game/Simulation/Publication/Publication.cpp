@@ -61,6 +61,11 @@ void Publication::Publish(const PublicationContext&)
 	 * explicit. The generic manager implements owning leases and declared history;
 	 * this extraction outline implements no producer or production overflow policy.
 	 */
+
+	// TODO(SystemNext): Implement non-mutating extraction and manager publication.
+	// Define the complete owning frame/catalog schemas, prove that extraction leaves
+	// checksums, RNG and lazy caches unchanged, and connect bootstrap, tick and
+	// no-tick revisions with bounded retention. This outline publishes no state.
 }
 
 }
