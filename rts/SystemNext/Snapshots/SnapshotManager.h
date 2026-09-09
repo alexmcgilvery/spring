@@ -128,8 +128,8 @@ public:
 
 	void RequestLifecycle(InvocationLease& session, LifecycleRequest request);
 	std::optional<LifecycleRequest> TakeLifecycleRequest(LogicalIterationId id);
-	StageStatus Status(LogicalIterationId id, Stage stage) const;
-	StageStatus Status(VisualIterationId id, Stage stage) const;
+	StageStatus StageStatusOf(LogicalIterationId id, Stage stage) const;
+	StageStatus StageStatusOf(VisualIterationId id, Stage stage) const;
 	std::size_t RetainedHistory(Stage source) const;
 
 private:

@@ -106,6 +106,13 @@
 #include "Game/SyncedGameCommands.h"
 #include "lib/luasocket/src/restrictions.h"
 
+#include "SystemNext/ApplicationLoop.h"
+#include "SystemNext/Snapshots/SnapshotManager.h"
+#include "SystemNext/LegacyAdapters/PlatformAdapter.h"
+#include "SystemNext/LegacyAdapters/GraphicsAdapter.h"
+#include "SystemNext/LegacyAdapters/LifecycleAdapter.h"
+#include "SystemNext/LegacyAdapters/DiagnosticsAdapter.h"
+
 
 
 CONFIG(unsigned, SetCoreAffinity).defaultValue(0).safemodeValue(1).description("Defines a bitmask indicating which CPU cores the main-thread should use.");
@@ -875,6 +882,11 @@ void SpringApp::Reload(const std::string script)
 	LOG("[SpringApp::%s][13] reloadCount=%u\n\n\n", __func__, ++reloadCount);
 }
 
+#if 0
+// Legacy application loop function — retained for reference.
+// Replaced by runtime::ApplicationLoop (see rts/SystemNext/ApplicationLoop.cpp).
+// The logic below has been migrated into PlatformAdapter, GraphicsAdapter,
+// LifecycleAdapter and the IMode adapters.
 /**
  * @return return code of ActiveController::Update
  */
@@ -906,6 +918,7 @@ bool SpringApp::Update()
 	globalRendering->SwapBuffers(swap, false);
 	return retc;
 }
+#endif
 
 
 /**
@@ -923,24 +936,24 @@ int SpringApp::Run()
 	// note: exceptions thrown by other threads are *not* caught here
 	// ErrorMsgBox sets threadError if called from any non-main thread
 	try {
-		if ((gu->globalQuit = !Init() || gu->globalQuit))
-			spring::exitCode = spring::EXIT_CODE_NOINIT;
+		// ---- runtime::ApplicationLoop integration ----
+		// The entire body (Init + loop + Kill) is delegated to the new
+		// snapshot-driven application loop. Adapters wrap the existing
+		// engine systems behind the new ownership boundaries.
+		runtime::PlatformAdapter platform;
+		runtime::SnapshotManager snapshots;
+		runtime::DiagnosticsAdapter diagnostics;
 
+		#ifndef HEADLESS
+		runtime::GraphicsAdapter graphics;
+		runtime::LifecycleAdapter lifecycle(*this);
+		runtime::ApplicationLoop loop(platform, lifecycle, snapshots, diagnostics, &graphics);
+		#else
+		runtime::LifecycleAdapter lifecycle(*this);
+		runtime::ApplicationLoop loop(platform, lifecycle, snapshots, diagnostics, nullptr);
+		#endif
 
-		while (!gu->globalQuit) {
-			Watchdog::ClearTimer(WDT_MAIN);
-			input.PushEvents();
-
-			// move to clear global data if a save is queued
-			ILoadSaveHandler::CreateSave(std::move(globalSaveFileData));
-
-			if (gu->globalReload) {
-				// copy; reloadScript is cleared by ResetState
-				Reload(gameSetup->reloadScript);
-			} else {
-				gu->globalQuit = (!Update() || gu->globalQuit);
-			}
-		}
+		loop.Run();
 	} CATCH_SPRING_ERRORS
 
 	// no exception from main, check if some other thread interrupted our regular loop
@@ -955,9 +968,14 @@ int SpringApp::Run()
 		ErrorMessageBox(tempError.message, tempError.caption, threadError->flags);
 	}
 
-	try {
-		Kill(true);
-	} CATCH_SPRING_ERRORS
+	// Kill is called by LifecycleAdapter::Shutdown() during normal exit.
+	// If a thread error interrupted the loop, Kill may not have run yet.
+	// The killedCount guard prevents double-teardown if it already ran.
+	if (!threadError->Empty()) {
+		try {
+			Kill(true);
+		} CATCH_SPRING_ERRORS
+	}
 
 	// no exception from main, but a thread might have thrown *during* ::Kill
 	// do not attempt to call Kill a second time, just show the error message

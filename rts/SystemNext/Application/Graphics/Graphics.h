@@ -55,7 +55,7 @@ public:
 };
 
 enum class VisualSchedule {
-	None,
+	Skip,
 	Display,
 	Offscreen,
 	Present,
@@ -63,7 +63,7 @@ enum class VisualSchedule {
 
 struct VisualPlan {
 public:
-	VisualSchedule schedule = VisualSchedule::None;
+	VisualSchedule schedule = VisualSchedule::Skip;
 	IterationTiming timing;
 	GraphicsOutputSnapshot output;
 };

@@ -100,7 +100,7 @@ bool ApplicationLoop::UpdateLogic(PlatformPublications publications)
 		if (!lifecycleRequest)
 			lifecycleRequest = snapshots.TakeLifecycleRequest(id);
 
-		const auto status = snapshots.Status(id, Stage::Session);
+		const auto status = snapshots.StageStatusOf(id, Stage::Session);
 		visualReady = status == StageStatus::Completed
 			|| status == StageStatus::NoPublication
 			|| status == StageStatus::Omitted;
@@ -121,7 +121,7 @@ void ApplicationLoop::UpdateVisuals()
 	 * those facts with one completed logical association for all visual stages.
 	 * Rendering and presentation remain serial and blocking in this pass. */
 	const auto plan = graphics->PlanVisuals(activeMode.identity);
-	if (plan.schedule == VisualSchedule::None)
+	if (plan.schedule == VisualSchedule::Skip)
 		return;
 
 	auto iteration = snapshots.BeginVisual(plan.timing, plan.output);

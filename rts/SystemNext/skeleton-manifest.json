@@ -153,7 +153,11 @@
     "Application/Lifecycle/ApplicationLifecycle.cpp",
     "Application/Platform/Platform.cpp",
     "Modes/IMode.cpp",
-    "Snapshots/SnapshotManager.cpp"
+    "Snapshots/SnapshotManager.cpp",
+    "LegacyAdapters/PlatformAdapter.cpp",
+    "LegacyAdapters/GraphicsAdapter.cpp",
+    "LegacyAdapters/LifecycleAdapter.cpp",
+    "LegacyAdapters/DiagnosticsAdapter.cpp"
   ],
   "incomplete_sources": [
     "Application/Diagnostics/Diagnostics.cpp",
@@ -202,6 +206,10 @@
     "Modes/PreGame/PreGameMode.h",
     "Modes/PreGame/PreGameSnapshots.h",
     "Modes/SelectMenu/SelectMenuMode.h",
-    "Modes/SelectMenu/SelectMenuSnapshots.h"
+    "Modes/SelectMenu/SelectMenuSnapshots.h",
+    "LegacyAdapters/PlatformAdapter.h",
+    "LegacyAdapters/GraphicsAdapter.h",
+    "LegacyAdapters/LifecycleAdapter.h",
+    "LegacyAdapters/DiagnosticsAdapter.h"
   ]
 }

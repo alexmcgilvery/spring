@@ -192,6 +192,25 @@ set(sources_engine_System_Threading
 		"${CMAKE_CURRENT_SOURCE_DIR}/Platform/SharedLib.cpp"
 	)
 
+set(sources_engine_SystemNext
+		"${CMAKE_SOURCE_DIR}/rts/SystemNext/ApplicationLoop.cpp"
+		"${CMAKE_SOURCE_DIR}/rts/SystemNext/Snapshots/SnapshotManager.cpp"
+		"${CMAKE_SOURCE_DIR}/rts/SystemNext/Modes/IMode.cpp"
+		"${CMAKE_SOURCE_DIR}/rts/SystemNext/Modes/Game/GameMode.cpp"
+		"${CMAKE_SOURCE_DIR}/rts/SystemNext/Modes/LuaMenu/LuaMenuMode.cpp"
+		"${CMAKE_SOURCE_DIR}/rts/SystemNext/Modes/PreGame/PreGameMode.cpp"
+		"${CMAKE_SOURCE_DIR}/rts/SystemNext/Modes/Loading/LoadingMode.cpp"
+		"${CMAKE_SOURCE_DIR}/rts/SystemNext/Modes/SelectMenu/SelectMenuMode.cpp"
+		"${CMAKE_SOURCE_DIR}/rts/SystemNext/Application/Diagnostics/Diagnostics.cpp"
+		"${CMAKE_SOURCE_DIR}/rts/SystemNext/Application/Graphics/Graphics.cpp"
+		"${CMAKE_SOURCE_DIR}/rts/SystemNext/Application/Lifecycle/ApplicationLifecycle.cpp"
+		"${CMAKE_SOURCE_DIR}/rts/SystemNext/Application/Platform/Platform.cpp"
+		"${CMAKE_SOURCE_DIR}/rts/SystemNext/LegacyAdapters/PlatformAdapter.cpp"
+		"${CMAKE_SOURCE_DIR}/rts/SystemNext/LegacyAdapters/GraphicsAdapter.cpp"
+		"${CMAKE_SOURCE_DIR}/rts/SystemNext/LegacyAdapters/LifecycleAdapter.cpp"
+		"${CMAKE_SOURCE_DIR}/rts/SystemNext/LegacyAdapters/DiagnosticsAdapter.cpp"
+	)
+
 set(sources_engine_System
 		${sources_engine_System_common}
 		${sources_engine_System_creg}
@@ -199,6 +218,7 @@ set(sources_engine_System
 		${sources_engine_System_Log}
 		${sources_engine_System_Log_sinkConsole}
 		${sources_engine_System_Log_sinkFile}
+		${sources_engine_SystemNext}
 	)
 
 

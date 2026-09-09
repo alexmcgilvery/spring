@@ -224,7 +224,7 @@ static void RunLoop(
 
 static void SchedulesAndHeadless()
 {
-	for (const auto schedule : {VisualSchedule::None, VisualSchedule::Display, VisualSchedule::Offscreen, VisualSchedule::Present}) {
+	for (const auto schedule : {VisualSchedule::Skip, VisualSchedule::Display, VisualSchedule::Offscreen, VisualSchedule::Present}) {
 		std::vector<std::string> trace;
 		FakePlatform platform(trace);
 		FakeLifecycle lifecycle(trace);
@@ -237,7 +237,7 @@ static void SchedulesAndHeadless()
 		RunLoop(platform, lifecycle, snapshots, diagnostics, &graphics);
 
 		std::vector<std::string> expected {"initialize", "begin", "collect", "game.input", "game.session", "plan"};
-		if (schedule != VisualSchedule::None)
+		if (schedule != VisualSchedule::Skip)
 			expected.push_back("game.display");
 		if (schedule == VisualSchedule::Offscreen || schedule == VisualSchedule::Present)
 			expected.insert(expected.end(), {"game.render", "execute"});
@@ -382,9 +382,9 @@ static void ActualModeOutlines()
 		const auto id = iteration.LogicalId();
 		mode->ExecuteInput(snapshots, id);
 		mode->ExecuteSession(snapshots, id);
-		Check(snapshots.Status(id, Stage::Input) == StageStatus::NoPublication,
+		Check(snapshots.StageStatusOf(id, Stage::Input) == StageStatus::NoPublication,
 			"actual Input remains an explicit outline");
-		Check(snapshots.Status(id, Stage::Session) == StageStatus::Unavailable,
+		Check(snapshots.StageStatusOf(id, Stage::Session) == StageStatus::Unavailable,
 			"outline never fabricates prerequisite state");
 	}
 }

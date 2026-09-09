@@ -483,13 +483,13 @@ std::optional<LifecycleRequest> SnapshotManager::TakeLifecycleRequest(LogicalIte
 	return iteration->request;
 }
 
-StageStatus SnapshotManager::Status(LogicalIterationId id, Stage stage) const
+StageStatus SnapshotManager::StageStatusOf(LogicalIterationId id, Stage stage) const
 {
 	const auto iteration = state->Find(Flow::Logical, id.value);
 	return iteration ? iteration->status[detail::Index(stage)] : StageStatus::Unavailable;
 }
 
-StageStatus SnapshotManager::Status(VisualIterationId id, Stage stage) const
+StageStatus SnapshotManager::StageStatusOf(VisualIterationId id, Stage stage) const
 {
 	const auto iteration = state->Find(Flow::Visual, id.value);
 	return iteration ? iteration->status[detail::Index(stage)] : StageStatus::Unavailable;

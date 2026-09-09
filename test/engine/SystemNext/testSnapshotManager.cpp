@@ -64,7 +64,7 @@ static void StageOrderingAndExceptions()
 		Throws([&] { manager.RequestLifecycle(*session, {}); }, "transition needs owning state");
 		// Simulate unwinding before completion.
 	}
-	Check(manager.Status(LogicalIterationId {1}, Stage::Session) == StageStatus::Failed, "unfinished scope failed");
+	Check(manager.StageStatusOf(LogicalIterationId {1}, Stage::Session) == StageStatus::Failed, "unfinished scope failed");
 	iteration.Close();
 	Check(!manager.BeginVisual({}, TestOutput()), "failed logical iteration cannot supply visuals");
 }

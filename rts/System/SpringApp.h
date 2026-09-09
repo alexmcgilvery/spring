@@ -18,6 +18,11 @@ namespace Threading {
 	struct Error;
 };
 
+// Forward declarations for runtime adapters that need access to SpringApp internals.
+namespace runtime { class PlatformAdapter; }
+namespace runtime { class GraphicsAdapter; }
+namespace runtime { class LifecycleAdapter; }
+
 /**
  * @brief Spring App
  *
@@ -60,6 +65,10 @@ private:
 	CGameController* LoadDemoFile(const std::string& demoName); //!< Starts game from a specified demo
 
 private:
+	friend class runtime::PlatformAdapter;
+	friend class runtime::GraphicsAdapter;
+	friend class runtime::LifecycleAdapter;
+
 	std::string inputFile;
 
 	// this gets passed along to PreGame (or SelectMenu then PreGame),

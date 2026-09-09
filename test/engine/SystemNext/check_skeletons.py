@@ -35,6 +35,11 @@ def verify(root):
         path = module / name
         source = path.read_text()
         code = without_comments(source)
+        # LegacyAdapters are the bridge to the existing engine and are exempt
+        # from the isolation checks: they include engine headers and reference
+        # engine globals by design.
+        if name.startswith('LegacyAdapters/'):
+            continue
         for link in re.findall(r'\[[^\]]+\]\(([^)]+)\)', source):
             assert (path.parent / link).is_file(), name + ': broken source link ' + link
         for include in re.findall(r'#include "([^"]+)"', code):
@@ -114,6 +119,8 @@ def compile_sources(root, files, output):
             flags.append('-DHEADLESS')
         print('Checking isolated headers and contracts: ' + variant, flush=True)
         for header in sorted(module.rglob('*.h')):
+            if 'LegacyAdapters/' in str(header.relative_to(module)):
+                continue
             subprocess.run([compiler, *flags, '-x', 'c++', '-fsyntax-only', '-include', str(header), '/dev/null'], check=True)
         subprocess.run([compiler, *flags, '-I', str(module), '-fsyntax-only', str(tests / 'testContextContracts.cpp')], check=True)
         # A positive control must compile before negative diagnostics can count.
@@ -127,6 +134,8 @@ def compile_sources(root, files, output):
 
         objects = []
         for index, name in enumerate(files):
+            if name.startswith('LegacyAdapters/'):
+                continue
             obj = directory / ('concern-%d.o' % index)
             subprocess.run([compiler, *flags, '-c', str(module / name), '-o', str(obj)], check=True)
             objects.append(str(obj))
