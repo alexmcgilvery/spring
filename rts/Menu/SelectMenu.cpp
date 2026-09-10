@@ -182,6 +182,7 @@ SelectMenu::~SelectMenu()
 	CleanWindow();
 }
 
+// CONCERN: render
 bool SelectMenu::Draw()
 {
 	spring_msecs(10).sleep(true);
@@ -193,6 +194,7 @@ bool SelectMenu::Draw()
 }
 
 
+// CONCERN: session
 void SelectMenu::Demo()
 {
 	const auto demoSelectedCB = [&](const std::string& userDemo) {
@@ -216,6 +218,7 @@ void SelectMenu::Demo()
 	}
 }
 
+// CONCERN: session
 void SelectMenu::Load()
 {
 	const auto loadSelectedCB = [&](const std::string& userSave) {
@@ -238,6 +241,7 @@ void SelectMenu::Load()
 	}
 }
 
+// CONCERN: session
 void SelectMenu::Single()
 {
 	if (selw->userMod == SelectionWidget::NoModSelect) {
@@ -265,6 +269,7 @@ void SelectMenu::Single()
 	}
 }
 
+// CONCERN: session
 void SelectMenu::Quit()
 {
 	gu->globalQuit = true;
@@ -349,6 +354,7 @@ void SelectMenu::CleanWindow() {
 	}
 }
 
+// CONCERN: session
 void SelectMenu::DirectConnect(const std::string& addr)
 {
 	configHandler->SetString("address", addr);
@@ -360,6 +366,8 @@ void SelectMenu::DirectConnect(const std::string& addr)
 	return (agui::gui->RmElement(this));
 }
 
+// CONCERN: input
+// CONCERN: session (RETURN -> Single(), ESC -> Quit())
 bool SelectMenu::HandleEventSelf(const SDL_Event& ev)
 {
 	switch (ev.type) {

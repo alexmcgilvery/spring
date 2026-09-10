@@ -125,6 +125,7 @@ void CShadowHandler::Kill()
 }
 
 
+// CONCERN: display
 void CShadowHandler::Update()
 {
 	CCamera* playCam = CCameraHandler::GetCamera(CCamera::CAMTYPE_PLAYER);

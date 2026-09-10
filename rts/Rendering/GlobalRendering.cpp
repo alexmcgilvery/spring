@@ -668,6 +668,7 @@ void CGlobalRendering::PostInit() {
 	UpdateTimer();
 }
 
+// CONCERN: present
 void CGlobalRendering::SwapBuffers(bool allowSwapBuffers, bool clearErrors)
 {
 	spring_time pre;
@@ -1282,6 +1283,7 @@ void CGlobalRendering::ConfigNotify(const std::string& key, const std::string& v
 	forceDWMFlush = configHandler->GetInt("DWMFlush");
 }
 
+// CONCERN: display
 void CGlobalRendering::UpdateWindow()
 {
 	ZoneScoped;
@@ -1305,6 +1307,7 @@ void CGlobalRendering::UpdateWindow()
 	MakeCurrentContext(false);
 }
 
+// CONCERN: display
 void CGlobalRendering::UpdateTimer()
 {
 	grTime = spring_now();

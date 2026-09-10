@@ -275,6 +275,7 @@ void HUDDrawer::DrawTargetReticle(const CUnit* unit)
 	glPopMatrix();
 }
 
+// CONCERN: render
 void HUDDrawer::Draw(const CUnit* unit)
 {
 	if (unit == nullptr || !draw)

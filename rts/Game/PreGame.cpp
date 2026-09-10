@@ -147,6 +147,8 @@ void CPreGame::LoadSaveFile(const std::string& save)
 	gu->globalQuit = true;
 }
 
+// CONCERN: input
+// CONCERN: session (SHIFT+ESC aborts loading / quits)
 int CPreGame::KeyPressed(int keyCode, int scanCode, bool isRepeat)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -183,6 +185,7 @@ void CPreGame::AsyncExecute(CPreGame::AsyncExecFuncType execFunc, const std::str
 	);
 }
 
+// CONCERN: render
 bool CPreGame::Draw()
 {
 #ifndef HEADLESS
@@ -233,6 +236,7 @@ bool CPreGame::Draw()
 }
 
 
+// CONCERN: session
 bool CPreGame::Update()
 {
 	ZoneScoped;
@@ -341,6 +345,7 @@ void CPreGame::StartServer(const std::string& setupscript)
 }
 
 
+// CONCERN: session
 void CPreGame::UpdateClientNet()
 {
 	RECOIL_DETAILED_TRACY_ZONE;

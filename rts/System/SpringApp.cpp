@@ -890,6 +890,9 @@ void SpringApp::Reload(const std::string script)
 /**
  * @return return code of ActiveController::Update
  */
+// CONCERN: session
+// CONCERN: render
+// CONCERN: present
 bool SpringApp::Update()
 {
 	bool retc = true;
@@ -1093,6 +1096,8 @@ void SpringApp::Kill(bool fromRun)
 }
 
 
+// CONCERN: input
+// CONCERN: display (window events reconfigure GL geometry and call ResizeEvent)
 bool SpringApp::MainEventHandler(const SDL_Event& event)
 {
 	switch (event.type) {

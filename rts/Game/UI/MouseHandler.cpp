@@ -246,6 +246,7 @@ void CMouseHandler::WindowLeave()
 
 /******************************************************************************/
 
+// CONCERN: input
 void CMouseHandler::MouseMove(int x, int y, int dx, int dy)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -332,6 +333,7 @@ void CMouseHandler::ClearEmulatedButtons()
 }
 
 
+// CONCERN: input
 void CMouseHandler::MousePress(int x, int y, int button)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -522,6 +524,7 @@ void CMouseHandler::GetSelectionBoxCoeff(
 }
 
 
+// CONCERN: input
 void CMouseHandler::MouseRelease(int x, int y, int button)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -647,6 +650,7 @@ bool CMouseHandler::ButtonPressed()
 	return pressedBitMask > 0;
 }
 
+// CONCERN: input
 void CMouseHandler::MouseWheel(float delta)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -666,6 +670,7 @@ void CMouseHandler::MouseWheel(float delta)
 }
 
 
+// CONCERN: render
 void CMouseHandler::DrawSelectionBox() const
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -781,6 +786,7 @@ std::string CMouseHandler::GetCurrentTooltip() const
 }
 
 
+// CONCERN: display
 void CMouseHandler::Update()
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -943,6 +949,7 @@ void CMouseHandler::SetCursor(const std::string& cmdName, const bool forceRebind
 }
 
 
+// CONCERN: display
 void CMouseHandler::UpdateCursors()
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -953,6 +960,7 @@ void CMouseHandler::UpdateCursors()
 }
 
 
+// CONCERN: display
 void CMouseHandler::UpdateCursorCameraDir()
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1037,6 +1045,7 @@ void CMouseHandler::DrawFPSCursor(TypedRenderBuffer<VA_TYPE_C>& rb) const
 }
 
 
+// CONCERN: render
 void CMouseHandler::DrawCursor()
 {
 	RECOIL_DETAILED_TRACY_ZONE;

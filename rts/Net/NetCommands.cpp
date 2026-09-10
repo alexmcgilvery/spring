@@ -256,6 +256,7 @@ float CGame::GetNetMessageProcessingTimeLimit() const
 	return std::clamp(simDrawRatio * gu->avgSimFrameTime, 5.0f, 1000.0f / globalConfig.minDrawFPS);
 }
 
+// CONCERN: session
 void CGame::ClientReadNet()
 {
 	// first look ahead so we can adapt consumeSpeedMult to network fluctuations

@@ -26,6 +26,10 @@ PlatformAdapter::~PlatformAdapter()
 	LOG("[runtime::PlatformAdapter] destroyed");
 }
 
+// CONCERN: input
+// CONCERN: session
+// CONCERN: render
+// CONCERN: present
 bool PlatformAdapter::BeginIteration()
 {
 	// Reset the main-thread watchdog so the watchdog thread doesn't kill the process.

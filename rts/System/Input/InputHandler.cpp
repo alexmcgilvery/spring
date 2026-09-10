@@ -7,6 +7,7 @@ InputHandler input;
 
 InputHandler::InputHandler() = default;
 
+// CONCERN: input
 void InputHandler::PushEvent(const SDL_Event& ev)
 {
 	for (const auto& eventHandler : eventHandlers) {
@@ -17,6 +18,7 @@ void InputHandler::PushEvent(const SDL_Event& ev)
 	}
 }
 
+// CONCERN: input
 void InputHandler::PushEvents()
 {
 	SCOPED_TIMER("Misc::InputHandler::PushEvents");

@@ -84,11 +84,14 @@ bool CLuaMenuController::ActivateInstance(const std::string& msg)
 	return (luaMenuController->Valid() && luaMenuController->Activate(msg));
 }
 
+// CONCERN: input
 void CLuaMenuController::ResizeEvent()
 {
 	eventHandler.ViewResize();
 }
 
+// CONCERN: display
+// CONCERN: session (eventHandler.Update can run Lua controller replacement)
 bool CLuaMenuController::Update()
 {
 	ZoneScoped;
@@ -107,6 +110,8 @@ bool CLuaMenuController::Update()
 	return true;
 }
 
+// CONCERN: render
+// CONCERN: display (eventHandler.DrawScreen can trigger Lua session decisions)
 bool CLuaMenuController::Draw()
 {
 	// we should not become the active controller unless this holds (see ::Activate)
@@ -134,24 +139,28 @@ bool CLuaMenuController::Draw()
 }
 
 
+// CONCERN: input
 int CLuaMenuController::KeyReleased(int keyCode, int scanCode)
 {
 	luaInputReceiver->KeyReleased(keyCode, scanCode);
 	return 0;
 }
 
+// CONCERN: input
 int CLuaMenuController::KeyPressed(int keyCode, int scanCode, bool isRepeat)
 {
 	luaInputReceiver->KeyPressed(keyCode, scanCode, isRepeat);
 	return 0;
 }
 
+// CONCERN: input
 int CLuaMenuController::TextInput(const std::string& utf8Text)
 {
 	eventHandler.TextInput(utf8Text);
 	return 0;
 }
 
+// CONCERN: input
 int CLuaMenuController::TextEditing(const std::string& utf8Text, unsigned int start, unsigned int length)
 {
 	eventHandler.TextEditing(utf8Text, start, length);

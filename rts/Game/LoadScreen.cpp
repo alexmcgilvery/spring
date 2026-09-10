@@ -172,6 +172,7 @@ void CLoadScreen::Kill()
 
 /******************************************************************************/
 
+// CONCERN: session
 static void FinishedLoading()
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -228,6 +229,7 @@ void CLoadScreen::DeleteInstance()
 
 /******************************************************************************/
 
+// CONCERN: input
 void CLoadScreen::ResizeEvent()
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -236,6 +238,7 @@ void CLoadScreen::ResizeEvent()
 }
 
 
+// CONCERN: input
 int CLoadScreen::KeyPressed(int keyCode, int scanCode, bool isRepeat)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -246,6 +249,7 @@ int CLoadScreen::KeyPressed(int keyCode, int scanCode, bool isRepeat)
 	return 0;
 }
 
+// CONCERN: input
 int CLoadScreen::KeyReleased(int keyCode, int scanCode)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -256,6 +260,8 @@ int CLoadScreen::KeyReleased(int keyCode, int scanCode)
 }
 
 
+// CONCERN: session
+// CONCERN: display (luaIntro->LoadProgress)
 bool CLoadScreen::Update()
 {
 	ZoneScoped;
@@ -286,6 +292,9 @@ bool CLoadScreen::Update()
 }
 
 
+// CONCERN: render
+// CONCERN: display (luaIntro->Update, luaMenu->Update)
+// CONCERN: present (SwapBuffers when !mtLoading)
 bool CLoadScreen::Draw()
 {
 	RECOIL_DETAILED_TRACY_ZONE;

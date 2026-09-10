@@ -363,6 +363,7 @@ void RmlGui::MarkContextForRemoval(Rml::Context *context) {
 	state->contexts_to_remove.insert(context);
 }
 
+// CONCERN: display
 void RmlGui::Update()
 {
 	ZoneScopedN("RmlGui Update");
@@ -396,6 +397,7 @@ void RmlGui::Update()
 	state->pending_deletes.clear();
 }
 
+// CONCERN: render
 void RmlGui::RenderFrame()
 {
 	ZoneScopedN("RmlGui Draw");

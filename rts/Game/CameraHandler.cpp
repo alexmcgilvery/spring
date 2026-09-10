@@ -255,6 +255,7 @@ void CCameraHandler::ConfigNotify(const std::string& key, const std::string& val
 	}
 }
 
+// CONCERN: display
 void CCameraHandler::UpdateController(CPlayer* player, bool fpsMode)
 {
 	RECOIL_DETAILED_TRACY_ZONE;

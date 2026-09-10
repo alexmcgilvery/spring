@@ -203,6 +203,7 @@ void CWorldDrawer::Kill()
 
 
 
+// CONCERN: display
 void CWorldDrawer::Update(bool newSimFrame)
 {
 	SCOPED_TIMER("Update::WorldDrawer");
@@ -242,6 +243,7 @@ void CWorldDrawer::Update(bool newSimFrame)
 
 
 
+// CONCERN: render
 void CWorldDrawer::GenerateIBLTextures() const
 {
 
@@ -295,6 +297,7 @@ void CWorldDrawer::ResetMVPMatrices() const
 
 
 
+// CONCERN: render
 void CWorldDrawer::Draw() const
 {
 	SCOPED_TIMER("Draw::World");

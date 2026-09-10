@@ -1,6 +1,0 @@
-{
-  "schema": 1,
-  "baseline": "9fbc1c3511274b367eacfe00020e26bddba5bfee",
-  "stage": "documentation-only; no active runtime or integration hooks",
-  "hooks": []
-}

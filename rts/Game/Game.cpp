@@ -1093,6 +1093,8 @@ void CGame::KillSimulation()
 
 
 
+// CONCERN: input
+// CONCERN: display (recreates water, resizes minimap/UI)
 void CGame::ResizeEvent()
 {
 	LOG("[Game::%s][1]", __func__);
@@ -1119,12 +1121,14 @@ void CGame::ResizeEvent()
 	}
 }
 
+// CONCERN: input
 int CGame::KeyPressed(int keyCode, int scanCode, bool isRepeat)
 {
 	gameInputReceiver.KeyPressed(keyCode, scanCode, isRepeat);
 	return 0;
 }
 
+// CONCERN: input
 int CGame::KeyReleased(int keyCode, int scanCode)
 {
 	gameInputReceiver.KeyReleased(keyCode, scanCode);
@@ -1136,6 +1140,7 @@ CInputReceiver* CGame::GetInputReceiver()
 	return &gameInputReceiver;
 }
 
+// CONCERN: input
 int CGame::KeyMapChanged()
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1144,6 +1149,7 @@ int CGame::KeyMapChanged()
 	return 0;
 }
 
+// CONCERN: input
 int CGame::TextInput(const std::string& utf8Text)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1156,6 +1162,7 @@ int CGame::TextInput(const std::string& utf8Text)
 	return (gameTextInput.SetInputText(utf8Text));
 }
 
+// CONCERN: input
 int CGame::TextEditing(const std::string& utf8Text, unsigned int start, unsigned int length)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1166,6 +1173,7 @@ int CGame::TextEditing(const std::string& utf8Text, unsigned int start, unsigned
 }
 
 
+// CONCERN: session
 bool CGame::Update()
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1214,6 +1222,8 @@ bool CGame::Update()
 }
 
 
+// CONCERN: display
+// CONCERN: session (SendNetChat from gameTextInput.SendPromptInput)
 bool CGame::UpdateUnsynced(const spring_time currentTime)
 {
 	SCOPED_TIMER("Update");
@@ -1436,6 +1446,8 @@ bool CGame::UpdateUnsynced(const spring_time currentTime)
 }
 
 
+// CONCERN: render
+// CONCERN: display (calls UpdateUnsynced and RmlGui::Update)
 bool CGame::Draw() {
 	const spring_time currentTimePreUpdate = spring_gettime();
 
@@ -1563,6 +1575,7 @@ bool CGame::Draw() {
 }
 
 
+// CONCERN: render
 void CGame::DrawInputReceivers()
 {
 
@@ -1592,6 +1605,7 @@ void CGame::DrawInputReceivers()
 	glEnable(GL_TEXTURE_2D);
 }
 
+// CONCERN: render
 void CGame::DrawInterfaceWidgets()
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1653,6 +1667,7 @@ void CGame::ParseInputTextGeometry(const string& geo)
 }
 
 
+// CONCERN: render
 void CGame::DrawInputText()
 {
 	RECOIL_DETAILED_TRACY_ZONE;
@@ -1685,6 +1700,8 @@ void CGame::StartPlaying()
 
 static const char* const tracingSimFrameName = "SimFrame";
 
+// CONCERN: session
+// CONCERN: display (unsynced block: waitCommandsAI/geometricObjects/sound/eoh/uiGroupHandlers/CTeamHighlight)
 void CGame::SimFrame() {
 	ENTER_SYNCED_CODE();
 	ASSERT_SYNCED(gsRNG.GetGenState());
@@ -1833,6 +1850,7 @@ void CGame::SimFrame() {
 }
 
 
+// CONCERN: session
 void CGame::GameEnd(const std::vector<unsigned char>& winningAllyTeams, bool timeout)
 {
 	RECOIL_DETAILED_TRACY_ZONE;
